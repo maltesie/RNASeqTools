@@ -1,6 +1,3 @@
-import XAM
-import DataFrames
-
 function read_bam(bam_file::String; is_rev=false, nb_reads::Int = -1)
     record::XAM.BAM.Record = XAM.BAM.Record()
     reader = open(XAM.BAM.Reader, bam_file)
