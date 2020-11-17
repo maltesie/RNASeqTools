@@ -1,6 +1,6 @@
-import BioSequences: Demultiplexer, LongDNASeq, demultiplex, sequence
-import FASTX: FASTQ.Reader, FASTQ.Record, FASTQ.Writer, sequence
-import CodecZlib: GzipCompressorStream, GzipDecompressorStream
+using BioSequences
+using FASTX
+using CodecZlib
 
 function write_file(filename::String, content::String)
     open(filename, "w") do f

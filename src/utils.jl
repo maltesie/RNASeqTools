@@ -1,4 +1,4 @@
-import FASTX: FASTQ.Record, FASTQ.Reader, FASTQ.Writer, sequence, quality, identifier
+using FASTX
 
 function combine_gffs(gff_files::Array{String, 1}; out_file="out.gff3")
     writer = open(out_file, "w")
