@@ -1,23 +1,27 @@
+import BioSequences: Demultiplexer, LongDNASeq, demultiplex, sequence
+import FASTX: FASTQ.Reader, FASTQ.Record, FASTQ.Writer, sequence
+import CodecZlib: GzipCompressorStream, GzipDecompressorStream
+
 function write_file(filename::String, content::String)
     open(filename, "w") do f
         write(f, content)
     end
 end
 
-function demultiplex(infile1::String, infile2::String, barcodes::Array{String,1}, libnames::Array{String, 1}, 
+function split_libs(infile1::String, infile2::String, barcodes::Array{String,1}, libnames::Array{String, 1}, 
     output_folder::String; bc_in_file1=true, barcode_length=-1, stop_early=-1, write_report=false)
 
     barcode_length < 0 && (barcode_length = length(barcodes[1]))
-    dplxr = BioSequences.Demultiplexer(BioSequences.LongDNASeq.(barcodes), n_max_errors=1, distance=:hamming)
+    dplxr = Demultiplexer(LongDNASeq.(barcodes), n_max_errors=1, distance=:hamming)
     output_files = [[abspath(output_folder, "$(name)_1.fastq.gz"),
                     abspath(output_folder, "$(name)_2.fastq.gz")] for (in_file1, in_file2) in input_files]
     stats::Array{Int,1} = zeros(Int, length(input_files))
-    record1::FASTX.FASTQ.Record = FASTX.FASTQ.Record()
-    record2::FASTX.FASTQ.Record = FASTX.FASTQ.Record()
-    reader1 = FASTX.FASTQ.Reader(GzipDecompressorStream(open(infile1, "r")))
-    reader2 = FASTX.FASTQ.Reader(GzipDecompressorStream(open(infile2, "r")))
-    writers = [[FASTX.FASTQ.Writer(GzipCompressorStream(open(outfile1, "w"), level=2)),
-                FASTX.FASTQ.Writer(GzipCompressorStream(open(outfile2, "w"), level=2))] 
+    record1::FASTQ.Record = FASTQ.Record()
+    record2::FASTQ.Record = FASTQ.Record()
+    reader1 = FASTQ.Reader(GzipDecompressorStream(open(infile1, "r")))
+    reader2 = FASTQ.Reader(GzipDecompressorStream(open(infile2, "r")))
+    writers = [[FASTQ.Writer(GzipCompressorStream(open(outfile1, "w"), level=2)),
+                FASTQ.Writer(GzipCompressorStream(open(outfile2, "w"), level=2))] 
                 for (outfile1, outfile2) in output_files] 
 
     sleep(0.01)
@@ -28,8 +32,8 @@ function demultiplex(infile1::String, infile2::String, barcodes::Array{String,1}
         read!(reader2, record2)
         ((c >= stop_early) & (stop_early > 0)) && break
         c += 1
-        bc_in_file1 ? read = BioSequences.LongDNASeq(sequence(record1)) : read = LongDNASeq(sequence(record2))
-        (library_id, nb_errors) = BioSequences.demultiplex(dplxr, read)
+        bc_in_file1 ? read = LongDNASeq(sequence(record1)) : read = LongDNASeq(sequence(record2))
+        (library_id, nb_errors) = demultiplex(dplxr, read)
         nb_errors == -1 && continue
         stats[library_id] += 1
         write(writers[library_id][1], record_1)
@@ -51,7 +55,7 @@ function demultiplex(infile1::String, infile2::String, barcodes::Array{String,1}
 
 end
 
-function demultiplex(infile::String, barcodes::Array{String,1}, libnames::Array{String, 1}, 
+function split_libs(infile::String, barcodes::Array{String,1}, libnames::Array{String, 1}, 
     output_folder::String; barcode_length=-1, stop_early=-1, write_report=false)
 
     barcode_length < 0 && (barcode_length = length(barcodes[1]))
@@ -60,9 +64,9 @@ function demultiplex(infile::String, barcodes::Array{String,1}, libnames::Array{
     output_files = [abspath(output_folder, "$(name).fastq.gz") for in_file in input_files]
 
     stats::Array{Int,1} = zeros(Int, length(input_files))
-    record::FASTX.FASTQ.Record = FASTX.FASTQ.Record()
-    reader = FASTX.FASTQ.Reader(GzipDecompressorStream(open(infile, "r")))
-    writers = [FASTX.FASTQ.Writer(GzipCompressorStream(open(outfile, "w"), level=2)) for outfile in output_files] 
+    record::FASTQ.Record = FASTQ.Record()
+    reader = FASTQ.Reader(GzipDecompressorStream(open(infile, "r")))
+    writers = [FASTQ.Writer(GzipCompressorStream(open(outfile, "w"), level=2)) for outfile in output_files] 
 
     sleep(0.01)
 
@@ -72,7 +76,7 @@ function demultiplex(infile::String, barcodes::Array{String,1}, libnames::Array{
         ((c >= stop_early) & (stop_early > 0)) && break
         c += 1
         read = LongDNASeq(sequence(record))
-        (library_id, nb_errors) = BioSequences.demultiplex(dplxr, read)
+        (library_id, nb_errors) = demultiplex(dplxr, read)
         nb_errors == -1 && continue
         stats[library_id] += 1
         write(writers[library_id], record)
@@ -93,7 +97,7 @@ function trim_fastp(input_files::Array{String, 1}, output_folder::String;
     suffix="_trimmed", adapters::Array{Union{String,Nothing}, 1}=[], fastp_bin="fastp",
     min_length=25)
 
-    record = FASTX.FASTQ.Record()
+    record = FASTQ.Record()
     report = ""
     output_files = [split(in_file, ".fastq")[1]*"$(suffix).fastq.gz" for in_file in input_files]
     isempty(adapters) && (adapters = Array{String, 1}(nothing, length(input_files)))
@@ -105,7 +109,7 @@ function trim_fastp(input_files::Array{String, 1}, output_folder::String;
         cmd = `$fastp_bin -a $adapter -i $in_file -o $out_file -M 25 -l $min_length --trim_poly_g 10 --cut_front --cut_tail`
         run(cmd)
         cc = 0
-        reader = FASTX.FASTQ.Reader(GzipDecompressorStream(open(out_file, "r")))
+        reader = FASTQ.Reader(GzipDecompressorStream(open(out_file, "r")))
         while !eof(reader)
             read!(reader, record)
             cc += 1
@@ -121,7 +125,7 @@ function trim_fastp(input_files::Array{Array{String, 1}, 1}, output_folder::Stri
     suffix="_trimmed", adapters::Array{Union{String,Nothing}, 1}=[], fastp_bin="fastp",
     min_length=25)
 
-    record = FASTX.FASTQ.Record()
+    record = FASTQ.Record()
     report = ""
     output_files = [[split(in_file1, ".fastq")[1]*"$(suffix).fastq.gz",
             split(in_file2, ".fastq")[1]*"$(suffix).fastq.gz"] for (in_file1, in_file2) in input_files]
@@ -134,7 +138,7 @@ function trim_fastp(input_files::Array{Array{String, 1}, 1}, output_folder::Stri
         cmd = `$fastp_bin -a $adapter $in_file1 -o $out_file1 -I $in_file2 -O $out_file2 -M 25 -l $min_length --trim_poly_g 10 --cut_front --cut_tail`
         run(cmd)
         cc = 0
-        reader = FASTX.FASTQ.Reader(GzipDecompressorStream(open(out_file, "r")))
+        reader = FASTQ.Reader(GzipDecompressorStream(open(out_file, "r")))
         while !eof(reader)
             read!(reader, record)
             cc += 1

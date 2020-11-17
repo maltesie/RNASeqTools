@@ -1,3 +1,5 @@
+using XAM
+
 function areconcordant(pos1::Int, pos2::Int, chr1::String, chr2::String, aux1::String, aux2::String; 
     read1_reversed=false, read2_reversed=false)::Bool
 
@@ -29,13 +31,13 @@ function areconcordant(pos1::Int, pos2::Int, chr1::String, chr2::String, aux1::S
 end
 
 function single_fragment_set(bam_file::String; nb_reads::Int=-1)
-    reader = open(XAM.BAM.Reader, bam_file)
-    record::XAM.BAM.Record = XAM.BAM.Record()
+    reader = open(BAM.Reader, bam_file)
+    record::BAM.Record = BAM.Record()
     single_fragments::Array{String, 1} = []
     c::Int = 0 
     while !eof(reader)
         read!(reader, record)
-        isproperpair(record) && push!(single_fragments, XAM.BAM.tempname(record))
+        isproperpair(record) && push!(single_fragments, BAM.tempname(record))
         c += 1
         ((nb_reads > 0) & (c >= nb_reads)) && break 
     end

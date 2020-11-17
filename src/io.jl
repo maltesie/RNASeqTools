@@ -1,6 +1,8 @@
+using XAM
+
 function read_bam(bam_file::String; is_rev=false, nb_reads::Int = -1)
-    record::XAM.BAM.Record = XAM.BAM.Record()
-    reader = open(XAM.BAM.Reader, bam_file)
+    record::BAM.Record = BAM.Record()
+    reader = open(BAM.Reader, bam_file)
     read_names::Array{String, 1} = []
     read_poss::Array{Int, 1} = [] 
     read_chrs::Array{String, 1} = []
@@ -11,12 +13,12 @@ function read_bam(bam_file::String; is_rev=false, nb_reads::Int = -1)
     cc::Int = 0
     while !eof(reader)
         read!(reader, record)
-        !XAM.BAM.ismapped(record) && continue
-        push!(read_poss, XAM.BAM.position(record)*strandint(record, is_rev=is_rev))
-        push!(read_chrs, XAM.BAM.refname(record))
-        push!(read_names, XAM.BAM.tempname(record))
-        "XA" in Set{String}(l for (l::String,) in XAM.BAM.auxdata(record)) ? 
-            (aux = XAM.BAM.auxdata(record)["XA"]; cc+=1) : 
+        !BAM.ismapped(record) && continue
+        push!(read_poss, BAM.position(record)*strandint(record, is_rev=is_rev))
+        push!(read_chrs, BAM.refname(record))
+        push!(read_names, BAM.tempname(record))
+        "XA" in Set{String}(l for (l::String,) in BAM.auxdata(record)) ? 
+            (aux = BAM.auxdata(record)["XA"]; cc+=1) : 
             aux = "-"
         push!(read_auxs, aux)
         c += 1
