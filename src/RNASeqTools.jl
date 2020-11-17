@@ -8,5 +8,6 @@ include("align.jl")
 include("analysis.jl")
 include("preprocess.jl")
 include("io.jl")
+include("utils.jl")
 
 end # module
