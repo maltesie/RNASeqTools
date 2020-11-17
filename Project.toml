@@ -2,3 +2,8 @@ name = "RNASeqTools"
 uuid = "c929925e-1c85-4562-9573-d68085edd19a"
 authors = ["Malte Siemers <malte.siemers@uni-jena.de>"]
 version = "0.1.0"
+
+[deps]
+BioSequences = "7e6ae17a-c86d-528c-b3b9-7f778a29fe59"
+FASTX = "c2308a5c-f048-11e8-3e8a-31650f418d12"
+XAM = "d759349c-bcba-11e9-07c2-5b90f8f05f7c"
