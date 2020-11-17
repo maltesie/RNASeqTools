@@ -1,4 +1,4 @@
-import FASTX: FASTQ.Record, FASTQ.Reader, FASTQ.Writer
+import FASTX: FASTQ.Record, FASTQ.Reader, FASTQ.Writer, sequence, quality, identifier
 
 function combine_gffs(gff_files::Array{String, 1}; out_file="out.gff3")
     writer = open(out_file, "w")
@@ -25,8 +25,10 @@ function flip_reads(in_file::String, out_file::String)
     writer = FASTQ.Writer(GzipCompressorStream(open(out_file, "w")))
     
     while !eof(reader)
-        read!(reader, record_1)
-        record2 = FASTQ.Record()
+        read!(reader, record1)
+        record2 = FASTQ.Record(identifier(record1), reverse(sequence(record1)), reverse(quality(record1)))
+        write(writer, record2)
     end
-
+    close(reader)
+    close(writer)
 end
