@@ -24,9 +24,9 @@ function align_backtrack(in_file1::String, in_file2::String, out_file::String, g
         
 cmd = pipeline(`./bin/bwa index -a is $genome_file`, stdout=nothing)
 run(cmd)
-cmd = pipeline(`./bin/bwa aln -n $max_miss -t 6 -R 200 $fasta_genome $in_file1`, stdout="tmp1.sai")
+cmd = pipeline(`./bin/bwa aln -n $max_miss -t 6 -R 200 $genome_file $in_file1`, stdout="tmp1.sai")
 run(cmd)
-cmd = pipeline(`./bin/bwa aln -n $max_miss -t 6 -R 200 $fasta_genome $in_file2`, stdout="tmp2.sai")
+cmd = pipeline(`./bin/bwa aln -n $max_miss -t 6 -R 200 $genome_file $in_file2`, stdout="tmp2.sai")
 run(cmd)
 cmd = pipeline(`./bin/bwa sampe -a 1500 -P $genome_file tmp1.sai tmp2.sai $in_file1 $in_file2`, stdout="tmp.bwa")
 run(cmd)

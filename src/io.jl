@@ -1,5 +1,10 @@
 using XAM
 
+function strandint(record::BAM.Record; is_rev=false)
+    BAM.ispositivestrand(record) ? strand = 1 : strand = -1
+    is_rev ? (return strand * -1) : (return strand)
+end
+
 function read_bam(bam_file::String; is_rev=false, nb_reads::Int = -1)
     record::BAM.Record = BAM.Record()
     reader = open(BAM.Reader, bam_file)

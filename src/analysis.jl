@@ -1,5 +1,9 @@
 using XAM
 
+function isproperpair(record::BAM.Record)::Bool
+    return (BAM.flag(record) & SAM.FLAG_PROPER_PAIR) != 0
+end
+
 function areconcordant(pos1::Int, pos2::Int, chr1::String, chr2::String, aux1::String, aux2::String; 
     read1_reversed=false, read2_reversed=false)::Bool
 
