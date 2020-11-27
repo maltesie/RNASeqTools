@@ -41,7 +41,7 @@ function single_fragment_set(bam_file::String; nb_reads::Int=-1)
     c::Int = 0 
     while !eof(reader)
         read!(reader, record)
-        isproperpair(record) && push!(single_fragments, BAM.tempname(record))
+        (isproperpair(record) & BAM.ismapped(record) & BAM.isnextmapped(record)) && push!(single_fragments, BAM.tempname(record))
         c += 1
         ((nb_reads > 0) & (c >= nb_reads)) && break 
     end
