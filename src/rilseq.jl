@@ -748,7 +748,7 @@ end
 
 function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, rilseq_reads1::String, rilseq_reads2::String, 
     total_rna_reads1::String, total_rna_reads2::String, rilseq_folder::String, total_rna_folder::String, fasta_genome::String,
-    gff_genome::String; stop_early=-1)
+    gff_genome::String; stop_early=-1, skip_preprocessing=false, skip_trimming=false, skip_aligning=false)
 
     input_files = [[total_rna_reads1, total_rna_reads2], [rilseq_reads1, rilseq_reads2]]
     project_folders = [total_rna_folder, rilseq_folder]
@@ -762,9 +762,9 @@ function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, 
         isdir("$(folder)reports") || mkpath("$(folder)reports")
     end
 
-    preprocess(input_files, project_folders, barcodes, lib_names, stop_early=stop_early)
-    trim_fastp(project_folders, lib_names)
-    align(project_folders, fasta_genome, lib_names; rev_complement=true, se_miss=1, pe_miss=3)
+    skip_preprocessing || preprocess(input_files, project_folders, barcodes, lib_names, stop_early=stop_early)
+    skip_trimming || trim_fastp(project_folders, lib_names)
+    skip_aligning || align(project_folders, fasta_genome, lib_names; rev_complement=true, se_miss=1, pe_miss=3)
     all_interactions(project_folders, fasta_genome, lib_names)
     significant_chimeras(project_folders, gff_genome, lib_names)
     postprocess(rilseq_folder, gff_genome, lib_names)
