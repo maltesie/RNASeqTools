@@ -703,7 +703,8 @@ function unified_table(table1::CSV.File, table2::CSV.File, annotations::Dict{Str
             merged_data1[:first_start2][i], merged_data1[:last_start2][i]] for i in 1:length(merged_data1[:name1])]
     range2 = [[merged_data2[:first_start1][i], merged_data2[:last_start1][i],
             merged_data2[:first_start2][i], merged_data2[:last_start2][i]] for i in 1:length(merged_data2[:name1])]
-    
+    println(range1)
+    println(range2)
     for row in eachrow(merged_data1)
         id2 = match_id(row[:first_start1], row[:last_start1], row[:first_start2], row[:last_start2], range2)
         if (id2 >= 0)
