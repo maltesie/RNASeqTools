@@ -31,7 +31,7 @@ end
     return false
 end
 
-function single_fragment_set(bam_file::String; nb_reads::Int=-1)::Set{String}
+function get_single_fragment_set(bam_file::String; nb_reads::Int=-1)::Set{String}
     reader = open(BAM.Reader, bam_file)
     record::BAM.Record = BAM.Record()
     single_fragments::Array{String, 1} = []

@@ -315,7 +315,7 @@ function all_interactions(project_folders::Array{String}, fasta_genome::String, 
         for (pe_file, (se_file1, se_file2), (fastq_file1, fastq_file2), chimeric_file, name) in 
             zip(pe_files, se_files, fastq_files, chimeric_files, names)
             
-            single_fragment_set = single_fragment_set(pe_file)
+            single_fragment_set = get_single_fragment_set(pe_file)
     
             read1_names, read1_poss, read1_chrs, read1_auxs, read1_nms = read_bam(se_file1)
     
@@ -748,7 +748,7 @@ end
 
 function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, rilseq_reads1::String, rilseq_reads2::String, 
     total_rna_reads1::String, total_rna_reads2::String, rilseq_folder::String, total_rna_folder::String, fasta_genome::String,
-    gff_genome::String; stop_early=-1, run_test=false)
+    gff_genome::String; stop_early=-1)
 
     input_files = [[total_rna_reads1, total_rna_reads2], [rilseq_reads1, rilseq_reads2]]
     project_folders = [total_rna_folder, rilseq_folder]
