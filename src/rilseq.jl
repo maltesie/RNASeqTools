@@ -703,10 +703,9 @@ function unified_table(table1::CSV.File, table2::CSV.File, annotations::Dict{Str
             merged_data1[:first_start2][i], merged_data1[:last_start2][i]] for i in 1:length(merged_data1[:name1])]
     range2 = [[merged_data2[:first_start1][i], merged_data2[:last_start1][i],
             merged_data2[:first_start2][i], merged_data2[:last_start2][i]] for i in 1:length(merged_data2[:name1])]
-    println(range1)
-    println(range2)
+    
     for row in eachrow(merged_data1)
-        id2 = match_id(row[:first_start1], row[:last_start1], row[:first_start2], row[:last_start2], range2)
+        !isempty(range2) ? (id2 = match_id(row[:first_start1], row[:last_start1], row[:first_start2], row[:last_start2], range2)) : (id2=-1)
         if (id2 >= 0)
             row[:libs] = "1,2"
             row[:nb_fragments] += merged_data2[:nb_fragments][id2]
@@ -719,7 +718,7 @@ function unified_table(table1::CSV.File, table2::CSV.File, annotations::Dict{Str
         end
     end
     for row in eachrow(merged_data2)
-        id1 = match_id(row[:first_start1], row[:last_start1], row[:first_start2], row[:last_start2], range1)
+        !isempty(range1) ? (id1 = match_id(row[:first_start1], row[:last_start1], row[:first_start2], row[:last_start2], range1)) : (id1=-1)
         (id1 == -1) && (row[:libs] = "2"; push!(merged_data1, row))
     end
     sort!(merged_data1, :nb_fragments, rev=true)
