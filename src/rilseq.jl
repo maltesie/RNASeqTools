@@ -221,37 +221,6 @@ function align(project_folders::Array{String,1}, fasta_genome::String,
     end
 end
 
-@inline function isproperpair(record::BAM.Record)::Bool
-    return (BAM.flag(record) & SAM.FLAG_PROPER_PAIR) != 0
-end
-
-@inline function areconcordant(pos1::Int, pos2::Int, chr1::String, chr2::String, aux1::String, aux2::String)::Bool
-    
-    poss1::Array{Int,1} = [pos1]
-    chrs1::Array{String,1} = [chr1]
-    for alignment in split(aux1, ";")
-        (isempty(alignment) | (alignment == "-")) && continue
-        push!(poss1, parse(Int, split(alignment, ",")[2]))
-        push!(chrs1, String(split(alignment, ",")[1]))
-    end
-    
-    poss2::Array{Int,1} = [pos2]
-    chrs2::Array{String,1} = [chr2]
-    for alignment in split(aux2, ";")
-        (isempty(alignment) | (alignment == "-")) && continue
-        push!(poss2, parse(Int, split(alignment, ",")[2]))
-        push!(chrs2, split(alignment, ",")[1])
-    end
-    
-    for (p1::Int, c1::String) in zip(poss1, chrs1)
-        for (p2::Int, c2::String) in zip(poss2, chrs2)
-            c1 != c2 && continue
-            (abs(p1-p2) <1000) && (return true)
-        end
-    end
-    return false
-end
-
 @inline function get_position(pos::Int, chr::String, aux::String, nm::Int)::Tuple{Int, String}
     (aux == "-") && (return pos, chr)
     spos::Int = pos
@@ -283,22 +252,6 @@ end
     end
     #startswith(schr, "0;") && println(spos, " ", schr, " ", aux)
     return spos, schr
-end
-
-function get_single_fragment_set(bam_file::String; nb_reads::Int=-1)::Set{String}
-    reader = open(BAM.Reader, bam_file)
-    record::BAM.Record = BAM.Record()
-    single_fragments::Array{String, 1} = []
-    c::Int = 0 
-    while !eof(reader)
-        read!(reader, record)
-        isproperpair(record) && push!(single_fragments, BAM.tempname(record))
-        c += 1
-        ((nb_reads > 0) & (c >= nb_reads)) && break 
-    end
-    close(reader)
-    single_fragment_set::Set{String} = Set(single_fragments) 
-    return single_fragment_set
 end
 
 function write_chimeric_fragments(read1_names::Array{String,1}, read1_poss::Array{Int,1}, 
@@ -362,7 +315,7 @@ function all_interactions(project_folders::Array{String}, fasta_genome::String, 
         for (pe_file, (se_file1, se_file2), (fastq_file1, fastq_file2), chimeric_file, name) in 
             zip(pe_files, se_files, fastq_files, chimeric_files, names)
             
-            single_fragment_set = get_single_fragment_set(pe_file)
+            single_fragment_set = single_fragment_set(pe_file)
     
             read1_names, read1_poss, read1_chrs, read1_auxs, read1_nms = read_bam(se_file1)
     
