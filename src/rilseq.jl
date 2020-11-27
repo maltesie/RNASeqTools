@@ -221,15 +221,8 @@ function align(project_folders::Array{String,1}, fasta_genome::String,
     end
 end
 
-
-
 @inline function isproperpair(record::BAM.Record)::Bool
     return (BAM.flag(record) & SAM.FLAG_PROPER_PAIR) != 0
-end
-
-@inline function strandint(record::BAM.Record)
-    BAM.ispositivestrand(record) ? strand = 1 : strand = -1
-    return strand
 end
 
 @inline function areconcordant(pos1::Int, pos2::Int, chr1::String, chr2::String, aux1::String, aux2::String)::Bool
@@ -290,54 +283,6 @@ end
     end
     #startswith(schr, "0;") && println(spos, " ", schr, " ", aux)
     return spos, schr
-end
-
-@inline function translated_data(data::Array{UInt8,1})::String
-    for i in 1:length(data)
-        (data[i] == 0x00) && (return String(data[1:i-1]))
-    end
-end
-
-@inline function get_NM_tag(data::Array{UInt8,1})::Int
-    for i in 1:length(data)-2
-      (0x4d == data[i]) & (0x43 == data[i+1]) && (return Int(data[i+2]))
-    end
-    return -1
-end
-
-@inline function get_XA_tag(data::Array{UInt8,1})::String
-    t = UInt8['X', 'A']
-    for i in 1:length(data)-2
-        (0x00 == data[i]) & (t[1] == data[i+1]) & (t[2] == data[i+2]) && 
-        (return translated_data(data[i+4:end]))
-    end
-    return "-"
-end
-
-function read_bam(bam_file::String; nb_reads::Int = -1)
-    record::BAM.Record = BAM.Record()
-    reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
-    read_names::Array{String, 1} = []
-    read_poss::Array{Int, 1} = [] 
-    read_chrs::Array{String, 1} = []
-    read_auxs::Array{String, 1} = []
-    read_nms::Array{Int, 1} = []
-    aux_data::Array{UInt8, 1} = []
-    c::Int = 0
-    cc::Int = 0
-    while !eof(reader)
-        read!(reader, record)
-        !BAM.ismapped(record) && continue
-        push!(read_poss, BAM.position(record)*strandint(record))
-        push!(read_chrs, BAM.refname(record))
-        push!(read_names, BAM.tempname(record))
-        aux_data = BAM.auxdata(record).data 
-        push!(read_nms, get_NM_tag(aux_data))
-        push!(read_auxs, get_XA_tag(aux_data))
-        ((nb_reads > 0) & (c >= nb_reads)) && break 
-    end
-    close(reader)
-    return read_names, read_poss, read_chrs, read_auxs, read_nms
 end
 
 function get_single_fragment_set(bam_file::String; nb_reads::Int=-1)::Set{String}

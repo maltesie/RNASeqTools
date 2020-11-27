@@ -5,32 +5,52 @@ function strandint(record::BAM.Record; is_rev=false)
     is_rev ? (return strand * -1) : (return strand)
 end
 
-function read_bam(bam_file::String; is_rev=false, nb_reads::Int = -1)
+@inline function translated_data(data::Array{UInt8,1})::String
+    for i in 1:length(data)
+        (data[i] == 0x00) && (return String(data[1:i-1]))
+    end
+end
+
+@inline function get_NM_tag(data::Array{UInt8,1})::Int
+    for i in 1:length(data)-2
+      (0x4d == data[i]) & (0x43 == data[i+1]) && (return Int(data[i+2]))
+    end
+    return -1
+end
+
+@inline function get_XA_tag(data::Array{UInt8,1})::String
+    t = UInt8['X', 'A']
+    for i in 1:length(data)-2
+        (0x00 == data[i]) & (t[1] == data[i+1]) & (t[2] == data[i+2]) && 
+        (return translated_data(data[i+4:end]))
+    end
+    return "-"
+end
+
+function read_bam(bam_file::String; nb_reads::Int = -1)
     record::BAM.Record = BAM.Record()
-    reader = open(BAM.Reader, bam_file)
+    reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     read_names::Array{String, 1} = []
     read_poss::Array{Int, 1} = [] 
     read_chrs::Array{String, 1} = []
     read_auxs::Array{String, 1} = []
-    is_rev ? rev_factor = -1 : rev_factor = 1
-    aux::String = ""
+    read_nms::Array{Int, 1} = []
+    aux_data::Array{UInt8, 1} = []
     c::Int = 0
     cc::Int = 0
     while !eof(reader)
         read!(reader, record)
         !BAM.ismapped(record) && continue
-        push!(read_poss, BAM.position(record)*strandint(record, is_rev=is_rev))
+        push!(read_poss, BAM.position(record)*strandint(record))
         push!(read_chrs, BAM.refname(record))
         push!(read_names, BAM.tempname(record))
-        "XA" in Set{String}(l for (l::String,) in BAM.auxdata(record)) ? 
-            (aux = BAM.auxdata(record)["XA"]; cc+=1) : 
-            aux = "-"
-        push!(read_auxs, aux)
-        c += 1
+        aux_data = BAM.auxdata(record).data 
+        push!(read_nms, get_NM_tag(aux_data))
+        push!(read_auxs, get_XA_tag(aux_data))
         ((nb_reads > 0) & (c >= nb_reads)) && break 
     end
     close(reader)
-    return read_names, read_poss, read_chrs, read_auxs
+    return read_names, read_poss, read_chrs, read_auxs, read_nms
 end
 
 function read_annotations(gff_file::String, annotation_types = ["CDS"])::Dict{String, DataFrame}
