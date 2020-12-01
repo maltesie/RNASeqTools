@@ -32,7 +32,7 @@ function reverse_complement_reads(in_file::String, out_file::String)
     
     while !eof(reader)
         read!(reader, record1)
-        seq = convert(String, reverse_complement(LongDNASeq(sequence(record1))))
+        seq = convert(String, reverse_complement(LongDNASeq(FASTQ.sequence(record1))))
         record2 = FASTQ.Record(identifier(record1), description(record1), seq, reverse(quality(record1)))
         write(writer, record2)
     end

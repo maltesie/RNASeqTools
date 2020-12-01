@@ -32,7 +32,7 @@ function split_libs(infile1::String, infile2::String, barcodes::Array{String,1},
         read!(reader2, record2)
         ((c >= stop_early) & (stop_early > 0)) && break
         c += 1
-        bc_in_file1 ? read = LongDNASeq(sequence(record1)) : read = LongDNASeq(sequence(record2))
+        bc_in_file1 ? read = LongDNASeq(FASTQ.sequence(record1)) : read = LongDNASeq(FASTQ.sequence(record2))
         (library_id, nb_errors) = demultiplex(dplxr, read)
         nb_errors == -1 && continue
         stats[library_id] += 1
@@ -75,7 +75,7 @@ function split_libs(infile::String, barcodes::Array{String,1}, libnames::Array{S
         read!(reader, record)
         ((c >= stop_early) & (stop_early > 0)) && break
         c += 1
-        read = LongDNASeq(sequence(record))
+        read = LongDNASeq(FASTQ.sequence(record))
         (library_id, nb_errors) = demultiplex(dplxr, read)
         nb_errors == -1 && continue
         stats[library_id] += 1

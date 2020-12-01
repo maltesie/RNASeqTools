@@ -39,7 +39,7 @@ function preprocess(input_files::Array{Array{String,1},1}, project_folders::Arra
             ((c >= stop_early) & (stop_early > 0)) && break
             c += 1
 
-            read_1 = LongDNASeq(sequence(record_1))
+            read_1 = LongDNASeq(FASTQ.sequence(record_1))
             (library_id, nb_errors) = demultiplex(dplxr, read_1)
             nb_errors == -1 && continue
             stats_dict[folder][library_id] += 1
