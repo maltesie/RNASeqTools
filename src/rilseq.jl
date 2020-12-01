@@ -699,20 +699,20 @@ function unified_table(table1::CSV.File, table2::CSV.File, annotations::Dict{Str
     
     merged_data1 = merged_table(table1, annotations)
     merged_data2 = merged_table(table2, annotations)
-    range1 = [[merged_data1[:first_start1][i], merged_data1[:last_start1][i],
-            merged_data1[:first_start2][i], merged_data1[:last_start2][i]] for i in 1:length(merged_data1[:name1])]
-    range2 = [[merged_data2[:first_start1][i], merged_data2[:last_start1][i],
-            merged_data2[:first_start2][i], merged_data2[:last_start2][i]] for i in 1:length(merged_data2[:name1])]
+    range1 = [[merged_data1[!,:first_start1][i], merged_data1[!,:last_start1][i],
+            merged_data1[!,:first_start2][i], merged_data1[!,:last_start2][i]] for i in 1:length(merged_data1[!,:name1])]
+    range2 = [[merged_data2[!,:first_start1][i], merged_data2[!,:last_start1][i],
+            merged_data2[!,:first_start2][i], merged_data2[!,:last_start2][i]] for i in 1:length(merged_data2[!,:name1])]
     
     for row in eachrow(merged_data1)
         !isempty(range2) ? (id2 = match_id(row[:first_start1], row[:last_start1], row[:first_start2], row[:last_start2], range2)) : (id2=-1)
         if (id2 >= 0)
             row[:libs] = "1,2"
-            row[:nb_fragments] += merged_data2[:nb_fragments][id2]
-            row[:first_start1] = min(row[:first_start1], merged_data2[:first_start1][id2])
-            row[:last_start1] = max(row[:last_start1], merged_data2[:last_start1][id2])
-            row[:first_start2] = min(row[:first_start2], merged_data2[:first_start2][id2])
-            row[:last_start2] = max(row[:last_start2], merged_data2[:last_start2][id2])
+            row[:nb_fragments] += merged_data2[!,:nb_fragments][id2]
+            row[:first_start1] = min(row[:first_start1], merged_data2[!,:first_start1][id2])
+            row[:last_start1] = max(row[:last_start1], merged_data2[!,:last_start1][id2])
+            row[:first_start2] = min(row[:first_start2], merged_data2[!,:first_start2][id2])
+            row[:last_start2] = max(row[:last_start2], merged_data2[!,:last_start2][id2])
         else
             row[:libs] = "1"
         end
