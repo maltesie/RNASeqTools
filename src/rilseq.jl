@@ -810,7 +810,7 @@ end
 function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, rilseq_reads1::String, rilseq_reads2::String, 
     total_rna_reads1::String, total_rna_reads2::String, rilseq_folder::String, total_rna_folder::String, fasta_genome::String,
     gff_genome::String; stop_early=-1, skip_preprocessing=false, skip_trimming=false, skip_aligning=false, skip_interactions=false,
-    export_json=true, bwa_bin="bwa", sam_bin="samtools")
+    export_json=true, bwa_bin="bwa", sam_bin="samtools", fastp_bin="fastp")
 
     input_files = [[total_rna_reads1, total_rna_reads2], [rilseq_reads1, rilseq_reads2]]
     project_folders = [total_rna_folder, rilseq_folder]
@@ -825,7 +825,7 @@ function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, 
     end
 
     skip_preprocessing || preprocess(input_files, project_folders, barcodes, lib_names, stop_early=stop_early)
-    skip_trimming || trim_fastp(project_folders, lib_names)
+    skip_trimming || trim_fastp(project_folders, lib_names, fastp_bin=fastp_bin)
     skip_aligning || align(project_folders, fasta_genome, lib_names; rev_complement=true, se_miss=1, pe_miss=3, bwa_bin=bwa_bin, sam_bin=sam_bin)
     skip_interactions || all_interactions(project_folders, fasta_genome, lib_names)
     skip_interactions || significant_chimeras(project_folders, gff_genome, lib_names)
