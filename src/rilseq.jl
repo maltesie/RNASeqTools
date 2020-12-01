@@ -726,7 +726,66 @@ function unified_table(table1::CSV.File, table2::CSV.File, annotations::Dict{Str
     #CSV.write(out_file, merged_data1)
 end
 
-function postprocess(folder::String, gff_genome::String, names::Array{String, 1})
+function cytoscape_json(data::DataFrame, fname::String)
+    json = []
+    nodes::Set{String} = Set()
+    for row in eachrow(data)
+        (row.name1 in nodes) || (push!(nodes, row.name1); push!(json, Dict(
+            "data"=>Dict(
+                "id" => row.name1, 
+                "idInt" => length(nodes),
+                "name" => row.name1,
+                "score" => 1.0
+                ),
+            "position" => Dict(),
+            "group" => "nodes",
+            "removed" => false,
+            "selected" => false,
+            "selectable" => true,
+            "locked" => false,
+            "grabbed" => false,
+            "grabbable" => true
+            )))
+        (row.name2 in nodes) || (push!(nodes, row.name2); push!(json, Dict(
+            "data"=>Dict(
+                "id" => row.name2, 
+                "idInt" => length(nodes),
+                "name" => row.name2,
+                "score" => 1.0
+                ),
+            "position" => Dict(),
+            "group" => "nodes",
+            "removed" => false,
+            "selected" => false,
+            "selectable" => true,
+            "locked" => false,
+            "grabbed" => false,
+            "grabbable" => true
+            )))
+        push!(json, Dict(
+            "data"=>Dict(
+                "source" => row.name1, 
+                "target" => row.name2,
+                "id" => row.name1 * "+" * row.name2,
+                "weight" => row.nb_fragments
+                ),
+            "position" => Dict(),
+            "group" => "edges",
+            "removed" => false,
+            "selected" => false,
+            "selectable" => true,
+            "locked" => false,
+            "grabbed" => false,
+            "grabbable" => true
+            ))
+    end
+
+    open(fname,"w") do f
+        JSON.print(f, json)
+    end
+end
+
+function postprocess(folder::String, gff_genome::String, names::Array{String, 1}; export_json=true)
      
     table_files =[[abspath(folder, "results", "$(names[i]).csv"),
                     abspath(folder, "results", "$(names[i+1]).csv")] for i in 1:2:length(names)-1]
@@ -738,6 +797,7 @@ function postprocess(folder::String, gff_genome::String, names::Array{String, 1}
         for (i, ((file_rep1, file_rep2), sheet_name)) in enumerate(zip(table_files, unified_sheet_names))
             table1, table2 = CSV.File(file_rep1), CSV.File(file_rep2)
             unified_tab = unified_table(table1, table2, annotations)
+            export_json && cytoscape_json(unified_tab, sheet_name * ".json")
             (XLSX.sheetcount(xf) < i) &&  XLSX.addsheet!(xf, "new")
             sheet = xf[i]
             XLSX.rename!(sheet, sheet_name)
@@ -748,7 +808,8 @@ end
 
 function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, rilseq_reads1::String, rilseq_reads2::String, 
     total_rna_reads1::String, total_rna_reads2::String, rilseq_folder::String, total_rna_folder::String, fasta_genome::String,
-    gff_genome::String; stop_early=-1, skip_preprocessing=false, skip_trimming=false, skip_aligning=false)
+    gff_genome::String; stop_early=-1, skip_preprocessing=false, skip_trimming=false, skip_aligning=false, skip_interactions=false,
+    export_json=true)
 
     input_files = [[total_rna_reads1, total_rna_reads2], [rilseq_reads1, rilseq_reads2]]
     project_folders = [total_rna_folder, rilseq_folder]
@@ -765,8 +826,7 @@ function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, 
     skip_preprocessing || preprocess(input_files, project_folders, barcodes, lib_names, stop_early=stop_early)
     skip_trimming || trim_fastp(project_folders, lib_names)
     skip_aligning || align(project_folders, fasta_genome, lib_names; rev_complement=true, se_miss=1, pe_miss=3)
-    all_interactions(project_folders, fasta_genome, lib_names)
-    significant_chimeras(project_folders, gff_genome, lib_names)
-    postprocess(rilseq_folder, gff_genome, lib_names)
-
+    skip_interactions || all_interactions(project_folders, fasta_genome, lib_names)
+    skip_interactions || significant_chimeras(project_folders, gff_genome, lib_names)
+    postprocess(rilseq_folder, gff_genome, lib_names; export_json=export_json)
 end
