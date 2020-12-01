@@ -785,7 +785,7 @@ function cytoscape_json(data::DataFrame, fname::String)
     end
 end
 
-function postprocess(folder::String, gff_genome::String, names::Array{String, 1}; export_json=true)
+function postprocess(folder::String, gff_genome::String, names::Array{String, 1}, fname::String; export_json=true)
      
     table_files =[[abspath(folder, "results", "$(names[i]).csv"),
                     abspath(folder, "results", "$(names[i+1]).csv")] for i in 1:2:length(names)-1]
@@ -793,7 +793,7 @@ function postprocess(folder::String, gff_genome::String, names::Array{String, 1}
     unified_sheet_names = ["$(join(split(names[i], "_")[[1,3]], "_"))" for i in 1:2:length(names)-1]
     
     annotations = get_annotations(gff_genome)
-    XLSX.openxlsx(abspath("combined_results.xlsx"), mode="w") do xf
+    XLSX.openxlsx(abspath(fname), mode="w") do xf
         for (i, ((file_rep1, file_rep2), sheet_name)) in enumerate(zip(table_files, unified_sheet_names))
             table1, table2 = CSV.File(file_rep1), CSV.File(file_rep2)
             unified_tab = unified_table(table1, table2, annotations)
@@ -828,5 +828,5 @@ function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, 
     skip_aligning || align(project_folders, fasta_genome, lib_names; rev_complement=true, se_miss=1, pe_miss=3)
     skip_interactions || all_interactions(project_folders, fasta_genome, lib_names)
     skip_interactions || significant_chimeras(project_folders, gff_genome, lib_names)
-    postprocess(rilseq_folder, gff_genome, lib_names; export_json=export_json)
+    postprocess(rilseq_folder, gff_genome, lib_names, abspath(rilseq_folder, "combined_results.xlsx"); export_json=export_json)
 end
