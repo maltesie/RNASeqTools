@@ -69,7 +69,7 @@ function preprocess(input_files::Array{Array{String,1},1}, project_folders::Arra
     end
 end
 
-function trim_fastp(project_folders::Array{String,1}, names::Array{String,1})
+function trim_fastp(project_folders::Array{String,1}, names::Array{String,1}, fastp_bin::String)
 
     record = FASTQ.Record()
     
@@ -87,7 +87,7 @@ function trim_fastp(project_folders::Array{String,1}, names::Array{String,1})
         c = 0
         for ((file1, file2), (out1, out2), name) in zip(in_files, out_files, names)
             
-            cmd = `./bin/fastp -a AGATCGGAAGAGC -i $file1 -I $file2 -o $out1 -O $out2 -M 25 -l 25 --trim_poly_g 10 --cut_front --cut_tail`# --trim_poly_g 10 -r --cut_right_window_size=6`
+            cmd = `$fastp_bin -a AGATCGGAAGAGC -i $file1 -I $file2 -o $out1 -O $out2 -M 25 -l 25 --trim_poly_g 10 --cut_front --cut_tail`# --trim_poly_g 10 -r --cut_right_window_size=6`
             run(cmd)
             cc = 0
             reader = FASTQ.Reader(GzipDecompressorStream(open(out1, "r")))
