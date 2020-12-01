@@ -69,7 +69,7 @@ function preprocess(input_files::Array{Array{String,1},1}, project_folders::Arra
     end
 end
 
-function trim_fastp(project_folders::Array{String,1}, names::Array{String,1}, fastp_bin::String)
+function trim_fastp(project_folders::Array{String,1}, names::Array{String,1}; fastp_bin="fastp")
 
     record = FASTQ.Record()
     
