@@ -151,7 +151,7 @@ end
 
 function align(project_folders::Array{String,1}, fasta_genome::String, 
                 names::Array{String,1}; rev_complement=false, index_genome=true, 
-                se_miss=2, pe_miss=0, se_length=25)
+                se_miss=2, pe_miss=0, se_length=25, bwa_bin="bwa", sam_bin="samtools")
 
     for folder in project_folders
         
@@ -170,45 +170,45 @@ function align(project_folders::Array{String,1}, fasta_genome::String,
         
         for ((file1, file2), pe_bam, (se_bam1, se_bam2), name) in zip(in_files, pe_files, se_files, names)
             
-            cmd = pipeline(`./bin/bwa index -a is $fasta_genome`, stdout=nothing)
+            cmd = pipeline(`$bwa_bin index -a is $fasta_genome`, stdout=nothing)
             index_genome && run(cmd)
-            cmd = pipeline(`./bin/bwa aln -n $pe_miss -t 8 -R 200 $fasta_genome $file1`, stdout="tmp1.sai")
+            cmd = pipeline(`$bwa_bin aln -n $pe_miss -t 8 -R 200 $fasta_genome $file1`, stdout="tmp1.sai")
             run(cmd)
-            cmd = pipeline(`./bin/bwa aln -n $pe_miss -t 8 -R 200 $fasta_genome $file2`, stdout="tmp2.sai")
+            cmd = pipeline(`$bwa_bin aln -n $pe_miss -t 8 -R 200 $fasta_genome $file2`, stdout="tmp2.sai")
             run(cmd)
-            cmd = pipeline(`./bin/bwa sampe -a 1500 -P $fasta_genome tmp1.sai tmp2.sai $file1 $file2`, 
+            cmd = pipeline(`$bwa_bin sampe -a 1500 -P $fasta_genome tmp1.sai tmp2.sai $file1 $file2`, 
                 stdout="tmp.bwa")
             run(cmd)
-            cmd = pipeline(`./bin/samtools view -u tmp.bwa`, stdout="tmp.view")
+            cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
             run(cmd)
-            cmd = pipeline(`./bin/samtools sort tmp.view -o $pe_bam`, stdout=nothing)
+            cmd = pipeline(`$sam_bin sort tmp.view -o $pe_bam`, stdout=nothing)
             run(cmd)
-            cmd = pipeline(`./bin/samtools index $pe_bam`, stdout=nothing)
+            cmd = pipeline(`$sam_bin index $pe_bam`, stdout=nothing)
             run(cmd)
             
             cut_fastq_reads(pe_bam, "tmp1.fastq", "tmp2.fastq";
                 rev_complement=rev_complement, cut_len=se_length)
             
-            cmd = pipeline(`./bin/bwa aln -n $se_miss -t 6 -R 200 $fasta_genome tmp1.fastq`, stdout="tmp1.sai")
+            cmd = pipeline(`$bwa_bin aln -n $se_miss -t 6 -R 200 $fasta_genome tmp1.fastq`, stdout="tmp1.sai")
             run(cmd)
-            cmd = pipeline(`./bin/bwa samse $fasta_genome tmp1.sai tmp1.fastq`, stdout="tmp.bwa")
+            cmd = pipeline(`$bwa_bin samse $fasta_genome tmp1.sai tmp1.fastq`, stdout="tmp.bwa")
             run(cmd)
-            cmd = pipeline(`./bin/samtools view -u tmp.bwa`, stdout="tmp.view")
+            cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
             run(cmd)
-            cmd = pipeline(`./bin/samtools sort tmp.view -o $se_bam1`)
+            cmd = pipeline(`$sam_bin sort tmp.view -o $se_bam1`)
             run(cmd)
-            cmd = pipeline(`./bin/samtools index $se_bam1`)
+            cmd = pipeline(`$sam_bin index $se_bam1`)
             run(cmd)
 
-            cmd = pipeline(`./bin/bwa aln -n $se_miss -t 6 -R 200 $fasta_genome tmp2.fastq`, stdout="tmp2.sai")
+            cmd = pipeline(`$bwa_bin aln -n $se_miss -t 6 -R 200 $fasta_genome tmp2.fastq`, stdout="tmp2.sai")
             run(cmd)
-            cmd = pipeline(`./bin/bwa samse $fasta_genome tmp2.sai tmp2.fastq`, stdout="tmp.bwa")
+            cmd = pipeline(`$bwa_bin samse $fasta_genome tmp2.sai tmp2.fastq`, stdout="tmp.bwa")
             run(cmd)
-            cmd = pipeline(`./bin/samtools view -u tmp.bwa`, stdout="tmp.view")
+            cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
             run(cmd)
-            cmd = pipeline(`./bin/samtools sort tmp.view -o $se_bam2`)
+            cmd = pipeline(`$sam_bin sort tmp.view -o $se_bam2`)
             run(cmd)
-            cmd = pipeline(`./bin/samtools index $se_bam2`)
+            cmd = pipeline(`$sam_bin index $se_bam2`)
             run(cmd)
             
             rm("tmp1.sai")
@@ -810,7 +810,7 @@ end
 function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, rilseq_reads1::String, rilseq_reads2::String, 
     total_rna_reads1::String, total_rna_reads2::String, rilseq_folder::String, total_rna_folder::String, fasta_genome::String,
     gff_genome::String; stop_early=-1, skip_preprocessing=false, skip_trimming=false, skip_aligning=false, skip_interactions=false,
-    export_json=true)
+    export_json=true, bwa_bin="bwa", sam_bin="samtools")
 
     input_files = [[total_rna_reads1, total_rna_reads2], [rilseq_reads1, rilseq_reads2]]
     project_folders = [total_rna_folder, rilseq_folder]
@@ -826,7 +826,7 @@ function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, 
 
     skip_preprocessing || preprocess(input_files, project_folders, barcodes, lib_names, stop_early=stop_early)
     skip_trimming || trim_fastp(project_folders, lib_names)
-    skip_aligning || align(project_folders, fasta_genome, lib_names; rev_complement=true, se_miss=1, pe_miss=3)
+    skip_aligning || align(project_folders, fasta_genome, lib_names; rev_complement=true, se_miss=1, pe_miss=3, bwa_bin=bwa_bin, sam_bin=sam_bin)
     skip_interactions || all_interactions(project_folders, fasta_genome, lib_names)
     skip_interactions || significant_chimeras(project_folders, gff_genome, lib_names)
     postprocess(rilseq_folder, gff_genome, lib_names, abspath(rilseq_folder, "combined_results.xlsx"); export_json=export_json)
