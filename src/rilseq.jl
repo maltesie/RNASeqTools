@@ -7,6 +7,7 @@ using HypothesisTests
 using DataFrames
 using CSV
 using XLSX
+using JSON
 
 function preprocess(input_files::Array{Array{String,1},1}, project_folders::Array{String,1}, 
     barcodes::Array{String,1}, names::Array{String,1}; stop_early::Int=-1)
@@ -797,7 +798,7 @@ function postprocess(folder::String, gff_genome::String, names::Array{String, 1}
         for (i, ((file_rep1, file_rep2), sheet_name)) in enumerate(zip(table_files, unified_sheet_names))
             table1, table2 = CSV.File(file_rep1), CSV.File(file_rep2)
             unified_tab = unified_table(table1, table2, annotations)
-            export_json && cytoscape_json(unified_tab, sheet_name * ".json")
+            export_json && cytoscape_json(unified_tab, abspath(folder, sheet_name * ".json"))
             (XLSX.sheetcount(xf) < i) &&  XLSX.addsheet!(xf, "new")
             sheet = xf[i]
             XLSX.rename!(sheet, sheet_name)
