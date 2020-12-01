@@ -188,9 +188,9 @@ function align(project_folders::Array{String,1}, fasta_genome::String,
             cut_fastq_reads(pe_bam, "tmp1.fastq", "tmp2.fastq";
                 rev_complement=rev_complement, cut_len=se_length)
             
-            cmd = pipeline(`./bin/bwa aln -n $se_miss -t 6 -R 200 $fasta_genome tmp1.fastq`, stdout="tmp.sai")
+            cmd = pipeline(`./bin/bwa aln -n $se_miss -t 6 -R 200 $fasta_genome tmp1.fastq`, stdout="tmp1.sai")
             run(cmd)
-            cmd = pipeline(`./bin/bwa samse $fasta_genome tmp.sai tmp1.fastq`, stdout="tmp.bwa")
+            cmd = pipeline(`./bin/bwa samse $fasta_genome tmp1.sai tmp1.fastq`, stdout="tmp.bwa")
             run(cmd)
             cmd = pipeline(`./bin/samtools view -u tmp.bwa`, stdout="tmp.view")
             run(cmd)
@@ -199,9 +199,9 @@ function align(project_folders::Array{String,1}, fasta_genome::String,
             cmd = pipeline(`./bin/samtools index $se_bam1`)
             run(cmd)
 
-            cmd = pipeline(`./bin/bwa aln -n $se_miss -t 6 -R 200 $fasta_genome tmp2.fastq`, stdout="tmp.sai")
+            cmd = pipeline(`./bin/bwa aln -n $se_miss -t 6 -R 200 $fasta_genome tmp2.fastq`, stdout="tmp2.sai")
             run(cmd)
-            cmd = pipeline(`./bin/bwa samse $fasta_genome tmp.sai tmp2.fastq`, stdout="tmp.bwa")
+            cmd = pipeline(`./bin/bwa samse $fasta_genome tmp2.sai tmp2.fastq`, stdout="tmp.bwa")
             run(cmd)
             cmd = pipeline(`./bin/samtools view -u tmp.bwa`, stdout="tmp.view")
             run(cmd)

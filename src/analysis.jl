@@ -46,3 +46,4 @@ function get_single_fragment_set(bam_file::String; nb_reads::Int=-1)::Set{String
     single_fragment_set::Set{String} = Set(single_fragments) 
     return single_fragment_set
 end
+
