@@ -730,13 +730,14 @@ end
 function cytoscape_json(data::DataFrame, fname::String)
     json = []
     nodes::Set{String} = Set()
+    norm = sum(data.nb_fragments)
     for row in eachrow(data)
         (row.name1 in nodes) || (push!(nodes, row.name1); push!(json, Dict(
             "data"=>Dict(
                 "id" => row.name1, 
                 "idInt" => length(nodes),
                 "name" => row.name1,
-                "score" => 1.0
+                "score" => (sum(data[data.name1 .== row.name1, :nb_fragments]) + sum(data[data.name2 .== row.name1, :nb_fragments])) / norm
                 ),
             "position" => Dict(),
             "group" => "nodes",
@@ -752,7 +753,7 @@ function cytoscape_json(data::DataFrame, fname::String)
                 "id" => row.name2, 
                 "idInt" => length(nodes),
                 "name" => row.name2,
-                "score" => 1.0
+                "score" => (sum(data[data.name1 .== row.name2, :nb_fragments]) + sum(data[data.name2 .== row.name2, :nb_fragments])) / norm
                 ),
             "position" => Dict(),
             "group" => "nodes",
@@ -768,7 +769,7 @@ function cytoscape_json(data::DataFrame, fname::String)
                 "source" => row.name1, 
                 "target" => row.name2,
                 "id" => row.name1 * "+" * row.name2,
-                "weight" => row.nb_fragments
+                "weight" => row.nb_fragments/norm
                 ),
             "position" => Dict(),
             "group" => "edges",
