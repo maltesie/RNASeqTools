@@ -387,7 +387,7 @@ function min_pv_region(interaction::Interact, sum_pairs::Dict{Interact, Int}, co
     return best_parameter 
 end
 
-function get_annotations(gff_file::String)::Dict{String, DataFrame}
+function get_annotations(gff_file::String; utr_length=150)::Dict{String, DataFrame}
     reader = open(gff_file)
     gff = read(reader, String)
     results::Dict{String, DataFrame} = Dict()
@@ -412,11 +412,11 @@ function get_annotations(gff_file::String)::Dict{String, DataFrame}
 
     for (chr, data) in results
         sort!(data, :start)
-        utr5 = DataFrame(name="U5." .* data.name, start=data.start .- 100, stop=copy(data.start), typ=copy(data.typ))
-        utr3 = DataFrame(name="U3." .* data.name, start=copy(data.stop), stop=data.stop .+ 100, typ=copy(data.typ))
+        utr5 = DataFrame(name="U5." .* data.name, start=data.start .- utr_length, stop=copy(data.start), typ=copy(data.typ))
+        utr3 = DataFrame(name="U3." .* data.name, start=copy(data.stop), stop=data.stop .+ utr_length, typ=copy(data.typ))
         igr_type = Array{String, 1}(undef, length(data.name)-1) .= "igr"
         igr = DataFrame(name="IG." .* data.name[1:end-1] .* "|" .* data.name[2:end], 
-            start=data.stop[1:end-1] .+ 100, stop=data.start[2:end] .- 100, typ=igr_type)
+            start=data.stop[1:end-1] .+ utr_length, stop=data.start[2:end] .- utr_length, typ=igr_type)
         igr= igr[igr.start .< igr.stop, :]
         #igr = DataFrame(name=igr.name[index], start=igr.start[index], stop=igr.stop[index])
         append!(data, utr5)
@@ -429,32 +429,37 @@ function get_annotations(gff_file::String)::Dict{String, DataFrame}
 end
 
 @inline function get_name(chr::String, pos::Int, annotations::Dict{String, DataFrame})::String
-    names = annotations[chr].name[annotations[chr].start .< pos .< annotations[chr].stop]
+    names = annotations[chr].name[annotations[chr].start .<= pos .<= annotations[chr].stop]
     isempty(names) ? (return "not found") : (return names[1])
 end
 
 @inline function get_gene(chr::String, pos_start::Int, pos_end::Int,
-    annotations::Dict{String, DataFrame})::String
+    annotations::Dict{String, DataFrame}; utr_length=150)::Tuple{String, String}
     gene = "not found"
     type = "not found"
     max_overlap = 0.
     for annotation in eachrow(annotations[chr])
         (startswith(annotation[:name], "U3.") || startswith(annotation[:name], "U5.")) && continue
-        ((pos_start <= annotation[:start]-100) || (pos_end >= annotation[:stop]+100)) && continue
-        overlap = min(pos_end, annotation[:stop]+100) - max(pos_start, annotation[:start]-100) + 1
+        if startswith(annotation[:name], "IG.")
+            ((pos_end <= annotation[:start]) || (pos_start >= annotation[:stop])) && continue
+            overlap = min(pos_end, annotation[:stop]) - max(pos_start, annotation[:start]) + 1
+        else
+            ((pos_end <= annotation[:start]-utr_length) || (pos_start >= annotation[:stop]+utr_length)) && continue
+            overlap = min(pos_end, annotation[:stop]+utr_length) - max(pos_start, annotation[:start]-utr_length) + 1
+        end
         (overlap > max_overlap) && (max_overlap = overlap; gene = annotation[:name]; type=annotation[:typ])
     end
-    return gene
+    return gene, type
 end
 
 function get_full_name(chr::String, pos_start::Int, pos_end::Int,
-        annotations::Dict{String, DataFrame})::Tuple{String, String}
+        annotations::Dict{String, DataFrame}; utr_length=150)::Tuple{String, String, String}
     
-    gene::String = get_gene(chr, pos_start, pos_end, annotations)
+    gene::String, type::String = get_gene(chr, pos_start, pos_end, annotations; utr_length=utr_length)
     
     name1::String = get_name(chr, pos_start, annotations)
     name2::String = get_name(chr, pos_end, annotations)
-    (name1 == name2) ? (return name1, gene) : (return "$name1 -> $name2", gene)
+    (name1 == name2) ? (return name1, gene, type) : (return "$name1 -> $name2", gene, type)
 end
 
 function get_rrna(gff_file::String)::Tuple{Array{Int, 2}, Dict{String,Int}}
@@ -546,12 +551,12 @@ end
 
 
 function significant_chimeras(project_folders::Array{String, 1}, gff_genome::String, names::Array{String, 1}; 
-            seglen=100, minints=5, minodds=1.0)
+            seglen=100, minints=5, minodds=1.0, utr_length=150)
     
     report = ""
     rrna::Array{Int, 2}, chr_trans::Dict{String,Int} = get_rrna(gff_genome)
 
-    annotations = get_annotations(gff_genome)
+    annotations = get_annotations(gff_genome, utr_length=utr_length)
 
     header = ["Name RNA1", "pos1", "Name RNA2", "pos2", "# of chimeric fragments", "library", "norm. odds ration", "p-value",
             "IP interactions RNA1", "IP interactions RNA2", "Total interactions RNA1", "Total interactions RNA2",
@@ -651,7 +656,7 @@ function exaustive_close_indices(pos1::Int, pos2::Int, poss::MyMatrix; expansion
     return indices
 end
 
-function merged_table(table::CSV.File, annotations::Dict{String,DataFrame})::DataFrame
+function merged_table(table::CSV.File, annotations::Dict{String,DataFrame}; utr_length=150)::DataFrame
     poss::MyMatrix = [[row[:pos1], row[:pos2]] for row in table]
     already_found::Set{Int} = Set() 
     merged_data = DataFrame(name1=String[], gene1=String[], name2=String[], gene2=String[], 
@@ -680,8 +685,8 @@ function merged_table(table::CSV.File, annotations::Dict{String,DataFrame})::Dat
         tot2 = sum([r[Symbol("Total interactions RNA2")] for r in table[indices]])
         rat1, rat2 = round(ips1/tot1, digits=2), round(ips2/tot2, digits=2)
             
-        n1, gene1, type1 = get_full_name(chr1, first1, last1, annotations)
-        n2, gene2, type2 = get_full_name(chr2, first2, last2, annotations)
+        n1, gene1, type1 = get_full_name(chr1, first1, last1, annotations; utr_length=utr_length)
+        n2, gene2, type2 = get_full_name(chr2, first2, last2, annotations; utr_length=utr_length)
     
         b = sum([r[:b] for r in table[indices]])
         c = sum([r[:c] for r in table[indices]])
@@ -716,10 +721,10 @@ function match_id(first1::Int, last1::Int, first2::Int, last2::Int, ranges::MyMa
     return -1
 end
 
-function unified_table(table1::CSV.File, table2::CSV.File, annotations::Dict{String,DataFrame})::DataFrame
+function unified_table(table1::CSV.File, table2::CSV.File, annotations::Dict{String,DataFrame}; utr_length=150)::DataFrame
     
-    merged_data1 = merged_table(table1, annotations)
-    merged_data2 = merged_table(table2, annotations)
+    merged_data1 = merged_table(table1, annotations; utr_length=utr_length)
+    merged_data2 = merged_table(table2, annotations; utr_length=utr_length)
     range1 = [[merged_data1[i,:first_start1], merged_data1[i,:last_start1],
             merged_data1[i,:first_start2], merged_data1[i,:last_start2]] for i in 1:length(merged_data1[!,:name1])]
     range2 = [[merged_data2[i,:first_start1], merged_data2[i,:last_start1],
@@ -749,18 +754,18 @@ function unified_table(table1::CSV.File, table2::CSV.File, annotations::Dict{Str
     #CSV.write(out_file, merged_data1)
 end
 
-function postprocess(folder::String, gff_genome::String, names::Array{String, 1}, fname::String; export_single_csv=true)
+function postprocess(folder::String, gff_genome::String, names::Array{String, 1}, fname::String; utr_length=150, export_single_csv=true)
      
     table_files =[[abspath(folder, "results", "$(names[i]).csv"),
                     abspath(folder, "results", "$(names[i+1]).csv")] for i in 1:2:length(names)-1]
     
     unified_sheet_names = ["$(join(split(names[i], "_")[[1,3]], "_"))" for i in 1:2:length(names)-1]
     
-    annotations = get_annotations(gff_genome)
+    annotations = get_annotations(gff_genome, utr_length=utr_length)
     XLSX.openxlsx(abspath(fname), mode="w") do xf
         for (i, ((file_rep1, file_rep2), sheet_name)) in enumerate(zip(table_files, unified_sheet_names))
             table1, table2 = CSV.File(file_rep1), CSV.File(file_rep2)
-            unified_tab = unified_table(table1, table2, annotations)
+            unified_tab = unified_table(table1, table2, annotations; utr_length=utr_length)
             export_single_csv && CSV.write(abspath(folder, sheet_name * ".csv"), unified_tab)
             (XLSX.sheetcount(xf) < i) &&  XLSX.addsheet!(xf, "new")
             sheet = xf[i]
@@ -772,7 +777,7 @@ end
 
 function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, rilseq_reads1::String, rilseq_reads2::String, 
     total_rna_reads1::String, total_rna_reads2::String, rilseq_folder::String, total_rna_folder::String, fasta_genome::String,
-    gff_genome::String; stop_early=-1, skip_preprocessing=false, skip_trimming=false, skip_aligning=false, skip_interactions=false,
+    gff_genome::String; utr_length=150, stop_early=-1, skip_preprocessing=false, skip_trimming=false, skip_aligning=false, skip_interactions=false,
     export_single_csv=true, bwa_bin="bwa", sam_bin="samtools", fastp_bin="fastp")
 
     input_files = [[total_rna_reads1, total_rna_reads2], [rilseq_reads1, rilseq_reads2]]
@@ -791,6 +796,6 @@ function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, 
     skip_trimming || trim_fastp(project_folders, lib_names, fastp_bin=fastp_bin)
     skip_aligning || align(project_folders, fasta_genome, lib_names; rev_complement=true, se_miss=1, pe_miss=3, bwa_bin=bwa_bin, sam_bin=sam_bin)
     skip_interactions || all_interactions(project_folders, fasta_genome, lib_names)
-    skip_interactions || significant_chimeras(project_folders, gff_genome, lib_names)
-    postprocess(rilseq_folder, gff_genome, lib_names, abspath(rilseq_folder, "combined_results.xlsx"); export_single_csv=export_single_csv)
+    skip_interactions || significant_chimeras(project_folders, gff_genome, lib_names; utr_length=utr_length)
+    postprocess(rilseq_folder, gff_genome, lib_names, abspath(rilseq_folder, "combined_results.xlsx"); export_single_csv=export_single_csv, utr_length=150)
 end
