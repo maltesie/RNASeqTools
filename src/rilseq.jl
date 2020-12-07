@@ -404,15 +404,17 @@ function get_annotations(gff_file::String)::Dict{String, DataFrame}
             stop_int = parse(Int, stop)
         end
         name = split(aux, ";")[1][6:end]
-        row = DataFrame(name=name, start=start_int, stop=stop_int)
-        chr in keys(results) ? append!(results[chr], copy(row)) : results[chr] = copy(row)
+        typ = "gene"
+        ("locus_tag" in aux) || (typ = "srna")
+        row = DataFrame(name=name, start=start_int, stop=stop_int, typ=typ)
+        chr in keys(results) ? append!(results[chr], row) : results[chr] = row
     end
 
     for (chr, data) in results
         sort!(data, :start)
         utr5 = DataFrame(name="U5." .* data.name, start=data.start .- 100, stop=copy(data.start))
         utr3 = DataFrame(name="U3." .* data.name, start=copy(data.stop), stop=data.stop .+ 100)
-        igr = DataFrame(name="IG<" .* data.name[1:end-1] .* "|" .* data.name[2:end] .* ">", 
+        igr = DataFrame(name="IG." .* data.name[1:end-1] .* "|" .* data.name[2:end], 
             start=data.stop[1:end-1] .+ 100, stop=data.start[2:end] .- 100)
         igr= igr[igr.start .< igr.stop, :]
         #igr = DataFrame(name=igr.name[index], start=igr.start[index], stop=igr.stop[index])
@@ -425,16 +427,33 @@ function get_annotations(gff_file::String)::Dict{String, DataFrame}
     return results
 end
 
-function get_name(chr::String, pos::Int, annotations::Dict{String, DataFrame})::String
+@inline function get_name(chr::String, pos::Int, annotations::Dict{String, DataFrame})::String
     names = annotations[chr].name[annotations[chr].start .< pos .< annotations[chr].stop]
     isempty(names) ? (return "not found") : (return names[1])
 end
 
+@inline function get_gene(chr::String, pos_start::Int, pos_end::Int,
+    annotations::Dict{String, DataFrame})::String
+    gene = "not found"
+    type = "not found"
+    max_overlap = 0.
+    for annotation in eachrow(annotations[chr])
+        (startswith(annotation[:name], "U3.") || startswith(annotation[:name], "U5.")) && continue
+        ((pos_start <= annotation[:start]-100) || (pos_end >= annotation[:stop]+100)) && continue
+        overlap = min(pos_end, annotation[:stop]+100) - max(pos_start, annotation[:start]-100) + 1
+        (overlap > max_overlap) && (max_overlap = overlap; gene = annotation[:name]; type=annotation[:type])
+    end
+    return gene
+end
+
 function get_full_name(chr::String, pos_start::Int, pos_end::Int,
-        annotations::Dict{String, DataFrame})::String
+        annotations::Dict{String, DataFrame})::Tuple{String, String}
+    
+    gene::String = get_gene(chr, pos_start, pos_end, annotations)
+    
     name1::String = get_name(chr, pos_start, annotations)
     name2::String = get_name(chr, pos_end, annotations)
-    (name1 == name2) ? (return name1) : (return "$name1 -> $name2")
+    (name1 == name2) ? (return name1, gene) : (return "$name1 -> $name2", gene)
 end
 
 function get_rrna(gff_file::String)::Tuple{Array{Int, 2}, Dict{String,Int}}
@@ -634,10 +653,10 @@ end
 function merged_table(table::CSV.File, annotations::Dict{String,DataFrame})::DataFrame
     poss::MyMatrix = [[row[:pos1], row[:pos2]] for row in table]
     already_found::Set{Int} = Set() 
-    merged_data = DataFrame(name1=String[], name2=String[], nb_fragments=Int[], 
-        libs=String[], norm_odds=Float64[], p_value=Float64[], ip_total_ratio1=Float64[], 
-        ip_total_ratio2=Float64[], chromosome1=String[], first_start1=Int[], last_start1=Int[], 
-        chromosome2=String[], first_start2=Int[], last_start2=Int[])
+    merged_data = DataFrame(name1=String[], gene1=String[], name2=String[], gene2=String[], 
+        type1=String[], type2=String[], nb_fragments=Int[], libs=String[], norm_odds=Float64[], 
+        p_value=Float64[], ip_total_ratio1=Float64[], ip_total_ratio2=Float64[], chromosome1=String[], 
+        first_start1=Int[], last_start1=Int[], chromosome2=String[], first_start2=Int[], last_start2=Int[])
     for (i, row) in enumerate(table)
         (i in already_found) && continue
         pos1, pos2 = row[:pos1], row[:pos2]
@@ -660,8 +679,8 @@ function merged_table(table::CSV.File, annotations::Dict{String,DataFrame})::Dat
         tot2 = sum([r[Symbol("Total interactions RNA2")] for r in table[indices]])
         rat1, rat2 = round(ips1/tot1, digits=2), round(ips2/tot2, digits=2)
             
-        n1 = get_full_name(chr1, first1, last1, annotations)
-        n2 = get_full_name(chr2, first2, last2, annotations)
+        n1, gene1, type1 = get_full_name(chr1, first1, last1, annotations)
+        n2, gene2, type2 = get_full_name(chr2, first2, last2, annotations)
     
         b = sum([r[:b] for r in table[indices]])
         c = sum([r[:c] for r in table[indices]])
@@ -674,10 +693,10 @@ function merged_table(table::CSV.File, annotations::Dict{String,DataFrame})::Dat
         norm_odds = round(f.ω, digits=2)
         pv = round(pvalue(f), digits=10)
         
-        row = DataFrame(name1=n1, name2=n2, nb_fragments=nb, 
-        libs=lib, norm_odds=norm_odds, p_value=pv, ip_total_ratio1=rat1, 
-        ip_total_ratio2=rat2, chromosome1=chr1, first_start1=first1, last_start1=last1, 
-        chromosome2=chr2, first_start2=first2, last_start2=last2)
+        row = DataFrame(name1=n1, name2=n2, gene1=gene1, gene2=gene2, type1=type1,
+        type2=type2, nb_fragments=nb, libs=lib, norm_odds=norm_odds, p_value=pv, 
+        ip_total_ratio1=rat1, ip_total_ratio2=rat2, chromosome1=chr1, first_start1=first1, 
+        last_start1=last1, chromosome2=chr2, first_start2=first2, last_start2=last2)
         append!(merged_data, row)
     end
     return merged_data
