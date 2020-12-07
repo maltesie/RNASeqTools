@@ -442,7 +442,7 @@ end
         (startswith(annotation[:name], "U3.") || startswith(annotation[:name], "U5.")) && continue
         ((pos_start <= annotation[:start]-100) || (pos_end >= annotation[:stop]+100)) && continue
         overlap = min(pos_end, annotation[:stop]+100) - max(pos_start, annotation[:start]-100) + 1
-        (overlap > max_overlap) && (max_overlap = overlap; gene = annotation[:name]; type=annotation[:type])
+        (overlap > max_overlap) && (max_overlap = overlap; gene = annotation[:name]; type=annotation[:typ])
     end
     return gene
 end
