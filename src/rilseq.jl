@@ -412,10 +412,10 @@ function get_annotations(gff_file::String)::Dict{String, DataFrame}
 
     for (chr, data) in results
         sort!(data, :start)
-        utr5 = DataFrame(name="U5." .* data.name, start=data.start .- 100, stop=copy(data.start))
-        utr3 = DataFrame(name="U3." .* data.name, start=copy(data.stop), stop=data.stop .+ 100)
+        utr5 = DataFrame(name="U5." .* data.name, start=data.start .- 100, stop=copy(data.start), typ=copy(data.typ))
+        utr3 = DataFrame(name="U3." .* data.name, start=copy(data.stop), stop=data.stop .+ 100, typ=copy(data.typ))
         igr = DataFrame(name="IG." .* data.name[1:end-1] .* "|" .* data.name[2:end], 
-            start=data.stop[1:end-1] .+ 100, stop=data.start[2:end] .- 100)
+            start=data.stop[1:end-1] .+ 100, stop=data.start[2:end] .- 100, typ=copy(data.typ))
         igr= igr[igr.start .< igr.stop, :]
         #igr = DataFrame(name=igr.name[index], start=igr.start[index], stop=igr.stop[index])
         append!(data, utr5)
