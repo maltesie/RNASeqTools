@@ -405,7 +405,7 @@ function get_annotations(gff_file::String)::Dict{String, DataFrame}
         end
         name = split(aux, ";")[1][6:end]
         typ = "gene"
-        ("locus_tag" in aux) || (typ = "srna")
+        occursin("locus_tag", aux) || (typ = "srna")
         row = DataFrame(name=name, start=start_int, stop=stop_int, typ=typ)
         chr in keys(results) ? append!(results[chr], row) : results[chr] = row
     end
