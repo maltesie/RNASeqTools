@@ -405,18 +405,19 @@ function get_annotations(gff_file::String; utr_length=150)::Dict{String, DataFra
         end
         name = split(aux, ";")[1][6:end]
         typ = "gene"
-        occursin("locus_tag", aux) || (typ = "srna")
+        (occursin("locus_tag", aux) || ("VC" == aux[6:7])) || (typ = "srna")
         row = DataFrame(name=name, start=start_int, stop=stop_int, typ=typ)
         chr in keys(results) ? append!(results[chr], row) : results[chr] = row
     end
 
     for (chr, data) in results
         sort!(data, :start)
-        utr5 = DataFrame(name="U5." .* data.name, start=data.start .- utr_length, stop=copy(data.start), typ=copy(data.typ))
-        utr3 = DataFrame(name="U3." .* data.name, start=copy(data.stop), stop=data.stop .+ utr_length, typ=copy(data.typ))
-        igr_type = Array{String, 1}(undef, length(data.name)-1) .= "igr"
-        igr = DataFrame(name="IG." .* data.name[1:end-1] .* "|" .* data.name[2:end], 
-            start=data.stop[1:end-1] .+ utr_length, stop=data.start[2:end] .- utr_length, typ=igr_type)
+        tmp_data = data[data.typ .!= "srna", :]
+        utr5 = DataFrame(name="U5." .* tmp_data.name, start=tmp_data.start .- utr_length, stop=tmp_data.start, typ=tmp_data.typ)
+        utr3 = DataFrame(name="U3." .* tmp_data.name, start=tmp_data.stop, stop=tmp_data.stop .+ utr_length, typ=tmp_data.typ)
+        igr_type = Array{String, 1}(undef, length(tmp_data.name)-1) .= "igr"
+        igr = DataFrame(name="IG." .* tmp_data.name[1:end-1] .* "|" .* tmp_data.name[2:end], 
+            start=tmp_data.stop[1:end-1] .+ utr_length, stop=tmp_data.start[2:end] .- utr_length, typ=igr_type)
         igr= igr[igr.start .< igr.stop, :]
         #igr = DataFrame(name=igr.name[index], start=igr.start[index], stop=igr.stop[index])
         append!(data, utr5)
@@ -429,37 +430,50 @@ function get_annotations(gff_file::String; utr_length=150)::Dict{String, DataFra
 end
 
 @inline function get_name(chr::String, pos::Int, annotations::Dict{String, DataFrame})::String
+    srna = annotations[chr].name[(annotations[chr].start .<= pos .<= annotations[chr].stop) .& (annotations[chr].typ .=="srna")]
+    isempty(srna) || return srna[1]
     names = annotations[chr].name[annotations[chr].start .<= pos .<= annotations[chr].stop]
     isempty(names) ? (return "not found") : (return names[1])
 end
 
 @inline function get_gene(chr::String, pos_start::Int, pos_end::Int,
-    annotations::Dict{String, DataFrame}; utr_length=150)::Tuple{String, String}
+    annotations::Dict{String, DataFrame}; utr_length=150)::Tuple{String, String, Float64}
     gene = "not found"
     type = "not found"
+    srna = "none"
     max_overlap = 0.
+    best_pos = -1.
     for annotation in eachrow(annotations[chr])
         (startswith(annotation[:name], "U3.") || startswith(annotation[:name], "U5.")) && continue
         if startswith(annotation[:name], "IG.")
             ((pos_end <= annotation[:start]) || (pos_start >= annotation[:stop])) && continue
             overlap = min(pos_end, annotation[:stop]) - max(pos_start, annotation[:start]) + 1
+            position = min(max((round(Int, (pos_start + pos_end) / 2.0) - annotation[:start]) / (annotation[:stop] - annotation[:start]), 0.0), 1.0)
         else
             ((pos_end <= annotation[:start]-utr_length) || (pos_start >= annotation[:stop]+utr_length)) && continue
             overlap = min(pos_end, annotation[:stop]+utr_length) - max(pos_start, annotation[:start]-utr_length) + 1
+            position = min(max((round(Int, (pos_start + pos_end) / 2.0) - annotation[:start] - utr_length) / (annotation[:stop] - annotation[:start] + 2*utr_length), 0.0), 1.0)
         end
-        (overlap > max_overlap) && (max_overlap = overlap; gene = annotation[:name]; type=annotation[:typ])
+        if (overlap > max_overlap)
+            max_overlap = overlap
+            gene = annotation[:name] 
+            type = annotation[:typ]
+            best_pos = position
+        end
+        ((annotation[:typ] == "srna") && (overlap>0)) && (srna = annotation[:name])
     end
-    return gene, type
+    (srna != "none") && return (srna, "srna", -1.0)
+    return (gene, type, best_pos)
 end
 
 function get_full_name(chr::String, pos_start::Int, pos_end::Int,
-        annotations::Dict{String, DataFrame}; utr_length=150)::Tuple{String, String, String}
+        annotations::Dict{String, DataFrame}; utr_length=150)::Tuple{String, String, String, Float64}
     
-    gene::String, type::String = get_gene(chr, pos_start, pos_end, annotations; utr_length=utr_length)
+    gene::String, type::String, position::Float64 = get_gene(chr, pos_start, pos_end, annotations; utr_length=utr_length)
     
     name1::String = get_name(chr, pos_start, annotations)
     name2::String = get_name(chr, pos_end, annotations)
-    (name1 == name2) ? (return name1, gene, type) : (return "$name1 -> $name2", gene, type)
+    (name1 == name2) ? (return name1, gene, type, position) : (return "$name1 -> $name2", gene, type, position)
 end
 
 function get_rrna(gff_file::String)::Tuple{Array{Int, 2}, Dict{String,Int}}
@@ -660,9 +674,10 @@ function merged_table(table::CSV.File, annotations::Dict{String,DataFrame}; utr_
     poss::MyMatrix = [[row[:pos1], row[:pos2]] for row in table]
     already_found::Set{Int} = Set() 
     merged_data = DataFrame(name1=String[], gene1=String[], name2=String[], gene2=String[], 
-        type1=String[], type2=String[], nb_fragments=Int[], libs=String[], norm_odds=Float64[], 
-        p_value=Float64[], ip_total_ratio1=Float64[], ip_total_ratio2=Float64[], chromosome1=String[], 
-        first_start1=Int[], last_start1=Int[], chromosome2=String[], first_start2=Int[], last_start2=Int[])
+        type1=String[], type2=String[], relpos1=Float64[], relpos2=Float64[], nb_fragments=Int[], 
+        libs=String[], norm_odds=Float64[], p_value=Float64[], ip_total_ratio1=Float64[], 
+        ip_total_ratio2=Float64[], chromosome1=String[], first_start1=Int[], last_start1=Int[], 
+        chromosome2=String[], first_start2=Int[], last_start2=Int[])
     for (i, row) in enumerate(table)
         (i in already_found) && continue
         pos1, pos2 = row[:pos1], row[:pos2]
@@ -685,8 +700,8 @@ function merged_table(table::CSV.File, annotations::Dict{String,DataFrame}; utr_
         tot2 = sum([r[Symbol("Total interactions RNA2")] for r in table[indices]])
         rat1, rat2 = round(ips1/tot1, digits=2), round(ips2/tot2, digits=2)
             
-        n1, gene1, type1 = get_full_name(chr1, first1, last1, annotations; utr_length=utr_length)
-        n2, gene2, type2 = get_full_name(chr2, first2, last2, annotations; utr_length=utr_length)
+        n1, gene1, type1, rel_pos1 = get_full_name(chr1, first1, last1, annotations; utr_length=utr_length)
+        n2, gene2, type2, rel_pos2 = get_full_name(chr2, first2, last2, annotations; utr_length=utr_length)
     
         b = sum([r[:b] for r in table[indices]])
         c = sum([r[:c] for r in table[indices]])
@@ -700,9 +715,10 @@ function merged_table(table::CSV.File, annotations::Dict{String,DataFrame}; utr_
         pv = round(pvalue(f), digits=10)
         
         row = DataFrame(name1=n1, name2=n2, gene1=gene1, gene2=gene2, type1=type1,
-        type2=type2, nb_fragments=nb, libs=lib, norm_odds=norm_odds, p_value=pv, 
-        ip_total_ratio1=rat1, ip_total_ratio2=rat2, chromosome1=chr1, first_start1=first1, 
-        last_start1=last1, chromosome2=chr2, first_start2=first2, last_start2=last2)
+        type2=type2, relpos1=rel_pos1, relpos2=rel_pos2, nb_fragments=nb, libs=lib, 
+        norm_odds=norm_odds, p_value=pv, ip_total_ratio1=rat1, ip_total_ratio2=rat2, 
+        chromosome1=chr1, first_start1=first1, last_start1=last1, chromosome2=chr2, 
+        first_start2=first2, last_start2=last2)
         append!(merged_data, row)
     end
     return merged_data
@@ -735,6 +751,7 @@ function unified_table(table1::CSV.File, table2::CSV.File, annotations::Dict{Str
         if (id2 >= 0)
             row[:libs] = "1,2"
             row[:nb_fragments] += merged_data2[id2,:nb_fragments]
+            row[:nb_fragments] = round(Int, row[:nb_fragments] / 2.0)
             row[:first_start1] = min(row[:first_start1], merged_data2[id2,:first_start1])
             row[:last_start1] = max(row[:last_start1], merged_data2[id2,:last_start1])
             row[:first_start2] = min(row[:first_start2], merged_data2[id2,:first_start2])
