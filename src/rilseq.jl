@@ -557,7 +557,7 @@ function process_interactions(interaction_file::String, rrna::Array{Int, 2}, chr
     sum_pairs::Dict{Interact, Int} = Dict()
     for interaction in keys(region_interactions)
         nb_interactions = length(region_interactions[interaction])
-        (nb_interactions > minints) && (sum_pairs[interaction] = nb_interactions)
+        (nb_interactions >= minints) && (sum_pairs[interaction] = nb_interactions)
     end
     
     return region_interactions, sum_pairs, count_reads1, count_reads2, count_total
@@ -713,6 +713,7 @@ function merged_table(table::CSV.File, annotations::Dict{String,DataFrame}; utr_
         f = FisherExactTest(nb,b,c,d)
         norm_odds = round(f.ω, digits=2)
         pv = round(pvalue(f), digits=10)
+        (pv > 0.05) && continue
         
         row = DataFrame(name1=n1, name2=n2, gene1=gene1, gene2=gene2, type1=type1,
         type2=type2, relpos1=rel_pos1, relpos2=rel_pos2, nb_fragments=nb, libs=lib, 
