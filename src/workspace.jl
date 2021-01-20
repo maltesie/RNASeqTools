@@ -2,6 +2,7 @@ using DataFrames
 using CSV
 using XLSX
 using Statistics
+using XAM
 
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
@@ -52,7 +53,86 @@ function convert_hmm_to_table(hmm_file_chr1::String, hmm_file_chr2::String, srna
     end 
 end
 
-hmm1 = "/home/malte/Workspace/data/HMMposterior_probabilities_chr1.txt"
-hmm2 = "/home/malte/Workspace/data/HMMposterior_probabilities_chr2.txt"
-ann = "/home/malte/Workspace/data/vibrio_srna.csv"
-convert_hmm_to_table(hmm1, hmm2, ann, "../data/hmm_output.xlsx")
+#hmm1 = "/home/malte/Workspace/data/HMMposterior_probabilities_chr1.txt"
+#hmm2 = "/home/malte/Workspace/data/HMMposterior_probabilities_chr2.txt"
+#ann = "/home/malte/Workspace/data/vibrio_srna.csv"
+#convert_hmm_to_table(hmm1, hmm2, ann, "../data/hmm_output.xlsx")
+
+function convert_edges(edges_file::String, nodes_file::String, out_file::String)
+    out_df = CSV.read(edges_file, DataFrame)
+    nodes_df = CSV.read(nodes_file, DataFrame)
+    nodes = Dict(row[:altName]=>row[:color] for row in eachrow(nodes_df))
+    
+    out_df[!, :fromColor] = fill("black", nrow(out_df))
+    out_df[!, :toColor] = fill("black", nrow(out_df))
+
+    for row in eachrow(out_df)
+        row[:fromColor] = nodes[row[:fromAltName]] 
+        row[:toColor] = nodes[row[:toAltName]] 
+    end
+
+    CSV.write(out_file, out_df)
+end
+
+#edges = "/home/malte/Workspace/Dash/CoexpressionGraph/assets/edges.txt"
+#nodes = "/home/malte/Workspace/Dash/CoexpressionGraph/assets/nodes.txt"
+#outedges = "/home/malte/Workspace/Dash/CoexpressionGraph/assets/edges_new.txt"
+#convert_edges(edges, nodes, outedges)
+
+function motif_search(motif_file::String, out_fasta::String, out_csv::String)
+    df = CSV.read(motif_file, DataFrame, header=38, datarow=39, delim="\t")
+    df = df[df[!,:evidence_level] .== "Strong", :]
+    sequences = ">id0\n" * join([uppercase(s[1:end-21])*"\n>id$i" for (i,s) in enumerate(df[!, :sequence])], "\n")
+    CSV.write(out_csv, df)
+    open(out_fasta,"w") do io
+        println(io, sequences[1:end-7])
+    end
+end
+
+function motif_search(motif_file::String, out_fasta::Array{String, 1})
+    df = CSV.read(motif_file, DataFrame)
+    sequences = ""
+    sequences_1 = ""
+    sequences_2 = ""
+    for (i, row) in enumerate(eachrow(df))
+        println(row)
+        sequences *= ">id$i\n" * uppercase(row[:sequence][1:end-21]) * "\n"
+        (row[:class] == 1) && (sequences_1 *= ">id$i\n" * uppercase(row[:sequence][1:end-21]) * "\n")
+        (row[:class] == 2) && (sequences_2 *= ">id$i\n" * uppercase(row[:sequence][1:end-21]) * "\n")
+    end
+    print(sequences)
+    print("\n\n")
+    print(sequences_2)
+    print("\n\n")
+    print(sequences_1)
+    open(out_fasta[1],"w") do io
+        println(io, sequences_1)
+    end
+    open(out_fasta[2],"w") do io
+        println(io, sequences_2)
+    end
+    open(out_fasta[3],"w") do io
+        println(io, sequences)
+    end
+end
+
+#motif_search("/home/malte/Downloads/Promoter_class.csv", ["/home/malte/Downloads/Promoter1.fasta", "/home/malte/Downloads/Promoter2.fasta", "/home/malte/Downloads/Promoter3.fasta"])
+
+function get_reference_info(bam_file::String)
+    record::BAM.Record = BAM.Record()
+    reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
+
+    for meta in findall(BAM.header(reader), "SQ")
+        println(meta["SN"])
+    end
+
+    while !eof(reader)
+        read!(reader, record)
+        break
+    end
+    close(reader)
+end
+
+bam_file = "/home/malte/Workspace/data/test.bam"
+
+get_reference_info(bam_file)
