@@ -119,3 +119,33 @@ function read_rrna(gff_file::String; rrna_types=["rRNA", "tRNA"])::Dict{String, 
     
     return results
 end
+
+function read_coverage(wig_file::String)
+    coverage = Dict()
+    temp_collect = Dict()
+    open(wig_file, 'r') do file
+        for line in eachline(file)
+            startswith(line, "track") && continue
+            if startswith(line, "variableStep")
+                span = parse(Int, split(split(line, " ")[3],"=")[2]) - 1
+                chr = split(split(line, " ")[2],"=")[2]
+                temp_collect[chr] = Tuple{Int, Float64}[]
+            else
+                str_index, str_value = split(line, " ")
+                index = parse(Int, index)
+                value = parse(Float64, value)
+
+                for i in index:index+span
+                    push!(temp_collect[chr], (i, value))
+                end
+            end
+        end
+    end
+    for (chr, points) in temp_collect
+        coverage[chr] = zeros(Int, points[end][1])
+        for (index, value) in points
+            coverage[chr][index] = value
+        end
+    end
+    return coverage
+end

@@ -3,6 +3,7 @@ using CSV
 using XLSX
 using Statistics
 using XAM
+using BioAlignments
 
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
@@ -133,6 +134,46 @@ function get_reference_info(bam_file::String)
     close(reader)
 end
 
-bam_file = "/home/malte/Workspace/data/test.bam"
+#bam_file = "/home/malte/Workspace/data/test.bam"
 
-get_reference_info(bam_file)
+#get_reference_info(bam_file)
+
+function align(sequence_file::String, reference_file::String)
+end
+
+function read_coverage(wig_file::String)
+    coverage = Dict()
+    temp_collect = Dict()
+    span = 0
+    chr = ""
+    open(wig_file, "r") do file
+        @time for line in eachline(file)
+            startswith(line, "track") && continue
+            if startswith(line, "variableStep")
+                parse!(span, split(split(line, " ")[3],"=")[2])
+                span -= 1
+                chr = split(split(line, " ")[2],"=")[2]
+                temp_collect[chr] = Tuple{Int, Float64}[]
+            else
+                str_index, str_value = split(line, " ")
+                index = parse(Int, str_index)
+                value = parse(Float64, str_value)
+
+                for i in index:index+span
+                    push!(temp_collect[chr], (i, value))
+                end
+            end
+        end
+    end
+    @time for (chr, points) in temp_collect
+        coverage[chr] = zeros(Float64, points[end][1])
+        for (index, value) in points
+            coverage[chr][index] = value
+        end
+    end
+    return coverage
+end
+
+wig = "/home/malte/Workspace/dRNASeq/data/reademption_campbelli/output/coverage/coverage-tnoar_min_normalized/Vcamp-luxR-Rep1_S34_R1_001_trimmed_div_by_12872450.0_multi_by_11533765.0_forward.wig"
+
+@time read_coverage(wig)
