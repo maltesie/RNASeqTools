@@ -147,11 +147,10 @@ function read_coverage(wig_file::String)
     span = 0
     chr = ""
     open(wig_file, "r") do file
-        @time for line in eachline(file)
+        for line in split(read(file, String), "\n")[1:end-1]
             startswith(line, "track") && continue
             if startswith(line, "variableStep")
-                parse!(span, split(split(line, " ")[3],"=")[2])
-                span -= 1
+                span = parse(Int, split(split(line, " ")[3],"=")[2])
                 chr = split(split(line, " ")[2],"=")[2]
                 temp_collect[chr] = Tuple{Int, Float64}[]
             else
@@ -165,7 +164,7 @@ function read_coverage(wig_file::String)
             end
         end
     end
-    @time for (chr, points) in temp_collect
+    for (chr, points) in temp_collect
         coverage[chr] = zeros(Float64, points[end][1])
         for (index, value) in points
             coverage[chr][index] = value
@@ -174,6 +173,6 @@ function read_coverage(wig_file::String)
     return coverage
 end
 
-wig = "/home/malte/Workspace/dRNASeq/data/reademption_campbelli/output/coverage/coverage-tnoar_min_normalized/Vcamp-luxR-Rep1_S34_R1_001_trimmed_div_by_12872450.0_multi_by_11533765.0_forward.wig"
+#wig = "/home/malte/Workspace/dRNASeq/data/reademption_campbelli/output/coverage/coverage-tnoar_min_normalized/Vcamp-luxR-Rep1_S34_R1_001_trimmed_div_by_12872450.0_multi_by_11533765.0_forward.wig"
 
-@time read_coverage(wig)
+#read_coverage(wig)
