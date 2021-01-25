@@ -42,22 +42,24 @@ end
 
 function tss(coverage_fs::Vector{String}, coverage_rs::Vector{String}, tex_fs::Vector{String}, tex_rs::Vector{String}; 
     min_step=10, min_ratio=1.5)
-    results = Dict()
+    result = Dict()
     for i in 1:length(coverage_fs)
         forward = read_coverage(coverage_fs[i])
         reverse = read_coverage(coverage_rs[i])
         forward_tex = read_coverage(tex_fs[i])
         reverse_tex = read_coverage(tex_rs[i])
         for chr in keys(forward)
-            results[chr] = Int[]
-            check_forward = ((forward_tex[chr] ./ forward[chr]) .>= min_ratio) .& (diff(forward_tex[chr]) .>= min_step)
-            check_reverse = ((reverse_tex[chr] ./ reverse[chr]) .>= min_ratio) .& (diff(reverse_tex) .<= -min_step)
-            push!(results[chr], findall(!iszero, check_forward))
-            push!(results[chr], findall(!iszero, check_reverse) .* -1)
+            result[chr] = DataFrame(pos=Int[], val=Float64[])
+            d_forward = diff(forward_tex[chr])
+            d_reverse = diff(reverse_tex[chr])
+            check_forward = ((forward_tex[chr] ./ forward[chr]) .>= min_ratio) .& (d_forward .>= min_step)
+            check_reverse = ((reverse_tex[chr] ./ reverse[chr]) .>= min_ratio) .& (d_reverse .<= -min_step)
+            append!(result[chr], DataFrame(pos=findall(!iszero, check_forward), val=d_forward[check_forward]))
+            append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=d_reverse[check_reverse]))
         end
     end
     for (chr, ts) in results
-        sort!(ts)
+        sort!(ts, :pos)
     end
 end
 
@@ -67,15 +69,17 @@ function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_ste
         forward = read_coverage(coverage_fs[i])
         reverse = read_coverage(coverage_rs[i])
         for chr in keys(forward)
-            results[chr] = Int[]
-            check_forward = diff(forward_tex[chr]) .<= min_step
-            check_reverse = diff(reverse_tex) .>= min_step
-            push!(results[chr], findall(!iszero, check_forward))
-            push!(results[chr], findall(!iszero, check_reverse) .* -1)
+            results[chr] = DataFrame(pos=Int[], val=Float64[])
+            d_forward = diff(forward_tex[chr])
+            d_reverse = diff(reverse_tex[chr])
+            check_forward = d_forward .<= -min_step
+            check_reverse = d_reverse .>= min_step
+            append!(result[chr], DataFrame(pos=findall(!iszero, check_forward), val=d_forward[check_forward]))
+            append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=d_reverse[check_reverse]))
         end
     end
     for (chr, ts) in results
-        sort!(ts)
+        sort!(ts, :pos)
     end
 end
 
@@ -87,10 +91,10 @@ function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, 
         annotation[!, :threeUTR] = annotation[!, :stop] += guess_distance
         annotation[!, :threeType] = fill("guess", nrows(annotation))
         for row in eachrow(annotation)
-            five_hits = findall(row[:start]-max_distance <= x <= row[:start], tss[chr])
-            three_hits = findall(row[:stop] <= x <= row[:stop]+max_distance, terms[chr])
-            isempty(five_hits) || (row[:fiveUTR]=five_hits[1]; row[:fiveType]="first")
-            isempty(three_hits) || (row[:threeUTR]=three_hits[end]; row[:threeType]="last")
+            five_hits = @view tss[chr][row[:start]-max_distance .<= tss[chr][!,:pos] .<= row[:start]]
+            three_hits = @view terms[chr][row[:stop] .<= terms[chr] .<= row[:stop]+max_distance
+            isempty(five_hits) || (row[:fiveUTR]=maximum(five_hits[!, :pos]); row[:fiveType]="max")
+            isempty(three_hits) || (row[:threeUTR]=maximum(three_hits[!, :pos]); row[:threeType]="max")
         end
     end
 end

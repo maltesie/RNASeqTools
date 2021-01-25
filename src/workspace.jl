@@ -5,6 +5,8 @@ using Statistics
 using XAM
 using BioAlignments
 
+include("tss.jl")
+
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
     chrs = [val==1 ? "NC_002505" : "NC_002506" for val in df[!, :Chromosome]]
@@ -176,3 +178,7 @@ end
 #wig = "/home/malte/Workspace/dRNASeq/data/reademption_campbelli/output/coverage/coverage-tnoar_min_normalized/Vcamp-luxR-Rep1_S34_R1_001_trimmed_div_by_12872450.0_multi_by_11533765.0_forward.wig"
 
 #read_coverage(wig)
+
+
+
+function test_utr_annotation(coverage_files::Array{String, 2})
