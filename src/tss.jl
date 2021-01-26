@@ -61,6 +61,7 @@ function tss(coverage_fs::Vector{String}, coverage_rs::Vector{String}, tex_fs::V
     for (chr, ts) in results
         sort!(ts, :pos)
     end
+    return results
 end
 
 function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_step=10)
@@ -81,6 +82,7 @@ function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_ste
     for (chr, ts) in results
         sort!(ts, :pos)
     end
+    return results
 end
 
 function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, Vector{Float64}}, terms::Dict{String, Vector{Float64}}; 
@@ -92,7 +94,7 @@ function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, 
         annotation[!, :threeType] = fill("guess", nrows(annotation))
         for row in eachrow(annotation)
             five_hits = @view tss[chr][row[:start]-max_distance .<= tss[chr][!,:pos] .<= row[:start]]
-            three_hits = @view terms[chr][row[:stop] .<= terms[chr] .<= row[:stop]+max_distance
+            three_hits = @view terms[chr][row[:stop] .<= terms[chr] .<= row[:stop]+max_distance]
             isempty(five_hits) || (row[:fiveUTR]=maximum(five_hits[!, :pos]); row[:fiveType]="max")
             isempty(three_hits) || (row[:threeUTR]=maximum(three_hits[!, :pos]); row[:threeType]="max")
         end

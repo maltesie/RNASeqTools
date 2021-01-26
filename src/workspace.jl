@@ -6,6 +6,7 @@ using XAM
 using BioAlignments
 
 include("tss.jl")
+include("preprocess.jl")
 
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
@@ -141,6 +142,7 @@ end
 #get_reference_info(bam_file)
 
 function align(sequence_file::String, reference_file::String)
+
 end
 
 function read_coverage(wig_file::String)
@@ -179,6 +181,25 @@ end
 
 #read_coverage(wig)
 
-
-
 function test_utr_annotation(coverage_files::Array{String, 2})
+
+end
+
+function run_preprocess()
+    read_files = ["/home/malte/Workspace/data/vibrio/drnaseq/tex_01_1.fastq.gz",
+            "/home/malte/Workspace/data/vibrio/drnaseq/tex_01_2.fastq.gz",
+            "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_1.fastq.gz",
+            "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_2.fastq.gz",
+            "/home/malte/Workspace/data/vibrio/drnaseq/notex_01_1.fastq.gz",
+            "/home/malte/Workspace/data/vibrio/drnaseq/notex_01_2.fastq.gz",
+            "/home/malte/Workspace/data/vibrio/drnaseq/notex_20_1.fastq.gz",
+            "/home/malte/Workspace/data/vibrio/drnaseq/notex_20_2.fastq.gz"]
+
+    output_folder = "/home/malte/Workspace/data/vibrio/drnaseq/"
+
+    fastp_bin_path = "/home/malte/Tools/fastp"
+
+    trim_fastp(read_files, output_folder; fastp_bin=fastp_bin_path)
+end
+
+run_preprocess()
