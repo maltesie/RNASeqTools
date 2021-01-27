@@ -7,6 +7,7 @@ using BioAlignments
 
 include("tss.jl")
 include("preprocess.jl")
+include("align.jl")
 
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
@@ -187,19 +188,54 @@ end
 
 function run_preprocess()
     read_files = ["/home/malte/Workspace/data/vibrio/drnaseq/tex_01_1.fastq.gz",
-            "/home/malte/Workspace/data/vibrio/drnaseq/tex_01_2.fastq.gz",
-            "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_1.fastq.gz",
-            "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_2.fastq.gz",
-            "/home/malte/Workspace/data/vibrio/drnaseq/notex_01_1.fastq.gz",
-            "/home/malte/Workspace/data/vibrio/drnaseq/notex_01_2.fastq.gz",
-            "/home/malte/Workspace/data/vibrio/drnaseq/notex_20_1.fastq.gz",
-            "/home/malte/Workspace/data/vibrio/drnaseq/notex_20_2.fastq.gz"]
+    "/home/malte/Workspace/data/vibrio/drnaseq/tex_01_2.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_1.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_2.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_01_1.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_01_2.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_20_1.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_20_2.fastq.gz"]
+
+    adapter = fill("AATGATACGGCGACCACCG", 8)
 
     output_folder = "/home/malte/Workspace/data/vibrio/drnaseq/"
 
     fastp_bin_path = "/home/malte/Tools/fastp"
 
-    trim_fastp(read_files, output_folder; fastp_bin=fastp_bin_path)
+    trim_fastp(read_files, output_folder; adapters=adapter, fastp_bin=fastp_bin_path)
 end
 
-run_preprocess()
+#run_preprocess()
+
+function run_align()
+    read_files = ["/home/malte/Workspace/data/vibrio/drnaseq/tex_01_1_trimmed.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/tex_01_2_trimmed.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_1_trimmed.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_2_trimmed.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_01_1_trimmed.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_01_2_trimmed.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_20_1_trimmed.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_20_2_trimmed.fastq.gz"]
+
+    out_files = ["/home/malte/Workspace/data/vibrio/drnaseq/tex_01_1.bam",
+    "/home/malte/Workspace/data/vibrio/drnaseq/tex_01_2.bam",
+    "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_1.bam",
+    "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_2.bam",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_01_1.bam",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_01_2.bam",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_20_1.bam",
+    "/home/malte/Workspace/data/vibrio/drnaseq/notex_20_2.bam"]
+
+    reference = "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.fa"
+
+    bwa = "/home/malte/Tools/bwa/bwa"
+
+    sam = "/home/malte/Tools/samtools/bin/samtools"
+
+    for (in_file, out_file) in zip(read_files, out_files)
+        align_backtrack(in_file, out_file, reference; max_miss=3, bwa_bin=bwa, sam_bin=sam)
+    end
+end
+
+#run_align()
+

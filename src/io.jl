@@ -1,5 +1,11 @@
 using XAM
 
+function write_file(filename::String, content::String)
+    open(filename, "w") do f
+        write(f, content)
+    end
+end
+
 function strandint(record::BAM.Record; is_rev=false)
     BAM.ispositivestrand(record) ? strand = 1 : strand = -1
     is_rev ? (return strand * -1) : (return strand)
@@ -107,4 +113,20 @@ function read_coverage(wig_file::String)
         end
     end
     return coverage
+end
+
+function write_coverage(coverages::Vector{Dict}, wig_file::String; track_name="\"\"")
+
+    open(wig_file, 'r') do file
+        for (i,coverage) in enumerate(coverages)
+            println(file, "track type=wiggle_$i name=$track_name")
+            for (chr, cov) in coverage
+                println(file, "variableStep chrom=$chr span=1")
+                for (ii,value) in enumerate(cov)
+                    (value == zero(value)) || println(file, "$i $value")
+                end
+            end
+        end
+    end
+
 end
