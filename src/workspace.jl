@@ -339,5 +339,8 @@ function run_utr_annotation()
     annotation = read_annotations(gff)
 
     annotate_utrs!(annotation, tsss, termss)
+
+    print(annotation)
 end
 
+run_utr_annotation()

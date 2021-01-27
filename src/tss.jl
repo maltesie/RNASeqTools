@@ -43,7 +43,8 @@ function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{
     min_step=10, min_ratio=1.5)
     result = Dict()
     for i in 1:length(notex_fs)
-        forward = read_coverage(notex_fs[i])[1]
+        forward = read_coverage(notex_fs[i])
+        println(forward)
         reverse = read_coverage(notex_rs[i])[1]
         forward_tex = read_coverage(tex_fs[i])[1]
         reverse_tex = read_coverage(tex_rs[i])[1]
@@ -57,10 +58,10 @@ function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{
             append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=d_reverse[check_reverse]))
         end
     end
-    for (chr, ts) in results
+    for (chr, ts) in result
         sort!(ts, :pos)
     end
-    return results
+    return result
 end
 
 function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_step=10)
