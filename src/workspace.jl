@@ -239,3 +239,24 @@ end
 
 #run_align()
 
+function run_coverage()
+
+    folder = "/home/malte/Workspace/data/vibrio/drnaseq/"
+
+    bam_files = [(joinpath(folder, "tex_01_1.bam"), joinpath(folder, "tex_01_2.bam")),
+    (joinpath(folder, "tex_20_1.bam"), joinpath(folder, "tex_20_2.bam")),
+    (joinpath(folder, "notex_01_1.bam"), joinpath(folder, "notex_01_2.bam")),
+    (joinpath(folder, "notex_20_1.bam"), joinpath(folder, "notex_20_2.bam"))]
+
+    wig_files = [(joinpath(folder, "tex_01_f.wig"), joinpath(folder, "tex_01_r.wig")),
+    (joinpath(folder, "tex_20_f.wig"), joinpath(folder, "tex_20_r.wig")),
+    (joinpath(folder, "notex_01_f.wig"), joinpath(folder, "notex_01_r.wig")),
+    (joinpath(folder, "notex_20_f.wig"), joinpath(folder, "notex_20_r.wig"))]
+
+    for ((bam1, bam2),(wigf, wigr)) in zip(bam_files, wig_files)
+        (coverage_f1, coverage_r1) = coverage(bam1)
+        (coverage_f2, coverage_r2) = coverage(bam2)
+        write_coverage([coverage_f1, coverage_f2], wigf)
+        write_coverage([coverage_r1, coverage_r2], wigr)
+    end
+end
