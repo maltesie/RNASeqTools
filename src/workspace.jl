@@ -320,14 +320,24 @@ end
 
 #run_coverage_termseq()
 
-run_utr_annotation()
+function run_utr_annotation()
     gff = "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.gff3"
     drna_folder = "/home/malte/Workspace/data/vibrio/drnaseq/"
     term_folder = "/home/malte/Workspace/data/vibrio/termseq/"
 
-    drna_wigs = 
+    drna_notex_fs = [joinpath(drna_folder, "notex_01_f.wig"), joinpath(drna_folder, "notex_20_f.wig")]
+    drna_tex_fs = [joinpath(drna_folder, "tex_01_f.wig"), joinpath(drna_folder, "tex_20_f.wig")]
+    drna_notex_rs = [joinpath(drna_folder, "notex_01_r.wig"), joinpath(drna_folder, "notex_20_r.wig")]
+    drna_tex_rs = [joinpath(drna_folder, "tex_01_r.wig"), joinpath(drna_folder, "tex_20_r.wig")]
+
+    term_fs = [joinpath(term_folder, "term_f.wig")]
+    term_rs = [joinpath(term_folder, "term_r.wig")]
+
+    tsss = tss(drna_notex_fs, drna_notex_rs, drna_tex_fs, drna_tex_rs)
+    termss = terms(term_fs, term_rs)
     
     annotation = read_annotations(gff)
 
+    annotate_utrs!(annotation, tsss, termss)
 end
 
