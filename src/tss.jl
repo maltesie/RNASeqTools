@@ -41,7 +41,7 @@ end
 
 function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{String}, tex_rs::Vector{String}; 
     min_step=10, min_ratio=1.5)
-    result = Dict()
+    result::Dict{String, DataFrame} = Dict()
     for i in 1:length(notex_fs)
         forward = read_wig(notex_fs[i])[1]
         reverse = read_wig(notex_rs[i])[1]
@@ -66,7 +66,7 @@ function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{
 end
 
 function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_step=10)
-    result = Dict()
+    result::Dict{String, DataFrame} = Dict()
     for i in 1:length(coverage_fs)
         forward = read_wig(coverage_fs[i])[1]
         reverse = read_wig(coverage_rs[i])[1]
@@ -86,7 +86,7 @@ function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_ste
     return result
 end
 
-function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, Vector{Float64}}, terms::Dict{String, Vector{Float64}}; 
+function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, DataFrame}, terms::Dict{String, DataFrame}; 
     max_distance=300, guess_distance=150)
     for (chr, annotation) in annotations
         annotation[!, :fiveUTR] = annotation[!, :start] -= guess_distance

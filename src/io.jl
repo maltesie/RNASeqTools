@@ -61,6 +61,7 @@ end
 
 function read_annotations(gff_file::String, annotation_types = ["CDS"])::Dict{String, DataFrame}
     
+    gff = ""
     open(gff_file) do reader
         gff = read(reader, String)
     end

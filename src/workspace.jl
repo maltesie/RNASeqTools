@@ -340,7 +340,7 @@ function run_utr_annotation()
 
     annotate_utrs!(annotation, tsss, termss)
 
-    print(annotation)
+    CSV.write("/home/malte/Workspace/data/vibrio/utr.csv", annotation)
 end
 
 run_utr_annotation()
