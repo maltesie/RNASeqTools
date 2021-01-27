@@ -34,7 +34,7 @@ function diff(coverage::Vector{Float64})
     d[2] = coverage[2] - coverage[1]
     d[3] = maximum(coverage[3] .- coverage[1:2])
     for (i,val) in enumerate(coverage[4:end])
-        d[i+3] = maximum(val .- coverage[i-3:i-1])
+        d[i+3] = maximum(val .- coverage[i:i+2])
     end
     return d
 end
@@ -44,10 +44,9 @@ function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{
     result = Dict()
     for i in 1:length(notex_fs)
         forward = read_coverage(notex_fs[i])
-        println(forward)
-        reverse = read_coverage(notex_rs[i])[1]
-        forward_tex = read_coverage(tex_fs[i])[1]
-        reverse_tex = read_coverage(tex_rs[i])[1]
+        reverse = read_coverage(notex_rs[i])
+        forward_tex = read_coverage(tex_fs[i])
+        reverse_tex = read_coverage(tex_rs[i])
         for chr in keys(forward)
             result[chr] = DataFrame(pos=Int[], val=Float64[])
             d_forward = diff(forward_tex[chr])

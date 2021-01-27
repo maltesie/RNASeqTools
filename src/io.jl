@@ -119,7 +119,7 @@ function read_coverage(wig_file::String)
             push!(coverages, coverage)
         end
     end
-    println(isempty(coverages))
+    println(length(coverages))
     return coverages
 end
 
