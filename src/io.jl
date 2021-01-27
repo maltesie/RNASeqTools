@@ -85,7 +85,7 @@ function read_annotations(gff_file::String, annotation_types = ["CDS"])::Dict{St
     return results
 end
 
-function read_coverage(wig_file::String)
+function read_wig(wig_file::String)
     coverages::Vector{Dict{String,Vector{Float64}}} = []
     temp_collect = Dict()
     track = ""

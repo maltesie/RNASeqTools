@@ -43,11 +43,13 @@ function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{
     min_step=10, min_ratio=1.5)
     result = Dict()
     for i in 1:length(notex_fs)
-        forward = read_coverage(notex_fs[i])[1]
-        reverse = read_coverage(notex_rs[i])[1]
-        forward_tex = read_coverage(tex_fs[i])[1]
-        reverse_tex = read_coverage(tex_rs[i])[1]
+        forward = read_wig(notex_fs[i])[1]
+        reverse = read_wig(notex_rs[i])[1]
+        forward_tex = read_wig(tex_fs[i])[1]
+        reverse_tex = read_wig(tex_rs[i])[1]
         for chr in keys(forward)
+            make_same_length!(forward[chr], forward_tex[chr])
+            make_same_length!(reverse[chr], reverse_tex[chr])
             result[chr] = DataFrame(pos=Int[], val=Float64[])
             d_forward = diff(forward_tex[chr])
             d_reverse = diff(reverse_tex[chr])
@@ -66,8 +68,8 @@ end
 function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_step=10)
     results = Dict()
     for i in 1:length(coverage_fs)
-        forward = read_coverage(coverage_fs[i])[1]
-        reverse = read_coverage(coverage_rs[i])[1]
+        forward = read_wig(coverage_fs[i])[1]
+        reverse = read_wig(coverage_rs[i])[1]
         for chr in keys(forward)
             results[chr] = DataFrame(pos=Int[], val=Float64[])
             d_forward = diff(forward_tex[chr])

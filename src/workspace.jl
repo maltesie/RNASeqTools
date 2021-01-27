@@ -333,10 +333,8 @@ function run_utr_annotation()
     term_fs = [joinpath(term_folder, "term_f.wig")]
     term_rs = [joinpath(term_folder, "term_r.wig")]
 
-    test = read_coverage(joinpath(drna_folder, "notex_01_f.wig"))
-    print(typeof(test))
-    #tsss = tss(drna_notex_fs, drna_notex_rs, drna_tex_fs, drna_tex_rs)
-    #termss = terms(term_fs, term_rs)
+    tsss = tss(drna_notex_fs, drna_notex_rs, drna_tex_fs, drna_tex_rs)
+    termss = terms(term_fs, term_rs)
     
     #annotation = read_annotations(gff)
 
