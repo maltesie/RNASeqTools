@@ -123,7 +123,7 @@ function read_wig(wig_file::String)
     return coverages
 end
 
-function write_coverage(coverages::Vector{Dict{String,Vector{Float64}}}, wig_file::String; track_name="\"\"")
+function write_wig(coverages::Vector{Dict{String,Vector{Float64}}}, wig_file::String; track_name="\"\"")
 
     open(wig_file, "w") do file
         for (i,coverage) in enumerate(coverages)
@@ -136,5 +136,4 @@ function write_coverage(coverages::Vector{Dict{String,Vector{Float64}}}, wig_fil
             end
         end
     end
-
 end

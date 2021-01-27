@@ -40,12 +40,13 @@ function reverse_complement_reads(in_file::String, out_file::String)
     close(writer)
 end
 
-function make_same_length!(array1::Vector{Float64}, array2::Vector{Float64})
+function make_same_length(array1::Vector{Float64}, array2::Vector{Float64})
     if length(array1) > length(array2)
         array1 = array1[1:length(array2)]
     elseif length(array1) < length(array2)
         array2 = array2[1:length(array1)]
     end
+    return array1, array2
 end
 
 function get_position(pos::Int, chr::String, aux::String; reversed=false)::Tuple{Int, String}

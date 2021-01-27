@@ -7,6 +7,7 @@ using BioAlignments
 
 include("preprocess.jl")
 include("align.jl")
+include("io.jl")
 
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
@@ -319,126 +320,6 @@ end
 
 #run_coverage_termseq()
 
-function make_same_length!(array1::Vector{Float64}, array2::Vector{Float64})
-    if length(array1) > length(array2)
-        array1 = array1[1:length(array2)]
-    elseif length(array1) < length(array2)
-        array2 = array2[1:length(array1)]
-    end
-end
-
-function diff(coverage::Vector{Float64})
-    d = similar(coverage)
-    d[1] = coverage[1]
-    d[2] = coverage[2] - coverage[1]
-    d[3] = maximum(coverage[3] .- coverage[1:2])
-    for (i,val) in enumerate(coverage[4:end])
-        d[i+3] = maximum(val .- coverage[i:i+2])
-    end
-    return d
-end
-
-function read_wig(wig_file::String)
-    coverages::Vector{Dict{String,Vector{Float64}}} = []
-    temp_collect = Dict()
-    track = ""
-    span = 0
-    chr = ""
-    open(wig_file, "r") do file
-        for line in eachline(file)
-            if startswith(line, "track")
-                track = split(split(line, " ")[2],"=")[2]
-                temp_collect[track] = Dict()
-            elseif startswith(line, "variableStep")
-                span = parse(Int, split(split(line, " ")[3],"=")[2]) - 1
-                chr = split(split(line, " ")[2],"=")[2]
-                temp_collect[track][chr] = Tuple{Int, Float64}[]
-            else
-                str_index, str_value = split(line, " ")
-                index = parse(Int, str_index)
-                value = parse(Float64, str_value)
-                for i in index:index+span
-                    push!(temp_collect[track][chr], (i, value))
-                end
-            end
-        end
-        for (track, collection) in temp_collect
-            coverage = Dict()
-            for (chr, points) in collection
-                coverage[chr] = zeros(Float64, points[end][1])
-                for (index, value) in points
-                    coverage[chr][index] = value
-                end
-            end
-            push!(coverages, coverage)
-        end
-    end
-    return coverages
-end
-
-function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_step=10)
-    results = Dict()
-    for i in 1:length(coverage_fs)
-        forward = read_wig(coverage_fs[i])[1]
-        reverse = read_wig(coverage_rs[i])[1]
-        for chr in keys(forward)
-            results[chr] = DataFrame(pos=Int[], val=Float64[])
-            d_forward = diff(forward_tex[chr])
-            d_reverse = diff(reverse_tex[chr])
-            check_forward = d_forward .<= -min_step
-            check_reverse = d_reverse .>= min_step
-            append!(result[chr], DataFrame(pos=findall(!iszero, check_forward), val=d_forward[check_forward]))
-            append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=d_reverse[check_reverse]))
-        end
-    end
-    for (chr, ts) in results
-        sort!(ts, :pos)
-    end
-    return results
-end
-
-function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{String}, tex_rs::Vector{String}; 
-    min_step=10, min_ratio=1.5)
-    result = Dict()
-    for i in 1:length(notex_fs)
-        forward = read_wig(notex_fs[i])[1]
-        reverse = read_wig(notex_rs[i])[1]
-        forward_tex = read_wig(tex_fs[i])[1]
-        reverse_tex = read_wig(tex_rs[i])[1]
-        for chr in keys(forward)
-            make_same_length!(forward[chr], forward_tex[chr])
-            make_same_length!(reverse[chr], reverse_tex[chr])
-            result[chr] = DataFrame(pos=Int[], val=Float64[])
-            d_forward = diff(forward_tex[chr])
-            d_reverse = diff(reverse_tex[chr])
-            check_forward = ((forward_tex[chr] ./ forward[chr]) .>= min_ratio) .& (d_forward .>= min_step)
-            check_reverse = ((reverse_tex[chr] ./ reverse[chr]) .>= min_ratio) .& (d_reverse .<= -min_step)
-            append!(result[chr], DataFrame(pos=findall(!iszero, check_forward), val=d_forward[check_forward]))
-            append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=d_reverse[check_reverse]))
-        end
-    end
-    for (chr, ts) in result
-        sort!(ts, :pos)
-    end
-    return result
-end
-
-function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, Vector{Float64}}, terms::Dict{String, Vector{Float64}}; 
-    max_distance=300, guess_distance=150)
-    for (chr, annotation) in annotations
-        annotation[!, :fiveUTR] = annotation[!, :start] -= guess_distance
-        annotation[!, :fiveType] = fill("guess", nrows(annotation))
-        annotation[!, :threeUTR] = annotation[!, :stop] += guess_distance
-        annotation[!, :threeType] = fill("guess", nrows(annotation))
-        for row in eachrow(annotation)
-            five_hits = @view tss[chr][row[:start]-max_distance .<= tss[chr][!,:pos] .<= row[:start]]
-            three_hits = @view terms[chr][row[:stop] .<= terms[chr] .<= row[:stop]+max_distance]
-            isempty(five_hits) || (row[:fiveUTR]=maximum(five_hits[!, :pos]); row[:fiveType]="max")
-            isempty(three_hits) || (row[:threeUTR]=maximum(three_hits[!, :pos]); row[:threeType]="max")
-        end
-    end
-end
-
 function run_utr_annotation()
     gff = "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.gff3"
     drna_folder = "/home/malte/Workspace/data/vibrio/drnaseq/"
@@ -455,11 +336,11 @@ function run_utr_annotation()
     tsss = tss(drna_notex_fs, drna_notex_rs, drna_tex_fs, drna_tex_rs)
     termss = terms(term_fs, term_rs)
     
-    #annotation = read_annotations(gff)
+    annotation = read_annotations(gff)
 
-    #annotate_utrs!(annotation, tsss, termss)
+    annotate_utrs!(annotation, tsss, termss)
 
-    #print(annotation)
+    print(annotation)
 end
 
 run_utr_annotation()

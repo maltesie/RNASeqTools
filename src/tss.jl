@@ -48,13 +48,13 @@ function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{
         forward_tex = read_wig(tex_fs[i])[1]
         reverse_tex = read_wig(tex_rs[i])[1]
         for chr in keys(forward)
-            make_same_length!(forward[chr], forward_tex[chr])
-            make_same_length!(reverse[chr], reverse_tex[chr])
+            (notex_f, tex_f) = make_same_length(forward[chr], forward_tex[chr])
+            (notex_r, tex_r) = make_same_length(reverse[chr], reverse_tex[chr])
             result[chr] = DataFrame(pos=Int[], val=Float64[])
-            d_forward = diff(forward_tex[chr])
-            d_reverse = diff(reverse_tex[chr])
-            check_forward = ((forward_tex[chr] ./ forward[chr]) .>= min_ratio) .& (d_forward .>= min_step)
-            check_reverse = ((reverse_tex[chr] ./ reverse[chr]) .>= min_ratio) .& (d_reverse .<= -min_step)
+            d_forward = diff(tex_f)
+            d_reverse = diff(tex_r)
+            check_forward = ((tex_f ./ notex_f) .>= min_ratio) .& (d_forward .>= min_step)
+            check_reverse = ((tex_r ./ notex_r) .>= min_ratio) .& (d_reverse .<= -min_step)
             append!(result[chr], DataFrame(pos=findall(!iszero, check_forward), val=d_forward[check_forward]))
             append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=d_reverse[check_reverse]))
         end
@@ -66,24 +66,24 @@ function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{
 end
 
 function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_step=10)
-    results = Dict()
+    result = Dict()
     for i in 1:length(coverage_fs)
         forward = read_wig(coverage_fs[i])[1]
         reverse = read_wig(coverage_rs[i])[1]
         for chr in keys(forward)
-            results[chr] = DataFrame(pos=Int[], val=Float64[])
-            d_forward = diff(forward_tex[chr])
-            d_reverse = diff(reverse_tex[chr])
+            result[chr] = DataFrame(pos=Int[], val=Float64[])
+            d_forward = diff(forward[chr])
+            d_reverse = diff(reverse[chr])
             check_forward = d_forward .<= -min_step
             check_reverse = d_reverse .>= min_step
             append!(result[chr], DataFrame(pos=findall(!iszero, check_forward), val=d_forward[check_forward]))
             append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=d_reverse[check_reverse]))
         end
     end
-    for (chr, ts) in results
+    for (chr, ts) in result
         sort!(ts, :pos)
     end
-    return results
+    return result
 end
 
 function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, Vector{Float64}}, terms::Dict{String, Vector{Float64}}; 
