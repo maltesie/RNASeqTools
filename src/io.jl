@@ -86,44 +86,51 @@ function read_annotations(gff_file::String, annotation_types = ["CDS"])::Dict{St
 end
 
 function read_coverage(wig_file::String)
-    coverage = Dict()
+    coverages = Dict[]
     temp_collect = Dict()
-    open(wig_file, 'r') do file
+    track = ""
+    open(wig_file, "r") do file
         for line in eachline(file)
-            startswith(line, "track") && continue
-            if startswith(line, "variableStep")
+            if startswith(line, "track")
+                track = split(split(line, " ")[2],"=")[2]
+                temp_collect[track] = Dict()
+            elseif startswith(line, "variableStep")
                 span = parse(Int, split(split(line, " ")[3],"=")[2]) - 1
                 chr = split(split(line, " ")[2],"=")[2]
-                temp_collect[chr] = Tuple{Int, Float64}[]
+                temp_collect[track][chr] = Tuple{Int, Float64}[]
             else
                 str_index, str_value = split(line, " ")
                 index = parse(Int, index)
                 value = parse(Float64, value)
 
                 for i in index:index+span
-                    push!(temp_collect[chr], (i, value))
+                    push!(temp_collect[track][chr], (i, value))
                 end
             end
         end
-    end
-    for (chr, points) in temp_collect
-        coverage[chr] = zeros(Int, points[end][1])
-        for (index, value) in points
-            coverage[chr][index] = value
+        for (track, collection) in temp_collect
+            coverage = Dict()
+            for (chr, points) in collection
+                coverage[chr] = zeros(Int, points[end][1])
+                for (index, value) in points
+                    coverage[chr][index] = value
+                end
+            end
+            push!(coverages, coverage)
         end
     end
-    return coverage
+    return coverages
 end
 
-function write_coverage(coverages::Vector{Dict}, wig_file::String; track_name="\"\"")
+function write_coverage(coverages::Vector{Dict{String,Vector{Float64}}}, wig_file::String; track_name="\"\"")
 
-    open(wig_file, 'r') do file
+    open(wig_file, "w") do file
         for (i,coverage) in enumerate(coverages)
             println(file, "track type=wiggle_$i name=$track_name")
             for (chr, cov) in coverage
                 println(file, "variableStep chrom=$chr span=1")
                 for (ii,value) in enumerate(cov)
-                    (value == zero(value)) || println(file, "$i $value")
+                    (value == zero(value)) || println(file, "$ii $value")
                 end
             end
         end

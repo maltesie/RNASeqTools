@@ -186,7 +186,7 @@ end
 
 #end
 
-function run_preprocess()
+function run_preprocess_drnaseq()
     read_files = ["/home/malte/Workspace/data/vibrio/drnaseq/tex_01_1.fastq.gz",
     "/home/malte/Workspace/data/vibrio/drnaseq/tex_01_2.fastq.gz",
     "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_1.fastq.gz",
@@ -207,7 +207,7 @@ end
 
 #run_preprocess()
 
-function run_align()
+function run_align_drnaseq()
     read_files = ["/home/malte/Workspace/data/vibrio/drnaseq/tex_01_1_trimmed.fastq.gz",
     "/home/malte/Workspace/data/vibrio/drnaseq/tex_01_2_trimmed.fastq.gz",
     "/home/malte/Workspace/data/vibrio/drnaseq/tex_20_1_trimmed.fastq.gz",
@@ -239,7 +239,7 @@ end
 
 #run_align()
 
-function run_coverage()
+function run_coverage_drnaseq()
 
     folder = "/home/malte/Workspace/data/vibrio/drnaseq/"
 
@@ -260,3 +260,74 @@ function run_coverage()
         write_coverage([coverage_r1, coverage_r2], wigr)
     end
 end
+
+#run_coverage()
+
+function run_preprocess_termseq()
+    read_files = ["/home/malte/Workspace/data/vibrio/termseq/term_1.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/termseq/term_2.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/termseq/term_3.fastq.gz",]
+
+    adapter = fill("AGATCGGAAGAG", 3)
+
+    output_folder = "/home/malte/Workspace/data/vibrio/termseq/"
+
+    fastp_bin_path = "/home/malte/Tools/fastp"
+
+    trim_fastp(read_files, output_folder; adapters=adapter, fastp_bin=fastp_bin_path)
+end
+
+#run_preprocess_termseq()
+
+function run_align_termseq()
+    read_files = ["/home/malte/Workspace/data/vibrio/termseq/term_1_trimmed.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/termseq/term_2_trimmed.fastq.gz",
+    "/home/malte/Workspace/data/vibrio/termseq/term_3_trimmed.fastq.gz",]
+
+    out_files = ["/home/malte/Workspace/data/vibrio/termseq/term_1.bam",
+    "/home/malte/Workspace/data/vibrio/termseq/term_2.bam",
+    "/home/malte/Workspace/data/vibrio/termseq/term_3.bam"]
+
+    reference = "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.fa"
+
+    bwa = "/home/malte/Tools/bwa/bwa"
+
+    sam = "/home/malte/Tools/samtools/bin/samtools"
+
+    for (in_file, out_file) in zip(read_files, out_files)
+        align_backtrack(in_file, out_file, reference; max_miss=3, bwa_bin=bwa, sam_bin=sam, )
+    end
+end
+
+#run_align_termseq()
+
+function run_coverage_termseq()
+
+    folder = "/home/malte/Workspace/data/vibrio/termseq/"
+
+    bam_files = [(joinpath(folder, "term_1.bam"), joinpath(folder, "term_2.bam"), joinpath(folder, "term_3.bam"))]
+
+    wig_files = [(joinpath(folder, "term_f.wig"), joinpath(folder, "term_r.wig"))]
+
+    for ((bam1, bam2, bam3),(wigf, wigr)) in zip(bam_files, wig_files)
+        (coverage_f1, coverage_r1) = coverage(bam1)
+        (coverage_f2, coverage_r2) = coverage(bam2)
+        (coverage_f3, coverage_r3) = coverage(bam3)
+        write_coverage([coverage_f1, coverage_f2, coverage_f3], wigf)
+        write_coverage([coverage_r1, coverage_r2, coverage_r3], wigr)
+    end
+end
+
+#run_coverage_termseq()
+
+run_utr_annotation()
+    gff = "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.gff3"
+    drna_folder = "/home/malte/Workspace/data/vibrio/drnaseq/"
+    term_folder = "/home/malte/Workspace/data/vibrio/termseq/"
+
+    drna_wigs = 
+    
+    annotation = read_annotations(gff)
+
+end
+

@@ -2,7 +2,7 @@ using XAM
 include("utils.jl")
 include("io.jl")
 
-function coverage(bam_file::String; norm=1000000, unique_mappings_only=true)::Dict
+function coverage(bam_file::String; norm=1000000, unique_mappings_only=true)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     ref_lengths = bam_chromosome_lengths(reader)
@@ -21,7 +21,7 @@ function coverage(bam_file::String; norm=1000000, unique_mappings_only=true)::Di
             aux = get_XA_tag(BAM.auxdata(record).data)
             (aux == "-") || continue
         end
-        (strandint(record) == 1) ? (coverage_f[ref][pos:pos+len] .+= 1) : (coverage_r[ref][pos:pos+len] .+= 1)
+        (strandint(record) == 1) ? (coverage_f[ref][pos:pos+len-1] .+= 1) : (coverage_r[ref][pos:pos+len-1] .-= 1)
     end
     close(reader)
     norm_factor = norm/count
@@ -39,12 +39,12 @@ function diff(coverage::Vector{Float64})
     return d
 end
 
-function tss(coverage_fs::Vector{String}, coverage_rs::Vector{String}, tex_fs::Vector{String}, tex_rs::Vector{String}; 
+function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{String}, tex_rs::Vector{String}; 
     min_step=10, min_ratio=1.5)
     result = Dict()
-    for i in 1:length(coverage_fs)
-        forward = read_coverage(coverage_fs[i])
-        reverse = read_coverage(coverage_rs[i])
+    for i in 1:length(notex_fs)
+        forward = read_coverage(notex_fs[i])
+        reverse = read_coverage(notex_rs[i])
         forward_tex = read_coverage(tex_fs[i])
         reverse_tex = read_coverage(tex_rs[i])
         for chr in keys(forward)
@@ -99,5 +99,3 @@ function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, 
         end
     end
 end
-
-#coverage("/home/malte/Workspace/data/test.bam")
