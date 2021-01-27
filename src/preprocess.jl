@@ -2,12 +2,6 @@ using BioSequences
 using FASTX
 using CodecZlib
 
-function write_file(filename::String, content::String)
-    open(filename, "w") do f
-        write(f, content)
-    end
-end
-
 function split_libs(infile1::String, infile2::String, barcodes::Array{String,1}, libnames::Array{String, 1}, 
     output_folder::String; bc_in_file1=true, barcode_length=-1, stop_early=-1, write_report=false)
 
@@ -93,14 +87,14 @@ function split_libs(infile::String, barcodes::Array{String,1}, libnames::Array{S
     write_report && write_file(abspath(output_folder, "demultiplexing_report.txt"), count_string)
 end
 
-function trim_fastp(input_files::Array{String, 1}, output_folder::String; 
-    suffix="_trimmed", adapters::Array{Union{String,Nothing}, 1}=[], fastp_bin="fastp",
-    min_length=25)
+function trim_fastp(input_files::Vector{String}, output_folder::String; 
+    suffix="_trimmed", adapters=String[], fastp_bin="fastp",
+    min_length=25, write_report=false)
 
     record = FASTQ.Record()
     report = ""
     output_files = [split(in_file, ".fastq")[1]*"$(suffix).fastq.gz" for in_file in input_files]
-    isempty(adapters) && (adapters = Array{String, 1}(nothing, length(input_files)))
+    isempty(adapters) && (adapters = fill("", length(input_files)))
     c = 0
     for (in_file, out_file, adapter) in zip(input_files, output_files, adapters)
         
@@ -121,15 +115,15 @@ function trim_fastp(input_files::Array{String, 1}, output_folder::String;
     write_report && write_file(abspath(output_folder, "trimming_report.txt"), report)
 end
 
-function trim_fastp(input_files::Array{Array{String, 1}, 1}, output_folder::String; 
-    suffix="_trimmed", adapters::Array{Union{String,Nothing}, 1}=[], fastp_bin="fastp",
-    min_length=25)
+function trim_fastp(input_files::Vector{Vector{String}}, output_folder::String; 
+    suffix="_trimmed", adapters=String[], fastp_bin="fastp",
+    min_length=25, write_report=false)
 
     record = FASTQ.Record()
     report = ""
     output_files = [[split(in_file1, ".fastq")[1]*"$(suffix).fastq.gz",
             split(in_file2, ".fastq")[1]*"$(suffix).fastq.gz"] for (in_file1, in_file2) in input_files]
-    isempty(adapters) && (adapters = Array{String, 1}(nothing, length(input_files)))
+    isempty(adapters) && (adapters = fill("", length(input_files)))
     c = 0
     for ((in_file1, in_file2), (out_file1, out_file2), adapter) in zip(input_files, output_files, adapters)
         
@@ -149,3 +143,4 @@ function trim_fastp(input_files::Array{Array{String, 1}, 1}, output_folder::Stri
     report *= "$(c) reads in total\n"
     write_report && write_file(abspath(output_folder, "trimming_report.txt"), report)
 end
+

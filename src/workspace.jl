@@ -141,9 +141,9 @@ end
 
 #get_reference_info(bam_file)
 
-function align(sequence_file::String, reference_file::String)
+#function align(sequence_file::String, reference_file::String)
 
-end
+#end
 
 function read_coverage(wig_file::String)
     coverage = Dict()
@@ -181,9 +181,9 @@ end
 
 #read_coverage(wig)
 
-function test_utr_annotation(coverage_files::Array{String, 2})
+#function test_utr_annotation(coverage_files::Array{String, 2})
 
-end
+#end
 
 function run_preprocess()
     read_files = ["/home/malte/Workspace/data/vibrio/drnaseq/tex_01_1.fastq.gz",
