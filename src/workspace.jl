@@ -334,13 +334,13 @@ function run_utr_annotation()
     term_rs = [joinpath(term_folder, "term_r.wig")]
 
     tsss = tss(drna_notex_fs, drna_notex_rs, drna_tex_fs, drna_tex_rs)
-    termss = terms(term_fs, term_rs)
+    #termss = terms(term_fs, term_rs)
     
-    annotation = read_annotations(gff)
+    #annotation = read_annotations(gff)
 
-    annotate_utrs!(annotation, tsss, termss)
+    #annotate_utrs!(annotation, tsss, termss)
 
-    print(annotation)
+    #print(annotation)
 end
 
 run_utr_annotation()

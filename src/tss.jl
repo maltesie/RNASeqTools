@@ -43,10 +43,10 @@ function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{
     min_step=10, min_ratio=1.5)
     result = Dict()
     for i in 1:length(notex_fs)
-        forward = read_coverage(notex_fs[i])
-        reverse = read_coverage(notex_rs[i])
-        forward_tex = read_coverage(tex_fs[i])
-        reverse_tex = read_coverage(tex_rs[i])
+        forward = read_coverage(notex_fs[i])[1]
+        reverse = read_coverage(notex_rs[i])[1]
+        forward_tex = read_coverage(tex_fs[i])[1]
+        reverse_tex = read_coverage(tex_rs[i])[1]
         for chr in keys(forward)
             result[chr] = DataFrame(pos=Int[], val=Float64[])
             d_forward = diff(forward_tex[chr])
