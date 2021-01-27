@@ -86,9 +86,11 @@ function read_annotations(gff_file::String, annotation_types = ["CDS"])::Dict{St
 end
 
 function read_coverage(wig_file::String)
-    coverages = []
+    coverages::Vector{Dict{String,Vector{Float64}}} = []
     temp_collect = Dict()
     track = ""
+    span = 0
+    chr = ""
     open(wig_file, "r") do file
         for line in eachline(file)
             if startswith(line, "track")
@@ -100,9 +102,8 @@ function read_coverage(wig_file::String)
                 temp_collect[track][chr] = Tuple{Int, Float64}[]
             else
                 str_index, str_value = split(line, " ")
-                index = parse(Int, index)
-                value = parse(Float64, value)
-
+                index = parse(Int, str_index)
+                value = parse(Float64, str_value)
                 for i in index:index+span
                     push!(temp_collect[track][chr], (i, value))
                 end
@@ -111,7 +112,7 @@ function read_coverage(wig_file::String)
         for (track, collection) in temp_collect
             coverage = Dict()
             for (chr, points) in collection
-                coverage[chr] = zeros(Int, points[end][1])
+                coverage[chr] = zeros(Float64, points[end][1])
                 for (index, value) in points
                     coverage[chr][index] = value
                 end
@@ -119,8 +120,6 @@ function read_coverage(wig_file::String)
             push!(coverages, coverage)
         end
     end
-    println(typeof(coverages))
-    sleep(0.1)
     return coverages
 end
 
