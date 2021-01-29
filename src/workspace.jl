@@ -7,7 +7,7 @@ using BioAlignments
 
 include("preprocess.jl")
 include("align.jl")
-include("io.jl")
+include("tss.jl")
 
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
@@ -205,7 +205,7 @@ function run_preprocess_drnaseq()
     trim_fastp(read_files, output_folder; adapters=adapter, fastp_bin=fastp_bin_path)
 end
 
-#run_preprocess()
+#run_preprocess_drnaseq()
 
 function run_align_drnaseq()
     read_files = ["/home/malte/Workspace/data/vibrio/drnaseq/tex_01_1_trimmed.fastq.gz",
@@ -237,7 +237,7 @@ function run_align_drnaseq()
     end
 end
 
-#run_align()
+#run_align_drnaseq()
 
 function run_coverage_drnaseq()
 
@@ -256,12 +256,12 @@ function run_coverage_drnaseq()
     for ((bam1, bam2),(wigf, wigr)) in zip(bam_files, wig_files)
         (coverage_f1, coverage_r1) = coverage(bam1)
         (coverage_f2, coverage_r2) = coverage(bam2)
-        write_coverage([coverage_f1, coverage_f2], wigf)
-        write_coverage([coverage_r1, coverage_r2], wigr)
+        write_wig([coverage_f1, coverage_f2], wigf)
+        write_wig([coverage_r1, coverage_r2], wigr)
     end
 end
 
-#run_coverage()
+#run_coverage_drnaseq()
 
 function run_preprocess_termseq()
     read_files = ["/home/malte/Workspace/data/vibrio/termseq/term_1.fastq.gz",
@@ -295,7 +295,7 @@ function run_align_termseq()
     sam = "/home/malte/Tools/samtools/bin/samtools"
 
     for (in_file, out_file) in zip(read_files, out_files)
-        align_backtrack(in_file, out_file, reference; max_miss=3, bwa_bin=bwa, sam_bin=sam, )
+        align_backtrack(in_file, out_file, reference; max_miss=3, bwa_bin=bwa, sam_bin=sam)
     end
 end
 
@@ -310,11 +310,11 @@ function run_coverage_termseq()
     wig_files = [(joinpath(folder, "term_f.wig"), joinpath(folder, "term_r.wig"))]
 
     for ((bam1, bam2, bam3),(wigf, wigr)) in zip(bam_files, wig_files)
-        (coverage_f1, coverage_r1) = coverage(bam1)
-        (coverage_f2, coverage_r2) = coverage(bam2)
-        (coverage_f3, coverage_r3) = coverage(bam3)
-        write_coverage([coverage_f1, coverage_f2, coverage_f3], wigf)
-        write_coverage([coverage_r1, coverage_r2, coverage_r3], wigr)
+        (coverage_f1, coverage_r1) = coverage(bam1, is_reversed=true)
+        (coverage_f2, coverage_r2) = coverage(bam2, is_reversed=true)
+        (coverage_f3, coverage_r3) = coverage(bam3, is_reversed=true)
+        write_wig([coverage_f1, coverage_f2, coverage_f3], wigf)
+        write_wig([coverage_r1, coverage_r2, coverage_r3], wigr)
     end
 end
 
@@ -339,8 +339,13 @@ function run_utr_annotation()
     annotation = read_annotations(gff)
 
     annotate_utrs!(annotation, tsss, termss)
-
-    CSV.write("/home/malte/Workspace/data/vibrio/utr.csv", annotation)
+    for (chr, ann) in annotation
+        CSV.write("/home/malte/Workspace/data/vibrio/utr$chr.csv", ann)
+    end
 end
+
+#run_utr_annotation()
+#drna_folder = "/home/malte/Workspace/data/vibrio/drnaseq/"
+#get_chr_from_wig(joinpath(drna_folder, "tex_01_r.wig"))
 
 run_utr_annotation()

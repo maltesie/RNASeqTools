@@ -40,13 +40,44 @@ function reverse_complement_reads(in_file::String, out_file::String)
     close(writer)
 end
 
-function make_same_length(array1::Vector{Float64}, array2::Vector{Float64})
-    if length(array1) > length(array2)
-        array1 = array1[1:length(array2)]
-    elseif length(array1) < length(array2)
-        array2 = array2[1:length(array1)]
+function join_replicates(coverage_notex::Vector{Dict{String,Vector{Float64}}}, coverage_tex::Vector{Dict{String,Vector{Float64}}}, chr::String)
+    max_tex = maximum([length(c[chr]) for c in coverage_tex])
+    max_notex = maximum([length(c[chr]) for c in coverage_notex])
+    l = max(max_tex, max_notex)
+    nb_reps = length(coverage_tex)
+    tex = zeros(Float64, (l,nb_reps))
+    no_tex = zeros(Float64, (l,nb_reps))
+    for i in 1:nb_reps
+        tex[1:length(coverage_tex[i][chr]),i] = coverage_tex[i][chr]
+        no_tex[1:length(coverage_notex[i][chr]),i] = coverage_notex[i][chr]
     end
-    return array1, array2
+    #open("/home/malte/Workspace/data/log$chr.txt", "a") do file
+    #    println(file, join(["$i\t$a1\t$a2\t$m\t$((a2+a1)/2)" for (i, (a1,a2, m)) in enumerate(zip(tex[1:2050, 1], tex[1:2050, 2], vec(mean(tex[1:2050, :], dims=2))))], '\n'))
+    #end
+    #open("/home/malte/Workspace/data/log2$chr.txt", "a") do file
+    #    println(file, join(["$i\t$a1\t$a2\t$((a2+a1)/2)" for (i, (a1,a2)) in enumerate(zip(coverage_tex[1][chr][1:2050], coverage_tex[2][chr][1:2050]))], '\n'))
+    #end
+    return vec(mean(tex, dims=2)), vec(mean(no_tex, dims=2))
+end
+
+function join_replicates(coverage_term::Vector{Dict{String,Vector{Float64}}}, chr::String)
+    nb_reps = length(coverage_term)
+    l = maximum([length(c[chr]) for c in coverage_term])
+    term = zeros(Float64, (l,nb_reps))
+    for i in 1:nb_reps
+        term[1:length(coverage_term[i][chr]),i] = coverage_term[i][chr]
+    end
+    return vec(mean(term, dims=2))
+end
+
+function get_chr_from_wig(wig_file::String)
+    chrs::Set{String} = Set()
+    open(wig_file, "r") do file
+        for line in eachline(file)
+            startswith(line, "variableStep") && push!(chrs, split(split(line, " ")[2],"=")[2])
+        end
+    end
+    return chrs
 end
 
 function get_position(pos::Int, chr::String, aux::String; reversed=false)::Tuple{Int, String}
