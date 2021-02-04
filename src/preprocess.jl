@@ -143,4 +143,3 @@ function trim_fastp(input_files::Vector{Vector{String}}, output_folder::String;
     report *= "$(c) reads in total\n"
     write_report && write_file(abspath(output_folder, "trimming_report.txt"), report)
 end
-

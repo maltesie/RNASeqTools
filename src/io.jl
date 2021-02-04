@@ -92,8 +92,10 @@ function read_wig(wig_file::String)
     track = ""
     span = 0
     chr = ""
+    text = ""
     open(wig_file, "r") do file
-        for line in eachline(file)
+        lines = readlines(file)
+        for line in lines
             if startswith(line, "track")
                 track = split(split(line, " ")[2],"=")[2]
                 temp_collect[track] = Dict()
@@ -124,16 +126,48 @@ function read_wig(wig_file::String)
     return coverages
 end
 
-function write_wig(coverages::Vector{Dict{String,Vector{Float64}}}, wig_file::String; track_name="\"\"")
+function write_wig(coverage_reps::Vector{Dict{String,Vector{Float64}}}, wig_file::String; track_name="\"\"")
 
     open(wig_file, "w") do file
-        for (i,coverage) in enumerate(coverages)
+        for (i,coverage) in enumerate(coverage_reps)
             println(file, "track type=wiggle_$i name=$track_name")
             for (chr, cov) in coverage
                 println(file, "variableStep chrom=$chr span=1")
                 for (ii,value) in enumerate(cov)
                     (value == zero(value)) || println(file, "$ii $value")
                 end
+            end
+        end
+    end
+end
+
+function read_genomic_fasta(fasta_file::String)
+    genome::Dict{String, String} = Dict()
+    temp_sequence = ""
+    chrs = String[]
+    start_ids = Int[]
+    text = ""
+    open(fasta_file, "r") do file
+        lines = readlines(file)
+        for (i,line) in enumerate(lines)
+            startswith(line, ">") &&  (push!(chrs, split(line," ")[1][2:end]); push!(start_ids, i))
+        end
+        push!(start_ids, length(lines)+1)
+        for (chr, (from,to)) in zip(chrs, [@view(start_ids[i:i+1]) for i in 1:length(start_ids)-1])
+            genome[chr] = join(lines[from+1:to-1])
+        end
+    end
+    return genome
+end
+
+function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; chars_per_row=80)
+    open(fasta_file, "w") do file
+        for (chr, seq) in genome
+            s = String(seq)
+            l = length(s)
+            println(file, "> $chr")
+            for i in 0:Int(length(seq)/chars_per_row)
+                ((i+1)*chars_per_row > l) ? println(s[i*chars_per_row+1:end]) : println(s[i*chars_per_row+1:(i+1)*chars_per_row])
             end
         end
     end
