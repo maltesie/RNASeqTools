@@ -51,12 +51,6 @@ function join_replicates(coverage_notex::Vector{Dict{String,Vector{Float64}}}, c
         tex[1:length(coverage_tex[i][chr]),i] = coverage_tex[i][chr]
         no_tex[1:length(coverage_notex[i][chr]),i] = coverage_notex[i][chr]
     end
-    #open("/home/malte/Workspace/data/log$chr.txt", "a") do file
-    #    println(file, join(["$i\t$a1\t$a2\t$m\t$((a2+a1)/2)" for (i, (a1,a2, m)) in enumerate(zip(tex[1:2050, 1], tex[1:2050, 2], vec(mean(tex[1:2050, :], dims=2))))], '\n'))
-    #end
-    #open("/home/malte/Workspace/data/log2$chr.txt", "a") do file
-    #    println(file, join(["$i\t$a1\t$a2\t$((a2+a1)/2)" for (i, (a1,a2)) in enumerate(zip(coverage_tex[1][chr][1:2050], coverage_tex[2][chr][1:2050]))], '\n'))
-    #end
     return vec(mean(tex, dims=2)), vec(mean(no_tex, dims=2))
 end
 
@@ -111,4 +105,10 @@ function bam_chromosome_names(reader::BAM.Reader)
         push!(chr_names, meta["SN"])
     end
     return chr_names
+end
+
+function translate_positions!(pos::Vector{Int}, trans_dict::Dict{Int, Union{Int, Nothing}})
+    for p in pos
+        p = trans_dict[p]
+    end
 end

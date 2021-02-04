@@ -348,4 +348,116 @@ end
 #drna_folder = "/home/malte/Workspace/data/vibrio/drnaseq/"
 #get_chr_from_wig(joinpath(drna_folder, "tex_01_r.wig"))
 
-run_utr_annotation()
+#run_utr_annotation()
+
+function translate_position_mg1655_to_bw25113(pos::Int)::Union{Nothing, Int}
+    
+    if abs(pos) < 66533
+        return pos
+    
+    elseif (66533 <= abs(pos) <= 70072) 
+        return nothing
+    elseif (70072 < abs(pos) < 257900)
+        return sign(pos) * (abs(pos) - (3540-27)) 
+    
+    elseif (257900 <= abs(pos) <= 258675)
+        return nothing
+    elseif (258675 < abs(pos) < 364356)
+        return sign(pos) * (abs(pos) - ((3540-27)+776)) 
+    
+    elseif (364356 <= abs(pos) <= 366418)
+        return nothing
+    elseif (366418 < abs(pos) <= 371758)
+        return sign(pos) * (abs(pos) - ((3540-27)+776+(2063-585))) 
+    elseif (371758 < abs(pos) < 1299495)
+        return sign(pos) * (abs(pos) - ((3540-27)+776+(2063-585)-1223)) 
+    
+    elseif (1299495 <= abs(pos) <= 1300693)
+        return nothing
+    elseif (1300693 < abs(pos) < 1978495)
+        return sign(pos) * (abs(pos) - ((3540-27)+776+(2063-585)-1223+1199))
+
+    elseif (1978495 <= abs(pos) <= 1979270)
+        return nothing
+    elseif (1979270 < abs(pos) < 2521007)
+        return sign(pos) * (abs(pos) - ((3540-27)+776+(2063-585)-1223+1199+776))
+
+    elseif (2173363 <= abs(pos) <= 2173364)
+        return nothing
+    elseif (2173364 < abs(pos) < 2521007)
+        return sign(pos) * (abs(pos) - ((3540-27)+776+(2063-585)-1223+1199+776+2))
+
+    elseif (2521007 <= abs(pos) <= 2521126)
+        return nothing
+    elseif (2521126 < abs(pos) <= 3560456)
+        return sign(pos) * (abs(pos) - ((3540-27)+776+(2063-585)-1223+1199+776+2+120))
+    elseif (3560456 < abs(pos) < 4093991)
+        return sign(pos) * (abs(pos) - ((3540-27)+776+(2063-585)-1223+1199+776+2+120-1))
+
+    elseif (4093991 <= abs(pos) <= 4097451)
+        return nothing
+    elseif (4097451 < abs(pos) < 4296282)
+        return sign(pos) * (abs(pos) - ((3540-27)+776+(2063-585)-1223+1199+776+2+120-1+(3461-29)))
+
+    elseif (4296282 <= abs(pos) <= 4296392)
+        return nothing
+    elseif (4296392 < abs(pos))
+        return sign(pos) * (abs(pos) - ((3540-27)+776+(2063-585)-1223+1199+776+2+120-1+(3461-29)+111))
+    end
+end
+
+#println(translate_position_mg1655_to_bw25113.([4602509,4233758,1652331,1652331,1652331]))
+
+function run_translation()
+    in_file = "/home/malte/Workspace/Dash/FindFitness/assets/ecoli/srna_mg1655.csv"
+    out_file = "/home/malte/Workspace/Dash/FindFitness/assets/ecoli/srna_bw25113.csv"
+    annotations = CSV.read(in_file, DataFrame)
+
+    annotations[!,:Left] = translate_position_mg1655_to_bw25113.(annotations[!,:Left])
+    annotations[!,:Right] = translate_position_mg1655_to_bw25113.(annotations[!,:Right])
+
+    CSV.write(out_file, annotations)
+end
+
+function translation_dict(from_sequence::String, to_sequence::String)
+    s1 = LongDNASeq(from_sequence)
+    s2 = LongDNASeq(to_sequence)
+    scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
+    res = alignment(pairalign(GlobalAlignment(), s1, s2, scoremodel))
+    trans_dict::Dict{Int, Union{Nothing, Int}} = Dict()
+    from_pos = 1
+    to_pos = 1
+    for (b1, b2) in collect(res)
+        if (b1 == '-')
+            to_pos += 1
+        elseif (b2 == '-')
+            transdict[from_pos] = nothing
+            from_pos += 1
+        else
+            trans_dict[from_pos] = to_pos
+            to_pos += 1
+            from_pos += 1
+        end
+    end
+    return trans_dict
+end
+
+function run_translation2()
+    in_file = "/home/malte/Workspace/Dash/FindFitness/assets/ecoli/sRNAs_BW25113_coordinates.csv"
+    out_file = "/home/malte/Workspace/Dash/FindFitness/assets/ecoli/srna_mg1655_new.csv"
+
+    genome1 = read_genomic_fasta("/home/malte/Workspace/data/ecoli/annotations/bw25113.fna")
+    genome2 = read_genomic_fasta("/home/malte/Workspace/data/ecoli/annotations/mg1655.fna")
+
+    for (chr1, seq1) in genome1, (chr2, seq2) in genome2
+        @time td = translation_dict(seq1[1:5000], seq2[50:5050])
+        #annotations = CSV.read(in_file, DataFrame)
+
+        #translate_positions!(annotations[!,:start])
+        #translate_positions!(annotations[!,:stop])
+
+        #CSV.write(out_file, annotations)
+    end
+end
+
+run_translation2()
