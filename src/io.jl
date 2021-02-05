@@ -36,27 +36,19 @@ end
 function read_bam(bam_file::String; nb_reads::Int = -1)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
-    read_names::Array{String, 1} = []
-    read_poss::Array{Int, 1} = [] 
-    read_chrs::Array{String, 1} = []
-    read_auxs::Array{String, 1} = []
-    read_nms::Array{Int, 1} = []
-    aux_data::Array{UInt8, 1} = []
+    aligned_reads = DataFrame(names=String[], start=Int[], stop=Int[], chr=String[], nm=Int[], aux=String[])
     c::Int = 0
-    cc::Int = 0
     while !eof(reader)
         read!(reader, record)
         !BAM.ismapped(record) && continue
-        push!(read_poss, BAM.position(record)*strandint(record))
-        push!(read_chrs, BAM.refname(record))
-        push!(read_names, BAM.tempname(record))
-        aux_data = BAM.auxdata(record).data 
-        push!(read_nms, get_NM_tag(aux_data))
-        push!(read_auxs, get_XA_tag(aux_data))
+        (start, stop) = sort([BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)])
+        aux_data = BAM.auxdata(record).data
+        append!(aligned_reads, DataFrame(name=BAM.tempname(record), start=start, stop=stop, chr=BAM.refname(record), 
+                                            nm=get_NM_tag(aux_data), aux=get_XA_tag(aux_data)))
         ((nb_reads > 0) & (c >= nb_reads)) && break 
     end
     close(reader)
-    return read_names, read_poss, read_chrs, read_auxs, read_nms
+    return aligned_reads
 end
 
 function read_annotations(gff_file::String, annotation_types = ["CDS"])::Dict{String, DataFrame}
@@ -143,10 +135,8 @@ end
 
 function read_genomic_fasta(fasta_file::String)
     genome::Dict{String, String} = Dict()
-    temp_sequence = ""
     chrs = String[]
     start_ids = Int[]
-    text = ""
     open(fasta_file, "r") do file
         lines = readlines(file)
         for (i,line) in enumerate(lines)
@@ -171,4 +161,16 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; c
             end
         end
     end
+end
+
+function read_reads_fastx(fasta_file::String; fastq=true)
+    reads::Dict{String, String} = Dict()
+    reader = FASTQ.Reader(GzipDecompressorStream(open(fasta_file, "r")))
+    record = FASTQ.Record()
+    while !eof(reader)
+        read!(reader, record)
+        push!(reads, FASTQ.identifier(record)=>FASTQ.sequence(record))
+    end
+    close(reader)
+    return reads
 end
