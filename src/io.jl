@@ -163,7 +163,7 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; c
     end
 end
 
-function read_reads_fastx(fasta_file::String; fastq=true)
+function read_reads_fastq(fasta_file::String; fastq=true)
     reads::Dict{String, String} = Dict()
     reader = FASTQ.Reader(GzipDecompressorStream(open(fasta_file, "r")))
     record = FASTQ.Record()
