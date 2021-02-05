@@ -1,3 +1,5 @@
+include("io.jl")
+
 function align_backtrack(in_file::String, out_file::String, genome_file::String; 
     max_miss=2, bwa_bin="bwa", sam_bin="samtools")
 
@@ -79,5 +81,10 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm("tmp.view")
 end
 
-function align_local(in_file::String, )
+function local_alignment(long_sequence::String, short_sequence::String)
+    s1 = LongDNASeq(long_sequence)
+    s2 = LongDNASeq(short_sequence)
+    scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
+    res = alignment(pairalign(LocalAlignment(), s1, s2, scoremodel))
+    return collect(res)
 end

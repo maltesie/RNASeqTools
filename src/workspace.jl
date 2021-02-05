@@ -442,6 +442,28 @@ function translation_dict(from_sequence::String, to_sequence::String)
     return trans_dict
 end
 
+function local_alignment(long_sequence::String, short_sequence::String)
+    s1 = LongDNASeq(long_sequence)
+    s2 = LongDNASeq(short_sequence)
+    scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
+    res = alignment(pairalign(LocalAlignment(), s1, s2, scoremodel))
+    return collect(res)
+end
+
+function run_local_align()
+    check_sequence = "ATTTCTCTGAGATGTTCGCAAGCGGGCCAGTCCCCTGAGCCGATATTTCATACCACAAGAATGTGGCGCTCCGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGTGAGCATGCTCGGTCCGTCCGAGAAGCCTAAAAACTGCGACGACACATTCACCTTGAACCAAGGGTTCAAGGGTTAAAAAACAGCCTGCGGCGGCATCTCGGAGATTC"
+    @time genome = read_genomic_fasta("/home/malte/Workspace/data/ecoli/annotations/mg1655.fna")
+
+    for (chr1, seq1) in genome
+        @time test = align_local(seq1, check_sequence)
+        for (a, b) in test
+            println("$a $b")
+        end
+    end
+end
+
+#run_local_align()
+
 function run_translation2()
     in_file = "/home/malte/Workspace/Dash/FindFitness/assets/ecoli/sRNAs_BW25113_coordinates.csv"
     out_file = "/home/malte/Workspace/Dash/FindFitness/assets/ecoli/srna_mg1655_new.csv"
@@ -460,4 +482,14 @@ function run_translation2()
     end
 end
 
-#run_translation2()
+function align_levenshtein(in_file::String, genome_file::String)
+    genome = read_genomic_fasta(genome_file)
+    reads = read_reads_fastq(in_file; nb_reads=100)
+
+    for (chr, genome_sequence) in genome, (name,read) in reads
+        @time test = pairalign(LevenshteinDistance(), genome_sequence, read; distance_only=true)
+    end
+end
+
+@time align_levenshtein("/home/malte/Workspace/data/vibrio/drnaseq/notex_01_1_trimmed.fastq.gz", 
+                    "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.fa")

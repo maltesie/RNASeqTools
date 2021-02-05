@@ -51,30 +51,23 @@ function read_bam(bam_file::String; nb_reads::Int = -1)
     return aligned_reads
 end
 
-function read_annotations(gff_file::String, annotation_types = ["CDS"])::Dict{String, DataFrame}
+function read_gff(gff_file::String, annotation_types = ["CDS"])::Dict{String, DataFrame}
     
-    gff = ""
-    open(gff_file) do reader
-        gff = read(reader, String)
-    end
     results::Dict{String, DataFrame} = Dict()
-
-    for line in split(gff, "\n")
-        startswith(line, "#") | isempty(line) && continue
-        chr, _, typ, start, stop, _, strand, _, aux = split(line, "\t")
-        typ in annotation_types || continue
-        if strand == "-"
-            start_int = parse(Int, stop) * -1
-            stop_int = parse(Int, start) * -1
-        else
+    open(gff_file) do file
+        gff = readlines(file)
+        for line in gff
+            startswith(line, "#") && continue
+            chr, _, typ, start, stop, _, strand, _, aux = split(line, "\t")
+            typ in annotation_types || continue
             start_int = parse(Int, start)
             stop_int = parse(Int, stop)
+            (strand == "-") && ((start_int, stop_int) = (-stop_int, -start_int))
+            name = split(aux, ";")[1][6:end]
+            row = DataFrame(name=name, start=start_int, stop=stop_int)
+            chr in keys(results) ? append!(results[chr], row) : results[chr] = row
         end
-        name = split(aux, ";")[1][6:end]
-        row = DataFrame(name=name, start=start_int, stop=stop_int)
-        chr in keys(results) ? append!(results[chr], row) : results[chr] = row
     end
-    
     return results
 end
 
@@ -163,13 +156,16 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; c
     end
 end
 
-function read_reads_fastq(fasta_file::String; fastq=true)
+function read_reads_fastq(fasta_file::String; nb_reads=-1)
     reads::Dict{String, String} = Dict()
     reader = FASTQ.Reader(GzipDecompressorStream(open(fasta_file, "r")))
     record = FASTQ.Record()
+    c = 0
     while !eof(reader)
+        c += 1
         read!(reader, record)
         push!(reads, FASTQ.identifier(record)=>FASTQ.sequence(record))
+        ((nb_reads > 0) & (c >= nb_reads)) && break
     end
     close(reader)
     return reads
