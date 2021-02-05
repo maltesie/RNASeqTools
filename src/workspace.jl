@@ -491,5 +491,48 @@ function align_levenshtein(in_file::String, genome_file::String)
     end
 end
 
-@time align_levenshtein("/home/malte/Workspace/data/vibrio/drnaseq/notex_01_1_trimmed.fastq.gz", 
-                    "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.fa")
+function save_utrs()
+    genome_file = "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.fa"
+    genome = read_genomic_fasta(genome_file)
+    annotation_5 = "/home/malte/Workspace/data/vibrio/utrNC_002505.csv"
+    annotation_6 = "/home/malte/Workspace/data/vibrio/utrNC_002506.csv"
+    annotations = Dict("NC_002505"=>CSV.read(annotation_5, DataFrame), "NC_002506"=>CSV.read(annotation_6, DataFrame))
+    record = FASTA.Record()
+    five_file = "/home/malte/Workspace/data/vibrio/fiveUTR.csv"
+    three_file = "/home/malte/Workspace/data/vibrio/threeUTR.csv"
+    five_writer = FASTA.Writer(open(five_file, "w"))
+    three_writer = FASTA.Writer(open(three_file, "w"))
+    for (chr, sequence) in genome
+        for (i,row) in enumerate(eachrow(annotations[chr]))
+            ((row[:threeType] == "max") || (row[:fiveType] == "max")) || continue
+            name = row["name"]
+            if (row[:threeType] == "max") 
+                (row["start"] < 0) ? 
+                threeUTR = reverse_complement(LongDNASeq(sequence[-row["threeUTR"]:-row["stop"]])) : 
+                threeUTR = sequence[row["stop"]:row["threeUTR"]]
+                if length(threeUTR) > 20
+                    record = FASTA.Record("$(name)", threeUTR)
+                    write(three_writer, record)
+                end
+            end
+            if (row["fiveType"] == "max")
+                (row["start"] < 0) ?
+                fiveUTR = reverse_complement(LongDNASeq(sequence[-row["start"]:-row["fiveUTR"]])) :
+                fiveUTR = sequence[row["fiveUTR"]:row["start"]]
+                if length(fiveUTR) > 20
+                    record = FASTA.Record("$(name)", fiveUTR)
+                    write(five_writer, record)
+                end
+            end
+        end
+    end
+    close(five_writer)
+    close(three_writer)
+end
+
+save_utrs()
+
+
+#@time align_levenshtein("/home/malte/Workspace/data/vibrio/drnaseq/notex_01_1_trimmed.fastq.gz", 
+#                   "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.fa")
+
