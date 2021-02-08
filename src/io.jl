@@ -36,7 +36,7 @@ end
 function read_bam(bam_file::String; nb_reads::Int = -1)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
-    aligned_reads = DataFrame(names=String[], start=Int[], stop=Int[], chr=String[], nm=Int[], aux=String[])
+    aligned_reads = DataFrame(name=String[], start=Int[], stop=Int[], chr=String[], nm=Int[], aux=String[], cigar=String[])
     c::Int = 0
     while !eof(reader)
         read!(reader, record)
@@ -44,7 +44,7 @@ function read_bam(bam_file::String; nb_reads::Int = -1)
         (start, stop) = sort([BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)])
         aux_data = BAM.auxdata(record).data
         append!(aligned_reads, DataFrame(name=BAM.tempname(record), start=start, stop=stop, chr=BAM.refname(record), 
-                                            nm=get_NM_tag(aux_data), aux=get_XA_tag(aux_data)))
+                                            nm=get_NM_tag(aux_data), aux=get_XA_tag(aux_data), cigar=BAM.cigar(record)))
         ((nb_reads > 0) & (c >= nb_reads)) && break 
     end
     close(reader)
@@ -184,7 +184,7 @@ function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{Stri
                 threeUTR = reverse_complement(LongDNASeq(sequence[-row["threeUTR"]:-row["stop"]])) : 
                 threeUTR = sequence[row["stop"]:row["threeUTR"]]
                 if length(threeUTR) > 20
-                    record = FASTA.Record("$(name)", threeUTR)
+                    record = FASTA.Record("$(name)_threeUTR", threeUTR)
                     write(three_writer, record)
                 end
             end
@@ -193,7 +193,7 @@ function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{Stri
                 fiveUTR = reverse_complement(LongDNASeq(sequence[-row["start"]:-row["fiveUTR"]])) :
                 fiveUTR = sequence[row["fiveUTR"]:row["start"]]
                 if length(fiveUTR) > 20
-                    record = FASTA.Record("$(name)", fiveUTR)
+                    record = FASTA.Record("$(name)_fiveUTR", fiveUTR)
                     write(five_writer, record)
                 end
             end

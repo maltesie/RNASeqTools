@@ -81,9 +81,9 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm("tmp.view")
 end
 
-function align_mem(genome_files::Vector{String}, sequence_fasta::String; bwa_bin="bwa", sam_bin="samtools")
+function align_mem(sequence_fasta::String, out_folder::String, genome_files::Vector{String}, ; bwa_bin="bwa", sam_bin="samtools")
     for genome in genome_files
-        out_file = joinpath(dirname(sequence_fasta), join(split(basename(genome), ".")[1:end-1],".") * ".bam")
+        out_file = joinpath(out_folder, join(split(basename(genome), ".")[1:end-1],".") * ".bam")
         align_mem(sequence_fasta, out_file, genome; bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
 end

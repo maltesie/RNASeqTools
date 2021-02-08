@@ -485,14 +485,14 @@ end
 
 function align_levenshtein(in_file::String, genome_file::String)
     genome = read_genomic_fasta(genome_file)
-    reads = read_reads_fastq(in_file; nb_reads=100)
+    reads = read_reads_fastq(in_file)
 
     for (chr, genome_sequence) in genome, (name,read) in reads
         @time test = pairalign(LevenshteinDistance(), genome_sequence, read; distance_only=true)
     end
 end
 
-function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{String,String})
+function run_write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{String,String})
     genome_file = "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.fa"
     genome = read_genomic_fasta(genome_file)
     annotation_5 = "/home/malte/Workspace/data/vibrio/utrNC_002505.csv"
@@ -501,39 +501,54 @@ function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{Stri
     record = FASTA.Record()
     five_file = "/home/malte/Workspace/data/vibrio/fiveUTR.fasta.gz"
     three_file = "/home/malte/Workspace/data/vibrio/threeUTR.fasta.gz"
-    five_writer = FASTA.Writer(GzipCompressorStream(open(five_file, "w")))
-    three_writer = FASTA.Writer(GzipCompressorStream(open(three_file, "w")))
-    for (chr, sequence) in genome
-        for (i,row) in enumerate(eachrow(annotations[chr]))
-            ((row[:threeType] == "max") || (row[:fiveType] == "max")) || continue
-            name = row["name"]
-            if (row[:threeType] == "max") 
-                (row["start"] < 0) ? 
-                threeUTR = reverse_complement(LongDNASeq(sequence[-row["threeUTR"]:-row["stop"]])) : 
-                threeUTR = sequence[row["stop"]:row["threeUTR"]]
-                if length(threeUTR) > 20
-                    record = FASTA.Record("$(name)", threeUTR)
-                    write(three_writer, record)
-                end
-            end
-            if (row["fiveType"] == "max")
-                (row["start"] < 0) ?
-                fiveUTR = reverse_complement(LongDNASeq(sequence[-row["start"]:-row["fiveUTR"]])) :
-                fiveUTR = sequence[row["fiveUTR"]:row["start"]]
-                if length(fiveUTR) > 20
-                    record = FASTA.Record("$(name)", fiveUTR)
-                    write(five_writer, record)
-                end
-            end
-        end
-    end
-    close(five_writer)
-    close(three_writer)
+    write_utrs_fasta()
 end
 
-save_utrs()
+#save_utrs()
 
+function run_multi_genome_align()
+    genome_folder = "/home/malte/Data/vibrio/genomes/"
+    genomes = [joinpath(genome_folder, file) for file in readdir(genome_folder) if endswith(file, ".fna")]
 
-#@time align_levenshtein("/home/malte/Workspace/data/vibrio/drnaseq/notex_01_1_trimmed.fastq.gz", 
-#                   "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.fa")
+    fiveutrs = "/home/malte/Workspace/ConservedUTRs/fiveUTR.fasta.gz"
+    threeutrs = "/home/malte/Workspace/ConservedUTRs/threeUTR.fasta.gz"
 
+    fivefolder = "/home/malte/Workspace/ConservedUTRs/fiveUTRs/"
+    threefolder = "/home/malte/Workspace/ConservedUTRs/threeUTRs/"
+
+    bwa_bin="/home/malte/Tools/bwa/bwa"
+    sam_bin="/home/malte/Tools/samtools/bin/samtools"
+
+    align_mem(fiveutrs, fivefolder, genomes; bwa_bin=bwa_bin, sam_bin=sam_bin)
+    align_mem(threeutrs, threefolder, genomes; bwa_bin=bwa_bin, sam_bin=sam_bin)
+end
+
+#run_multi_genome_align()
+
+function conservation_table(bam_files::Vector{String})
+    
+    names = [join(split(basename(file),".")[1:end-1], ".") for file in bam_files]
+    table = DataFrame(merge(Dict("name"=>String[], "sum"=>Int[]), Dict(name=>Int[] for name in names)))
+    for (file, name) in zip(bam_files, names)
+        alignments = read_bam(file)
+        for row in eachrow(alignments)
+            (row[:name] in table[!,:name]) || append!(table, DataFrame(merge(Dict("name"=>row[:name], "sum"=>0), Dict(name=>-1 for name in names))))
+            table[table.name .== row[:name], Symbol(name)] .= row[:nm]
+        end
+    end
+    return table
+end
+
+function run_constervation_table()
+    five_folder = "/home/malte/Workspace/ConservedUTRs/fiveUTRs/"
+    five_files = [joinpath(five_folder, file) for file in readdir(five_folder) if endswith(file, ".bam")]
+    three_folder = "/home/malte/Workspace/ConservedUTRs/threeUTRs/"
+    three_files = [joinpath(three_folder, file) for file in readdir(three_folder) if endswith(file, ".bam")]
+
+    five_table = conservation_table(five_files)
+    three_table = conservation_table(three_files)
+    CSV.write("/home/malte/Workspace/ConservedUTRs/fiveUTR_table.csv", five_table)
+    CSV.write("/home/malte/Workspace/ConservedUTRs/threeUTR_table.csv", three_table)
+end
+
+run_constervation_table()
