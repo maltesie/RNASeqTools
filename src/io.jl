@@ -170,3 +170,35 @@ function read_reads_fastq(fasta_file::String; nb_reads=-1)
     close(reader)
     return reads
 end
+
+function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{String,String}, threeUTR_fasta::String, fiveUTR_fasta::String)
+    record = FASTA.Record()
+    five_writer = FASTA.Writer(GzipCompressorStream(open(fiveUTR_fasta, "w")))
+    three_writer = FASTA.Writer(GzipCompressorStream(open(threeUTR_fasta, "w")))
+    for (chr, sequence) in genome
+        for (i,row) in enumerate(eachrow(annotations[chr]))
+            ((row[:threeType] == "max") || (row[:fiveType] == "max")) || continue
+            name = row["name"]
+            if (row[:threeType] == "max") 
+                (row["start"] < 0) ? 
+                threeUTR = reverse_complement(LongDNASeq(sequence[-row["threeUTR"]:-row["stop"]])) : 
+                threeUTR = sequence[row["stop"]:row["threeUTR"]]
+                if length(threeUTR) > 20
+                    record = FASTA.Record("$(name)", threeUTR)
+                    write(three_writer, record)
+                end
+            end
+            if (row["fiveType"] == "max")
+                (row["start"] < 0) ?
+                fiveUTR = reverse_complement(LongDNASeq(sequence[-row["start"]:-row["fiveUTR"]])) :
+                fiveUTR = sequence[row["fiveUTR"]:row["start"]]
+                if length(fiveUTR) > 20
+                    record = FASTA.Record("$(name)", fiveUTR)
+                    write(five_writer, record)
+                end
+            end
+        end
+    end
+    close(five_writer)
+    close(three_writer)
+end
