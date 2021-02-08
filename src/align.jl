@@ -81,6 +81,13 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm("tmp.view")
 end
 
+function align_mem(genome_files::Vector{String}, sequence_fasta::String; bwa_bin="bwa", sam_bin="samtools")
+    for genome in genome_files
+        out_file = joinpath(dirname(sequence_fasta), join(split(basename(genome), ".")[1:end-1],".") * ".bam")
+        align_mem(sequence_fasta, out_file, genome; bwa_bin=bwa_bin, sam_bin=sam_bin)
+    end
+end
+
 function local_alignment(long_sequence::String, short_sequence::String)
     s1 = LongDNASeq(long_sequence)
     s2 = LongDNASeq(short_sequence)
@@ -88,3 +95,5 @@ function local_alignment(long_sequence::String, short_sequence::String)
     res = alignment(pairalign(LocalAlignment(), s1, s2, scoremodel))
     return collect(res)
 end
+
+

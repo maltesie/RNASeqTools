@@ -4,6 +4,7 @@ using XLSX
 using Statistics
 using XAM
 using BioAlignments
+using CodecZlib
 
 include("preprocess.jl")
 include("align.jl")
@@ -491,17 +492,17 @@ function align_levenshtein(in_file::String, genome_file::String)
     end
 end
 
-function save_utrs()
+function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{String,String})
     genome_file = "/home/malte/Workspace/data/vibrio/annotation/NC_002505_6.fa"
     genome = read_genomic_fasta(genome_file)
     annotation_5 = "/home/malte/Workspace/data/vibrio/utrNC_002505.csv"
     annotation_6 = "/home/malte/Workspace/data/vibrio/utrNC_002506.csv"
     annotations = Dict("NC_002505"=>CSV.read(annotation_5, DataFrame), "NC_002506"=>CSV.read(annotation_6, DataFrame))
     record = FASTA.Record()
-    five_file = "/home/malte/Workspace/data/vibrio/fiveUTR.csv"
-    three_file = "/home/malte/Workspace/data/vibrio/threeUTR.csv"
-    five_writer = FASTA.Writer(open(five_file, "w"))
-    three_writer = FASTA.Writer(open(three_file, "w"))
+    five_file = "/home/malte/Workspace/data/vibrio/fiveUTR.fasta.gz"
+    three_file = "/home/malte/Workspace/data/vibrio/threeUTR.fasta.gz"
+    five_writer = FASTA.Writer(GzipCompressorStream(open(five_file, "w")))
+    three_writer = FASTA.Writer(GzipCompressorStream(open(three_file, "w")))
     for (chr, sequence) in genome
         for (i,row) in enumerate(eachrow(annotations[chr]))
             ((row[:threeType] == "max") || (row[:fiveType] == "max")) || continue
