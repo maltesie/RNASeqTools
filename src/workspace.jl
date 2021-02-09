@@ -507,48 +507,58 @@ end
 #save_utrs()
 
 function run_multi_genome_align()
-    genome_folder = "/home/malte/Data/vibrio/genomes/"
+    genome_folder = "/home/abc/Data/vibrio/genomes/"
     genomes = [joinpath(genome_folder, file) for file in readdir(genome_folder) if endswith(file, ".fna")]
 
-    fiveutrs = "/home/malte/Workspace/ConservedUTRs/fiveUTR.fasta.gz"
-    threeutrs = "/home/malte/Workspace/ConservedUTRs/threeUTR.fasta.gz"
+    fiveutrs = "/home/abc/Workspace/ConservedUTRs/fiveUTR.fasta.gz"
+    threeutrs = "/home/abc/Workspace/ConservedUTRs/threeUTR.fasta.gz"
 
-    fivefolder = "/home/malte/Workspace/ConservedUTRs/fiveUTRs/"
-    threefolder = "/home/malte/Workspace/ConservedUTRs/threeUTRs/"
+    fivefolder = "/home/abc/Workspace/ConservedUTRs/fiveUTRs/"
+    threefolder = "/home/abc/Workspace/ConservedUTRs/threeUTRs/"
 
-    bwa_bin="/home/malte/Tools/bwa/bwa"
-    sam_bin="/home/malte/Tools/samtools/bin/samtools"
-
-    align_mem(fiveutrs, fivefolder, genomes; bwa_bin=bwa_bin, sam_bin=sam_bin)
-    align_mem(threeutrs, threefolder, genomes; bwa_bin=bwa_bin, sam_bin=sam_bin)
+    align_mem(fiveutrs, fivefolder, genomes)
+    align_mem(threeutrs, threefolder, genomes)
 end
 
 #run_multi_genome_align()
 
 function conservation_table(bam_files::Vector{String})
-    
-    names = [join(split(basename(file),".")[1:end-1], ".") for file in bam_files]
-    table = DataFrame(merge(Dict("name"=>String[], "sum"=>Int[]), Dict(name=>Int[] for name in names)))
+    name_trans = Dict(
+     "GCF_000011805.1_ASM1180v1_genomic" => "Aliivibrio fischeri ES114",
+     "GCF_000024825.1_ASM2482v1_genomic" => "Vibrio antiquarius",
+     "GCF_000039765.1_ASM3976v1_genomic" => "Vibrio vulnificus CMCP6",
+     "GCF_000184325.1_ASM18432v1_genomic" => "Vibrio furnissii NCTC 11218",
+     "GCF_000196095.1_ASM19609v1_genomic" => "Vibrio parahaemolyticus RIMD 2210633",
+     "GCF_000196495.1_ASM19649v1_genomic" => "Aliivibrio salmonicida LFI1238",
+     "GCF_000217675.1_ASM21767v1_genomic" => "Vibrio anguillarum 775",
+     "GCF_000241385.1_ASM24138v1_genomic" => "Vibrio sp. EJY3",
+     "GCF_001558435.2_ASM155843v2_genomic" => "Vibrio harveyi FDAARGOS_107",
+     "GCF_011212705.1_ASM1121270v1_genomic" => "Vibrio coralliilyticus OCN008",
+     "GCF_900205735.1_N16961_v2_genomic" => "Vibrio cholerae N16961",
+    )
+    names = [name_trans[name] for name in [join(split(basename(file),".")[1:end-1], ".") for file in bam_files]]
+    table = DataFrame(merge(Dict("name"=>String[], "score"=>Float64[]), Dict(name=>Int[] for name in names)))
     for (file, name) in zip(bam_files, names)
         alignments = read_bam(file)
         for row in eachrow(alignments)
-            (row[:name] in table[!,:name]) || append!(table, DataFrame(merge(Dict("name"=>row[:name], "sum"=>0), Dict(name=>-1 for name in names))))
+            (row[:name] in table[!,:name]) || append!(table, DataFrame(merge(Dict("name"=>row[:name], "score"=>0.0), Dict(name=>-1 for name in names))))
             table[table.name .== row[:name], Symbol(name)] .= row[:nm]
+            table[table.name .== row[:name], :score] .+= 1 - row[:nm]/50
         end
     end
     return table
 end
 
 function run_constervation_table()
-    five_folder = "/home/malte/Workspace/ConservedUTRs/fiveUTRs/"
+    five_folder = "/home/abc/Workspace/ConservedUTRs/fiveUTRs/"
     five_files = [joinpath(five_folder, file) for file in readdir(five_folder) if endswith(file, ".bam")]
-    three_folder = "/home/malte/Workspace/ConservedUTRs/threeUTRs/"
+    three_folder = "/home/abc/Workspace/ConservedUTRs/threeUTRs/"
     three_files = [joinpath(three_folder, file) for file in readdir(three_folder) if endswith(file, ".bam")]
 
     five_table = conservation_table(five_files)
     three_table = conservation_table(three_files)
-    CSV.write("/home/malte/Workspace/ConservedUTRs/fiveUTR_table.csv", five_table)
-    CSV.write("/home/malte/Workspace/ConservedUTRs/threeUTR_table.csv", three_table)
+    CSV.write("/home/abc/Workspace/ConservedUTRs/fiveUTR_table.csv", five_table)
+    CSV.write("/home/abc/Workspace/ConservedUTRs/threeUTR_table.csv", three_table)
 end
 
 run_constervation_table()

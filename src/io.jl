@@ -126,12 +126,33 @@ function write_wig(coverage_reps::Vector{Dict{String,Vector{Float64}}}, wig_file
     end
 end
 
+abstract type SequenceContainer{T} end
+
+mutable struct Genome{T} <: SequenceContainer{T}
+    seqs::Dict{String, LongDNASeq}
+    spec::String
+    function Genome{T}(sequence_dict::Dict{String, LongDNASeq}, species::String) where T
+        return new(sequence_dict, species)
+    end
+end
+
+function Genome(genome_fasta::String)
+    (name, sequences) = read_genomic_fasta(genome_fasta)
+    return Genome(Dict(key=>LongDNASeq(value) for (key, value) in sequences), name)
+end
+
+function Base.write(file::String, genome::Genome)
+    write_genomic_fasta(Dict(key=>String(value) for (key, value) in genome.seqs), file; name=genome.spec)
+end
+
 function read_genomic_fasta(fasta_file::String)
     genome::Dict{String, String} = Dict()
     chrs = String[]
     start_ids = Int[]
+    name = ""
     open(fasta_file, "r") do file
         lines = readlines(file)
+        startswith(line[1], ">") && (name = split(join(split(line[1])[2:end]), "hromosome")[1][1:end-2])
         for (i,line) in enumerate(lines)
             startswith(line, ">") &&  (push!(chrs, split(line," ")[1][2:end]); push!(start_ids, i))
         end
@@ -140,21 +161,22 @@ function read_genomic_fasta(fasta_file::String)
             genome[chr] = join(lines[from+1:to-1])
         end
     end
-    return genome
+    return name, genome
 end
 
-function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; chars_per_row=80)
+function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; name="", chars_per_row=80)
     open(fasta_file, "w") do file
-        for (chr, seq) in genome
+        for (i, (chr, seq)) in enumerate(genome)
             s = String(seq)
             l = length(s)
-            println(file, "> $chr")
+            !isempty(name) ? println(file, ">$chr chromosome $i") : println(file, ">$chr $name chromosome $i")
             for i in 0:Int(length(seq)/chars_per_row)
                 ((i+1)*chars_per_row > l) ? println(s[i*chars_per_row+1:end]) : println(s[i*chars_per_row+1:(i+1)*chars_per_row])
             end
         end
     end
 end
+
 
 function read_reads_fastq(fasta_file::String; nb_reads=-1)
     reads::Dict{String, String} = Dict()
