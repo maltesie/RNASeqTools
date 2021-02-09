@@ -33,6 +33,13 @@ end
     return "-"
 end
 
+function merge_bam_row!(a::DataFrameRow, b::DataFrameRow)
+    (start1, stop1, start2, stop2) = sort([a[:start], a[:stop], b[:start], b[:stop]])
+    a[:start] = start1
+    a[:stop] = stop2
+    a[:nm] = a[:nm] + b[:nm] + start2 - stop1
+end
+
 function read_bam(bam_file::String; nb_reads::Int = -1)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
@@ -43,8 +50,10 @@ function read_bam(bam_file::String; nb_reads::Int = -1)
         !BAM.ismapped(record) && continue
         (start, stop) = sort([BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)])
         aux_data = BAM.auxdata(record).data
-        append!(aligned_reads, DataFrame(name=BAM.tempname(record), start=start, stop=stop, chr=BAM.refname(record), 
-                                            nm=get_NM_tag(aux_data), aux=get_XA_tag(aux_data), cigar=BAM.cigar(record)))
+        new_row = DataFrame(name=BAM.tempname(record), start=start, stop=stop, chr=BAM.refname(record), 
+                            nm=get_NM_tag(aux_data), aux=get_XA_tag(aux_data), cigar=BAM.cigar(record))
+        index = aligned_reads[!, :name] .== new_row[1, :name]
+        (sum(index) > 0) ? merge_bam_row!(@view(aligned_reads[argmax(index), :]), new_row[1, :]) : append!(aligned_reads, new_row)
         ((nb_reads > 0) & (c >= nb_reads)) && break 
     end
     close(reader)

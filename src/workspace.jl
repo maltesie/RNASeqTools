@@ -537,13 +537,16 @@ function conservation_table(bam_files::Vector{String})
      "GCF_900205735.1_N16961_v2_genomic" => "Vibrio cholerae N16961",
     )
     names = [name_trans[name] for name in [join(split(basename(file),".")[1:end-1], ".") for file in bam_files]]
-    table = DataFrame(merge(Dict("name"=>String[], "score"=>Float64[]), Dict(name=>Int[] for name in names)))
+    table = DataFrame(merge(Dict("name"=>String[], "score"=>Float64[]), Dict(name=>Union{Missing,Int}[] for name in names)))
     for (file, name) in zip(bam_files, names)
         alignments = read_bam(file)
         for row in eachrow(alignments)
-            (row[:name] in table[!,:name]) || append!(table, DataFrame(merge(Dict("name"=>row[:name], "score"=>0.0), Dict(name=>-1 for name in names))))
+            (row[:name] in table[!,:name]) || append!(table, DataFrame(merge(Dict("name"=>row[:name], "score"=>0.0), Dict(name=>missing for name in names))))
             table[table.name .== row[:name], Symbol(name)] .= row[:nm]
-            table[table.name .== row[:name], :score] .+= 1 - row[:nm]/50
+            table[table.name .== row[:name], :score] .+= (1.0 - Float64(row[:nm])/50.0)
+            #(table[table.name .== row[:name], :score][1] > 10) &&  println((1.0 - Float64(row[:nm])/50.0), " $name $(row[:name])")
+            #((1.0 - Float64(row[:nm])/50.0) > 1) && println((1.0 - Float64(row[:nm])/50.0), " $name $(row[:name])")
+            #(sum(table.name .== row[:name]) > 1) && println("$name $nb_hits")
         end
     end
     return table
