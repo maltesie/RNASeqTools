@@ -196,8 +196,6 @@ struct FastaReads <: SequenceContainer
     end
 end
 
-function
-
 struct FastqReads <: SequenceContainer
     seqs::Dict{String, LongDNASeq}
     qual::Dict{String, Vector{UInt8}}
@@ -207,8 +205,6 @@ struct FastqReads <: SequenceContainer
         return new(sequence_dict, quality_dict, description)
     end
 end
-
-function
 
 function read_reads_fastq(fasta_file::String; nb_reads=-1)
     reads::Dict{String, String} = Dict()
