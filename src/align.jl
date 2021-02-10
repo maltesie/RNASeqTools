@@ -88,12 +88,15 @@ function align_mem(sequence_fasta::String, out_folder::String, genome_files::Vec
     end
 end
 
-function local_alignment(long_sequence::String, short_sequence::String)
-    s1 = LongDNASeq(long_sequence)
-    s2 = LongDNASeq(short_sequence)
+function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq)
     scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
-    res = alignment(pairalign(LocalAlignment(), s1, s2, scoremodel))
-    return collect(res)
+    res = alignment(pairalign(LocalAlignment(), reference_sequence, query_sequence, scoremodel))
+    return res
 end
 
-
+function align_local(sequence_fasta::String, out_folder::String, genome_files::Vector{String})
+    sequences = 
+    for genome_file in genome_files
+        genome = Genome(genome_file)
+        for (chr, ref_seq) in genome.seqs
+            for 

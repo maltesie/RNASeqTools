@@ -1,5 +1,10 @@
 using XAM
 
+function Genome(genome_fasta::String)
+    (name, sequences) = read_genomic_fasta(genome_fasta)
+    return Genome(Dict(key=>LongDNASeq(value) for (key, value) in sequences), name)
+end
+
 function write_file(filename::String, content::String)
     open(filename, "w") do f
         write(f, content)
@@ -135,19 +140,15 @@ function write_wig(coverage_reps::Vector{Dict{String,Vector{Float64}}}, wig_file
     end
 end
 
-abstract type SequenceContainer{T} end
+abstract type SequenceContainer end
 
-mutable struct Genome{T} <: SequenceContainer{T}
+struct Genome <: SequenceContainer
     seqs::Dict{String, LongDNASeq}
     spec::String
-    function Genome{T}(sequence_dict::Dict{String, LongDNASeq}, species::String) where T
+    
+    function Genome(sequence_dict::Dict{String, LongDNASeq}, species::String)
         return new(sequence_dict, species)
     end
-end
-
-function Genome(genome_fasta::String)
-    (name, sequences) = read_genomic_fasta(genome_fasta)
-    return Genome(Dict(key=>LongDNASeq(value) for (key, value) in sequences), name)
 end
 
 function Base.write(file::String, genome::Genome)
@@ -186,6 +187,28 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
     end
 end
 
+struct FastaReads <: SequenceContainer
+    seqs::Dict{String, LongDNASeq}
+    desc::String
+
+    function FastaReads(sequence_dict::Dict{String,LongDNASeq}, description::String)
+        return new(sequence_dict, description)
+    end
+end
+
+function
+
+struct FastqReads <: SequenceContainer
+    seqs::Dict{String, LongDNASeq}
+    qual::Dict{String, Vector{UInt8}}
+    desc::String
+
+    function FastaReads(sequence_dict::Dict{String,LongDNASeq}, quality_dict::Dict{String, Vector{UInt8}}, description::String)
+        return new(sequence_dict, quality_dict, description)
+    end
+end
+
+function
 
 function read_reads_fastq(fasta_file::String; nb_reads=-1)
     reads::Dict{String, String} = Dict()
