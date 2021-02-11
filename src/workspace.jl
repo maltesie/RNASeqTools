@@ -439,14 +439,6 @@ function translation_dict(from_sequence::String, to_sequence::String)
     return trans_dict
 end
 
-function local_alignment(long_sequence::String, short_sequence::String)
-    s1 = LongDNASeq(long_sequence)
-    s2 = LongDNASeq(short_sequence)
-    scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
-    res = alignment(pairalign(LocalAlignment(), s1, s2, scoremodel))
-    return collect(res)
-end
-
 function run_local_align()
     check_sequence = "ATTTCTCTGAGATGTTCGCAAGCGGGCCAGTCCCCTGAGCCGATATTTCATACCACAAGAATGTGGCGCTCCGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGTGAGCATGCTCGGTCCGTCCGAGAAGCCTAAAAACTGCGACGACACATTCACCTTGAACCAAGGGTTCAAGGGTTAAAAAACAGCCTGCGGCGGCATCTCGGAGATTC"
     @time genome = read_genomic_fasta("/home/malte/Workspace/data/ecoli/annotations/mg1655.fna")
