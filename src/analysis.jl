@@ -1,5 +1,3 @@
-using XAM
-
 @inline function isproperpair(record::BAM.Record)::Bool
     return (BAM.flag(record) & SAM.FLAG_PROPER_PAIR) != 0
 end

@@ -1,10 +1,4 @@
-using DataFrames
-using CSV
-using XLSX
-using Statistics
-using XAM
-using BioAlignments
-using CodecZlib
+using RNASeqTools
 
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
@@ -553,6 +547,8 @@ function run_constervation_table()
 end
 
 #run_constervation_table()
+
+include("align.jl")
 
 function run_local_alignment()
     fasta = "/home/abc/Workspace/ConservedUTRs/threeUTR.fasta.gz"

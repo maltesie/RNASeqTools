@@ -1,8 +1,3 @@
-using XAM
-using DataFrames
-include("utils.jl")
-include("io.jl")
-
 function coverage(bam_file::String; norm=10000000, is_reversed=false, unique_mappings_only=true)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")

@@ -1,7 +1,3 @@
-using BioSequences
-using FASTX
-using CodecZlib
-
 function split_libs(infile1::String, infile2::String, barcodes::Array{String,1}, libnames::Array{String, 1}, 
     output_folder::String; bc_in_file1=true, barcode_length=-1, stop_early=-1, write_report=false)
 

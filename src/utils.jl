@@ -1,7 +1,3 @@
-using FASTX
-using CodecZlib
-using BioSequences
-
 function combine_gffs(gff_files::Array{String, 1}; out_file="out.gff3")
     writer = open(out_file, "w")
     for gff_in_file in gff_files

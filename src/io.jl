@@ -1,5 +1,3 @@
-using XAM
-
 function write_file(filename::String, content::String)
     open(filename, "w") do f
         write(f, content)
