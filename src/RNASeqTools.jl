@@ -12,6 +12,5 @@ include("preprocess.jl")
 include("io.jl")
 include("utils.jl")
 include("rilseq.jl")
-include("workspace.jl")
 
 end # module

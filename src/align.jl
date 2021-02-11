@@ -1,3 +1,5 @@
+using BioSequences
+
 function align_backtrack(in_file::String, out_file::String, genome_file::String; 
     max_miss=2, bwa_bin="bwa", sam_bin="samtools")
 
