@@ -88,15 +88,21 @@ end
 
 function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq)
     scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
-    res = alignment(pairalign(LocalAlignment(), reference_sequence, query_sequence, scoremodel))
+    res = pairalign(LocalAlignment(), reference_sequence, query_sequence, scoremodel)
     return res
 end
 
 function align_local(sequence_fasta::String, out_folder::String, genome_files::Vector{String})
-    sequences = 
+    occursin(sequence_fasta, ".fasta") ? reads = FastaReads(sequence_fasta) : reads = FastqReads(sequence_fasta)
     for genome_file in genome_files
         genome = Genome(genome_file)
+        already_found = Int[]
         for (chr, ref_seq) in genome.seqs
+            for (i, (name, seq)) in enumerate(reads.seqs)
+                (i in already_found) && continue
+                @time pairwise_result = local_alignment(ref_seq, seq)
+                hasalignment(pairwise_result) && print(alignment(pairwise_result))
+            end
         end
     end
 end
