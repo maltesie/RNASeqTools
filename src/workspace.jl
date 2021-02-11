@@ -560,4 +560,13 @@ function run_constervation_table()
     CSV.write("/home/abc/Workspace/ConservedUTRs/threeUTR_table.csv", three_table)
 end
 
-run_constervation_table()
+#run_constervation_table()
+
+function run_local_alignment()
+    fasta = "/home/abc/Workspace/ConservedUTRs/threeUTR.fasta.gz"
+    outfolder = "/home/abc/Workspace/ConservedUTRs/alignments"
+    genome = "/home/abc/Data/vibrio/genome/NC_016602_3.fna"
+    align_local(fasta, outfolder, [genome])
+end
+
+run_local_alignment()
