@@ -1,5 +1,3 @@
-include("io.jl")
-
 function align_backtrack(in_file::String, out_file::String, genome_file::String; 
     max_miss=2, bwa_bin="bwa", sam_bin="samtools")
 
@@ -99,4 +97,6 @@ function align_local(sequence_fasta::String, out_folder::String, genome_files::V
     for genome_file in genome_files
         genome = Genome(genome_file)
         for (chr, ref_seq) in genome.seqs
-            for 
+        end
+    end
+end

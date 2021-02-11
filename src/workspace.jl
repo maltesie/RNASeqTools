@@ -6,10 +6,6 @@ using XAM
 using BioAlignments
 using CodecZlib
 
-include("preprocess.jl")
-include("align.jl")
-include("tss.jl")
-
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
     chrs = [val==1 ? "NC_002505" : "NC_002506" for val in df[!, :Chromosome]]
