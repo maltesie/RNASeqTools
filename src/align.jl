@@ -79,29 +79,33 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm("tmp.view")
 end
 
-function align_mem(sequence_fasta::String, out_folder::String, genome_files::Vector{String}; bwa_bin="bwa", sam_bin="samtools")
+function align_mem(sequence_fasta::String, genome_files::Vector{String}, out_folder::String; bwa_bin="bwa", sam_bin="samtools")
     for genome in genome_files
         out_file = joinpath(out_folder, join(split(basename(genome), ".")[1:end-1],".") * ".bam")
         align_mem(sequence_fasta, out_file, genome; bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
 end
 
-function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq)
-    scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
-    res = pairalign(LocalAlignment(), reference_sequence, query_sequence, scoremodel)
+function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)
+    res = pairalign(LocalAlignment(), query_sequence, reference_sequence, scoremodel)
     return res
 end
 
-function align_local(sequence_fasta::String, out_folder::String, genome_files::Vector{String})
-    occursin(sequence_fasta, ".fasta") ? reads = FastaReads(sequence_fasta) : reads = FastqReads(sequence_fasta)
+function align_local(sequence_fasta::String, genome_files::Vector{String}, out_file::String)
+    occursin(".fasta", sequence_fasta) ? reads = FastaReads(sequence_fasta) : reads = FastqReads(sequence_fasta)
+    scoremodel = AffineGapScoreModel(match=5, mismatch=-1, gap_open=-3, gap_extend=-3)
+    alignment_table = DataFrame(name=String[], start=Int[], stop=Int[], length=Int[], sequence=String[])
     for genome_file in genome_files
         genome = Genome(genome_file)
-        already_found = Int[]
-        for (chr, ref_seq) in genome.seqs
-            for (i, (name, seq)) in enumerate(reads.seqs)
-                (i in already_found) && continue
-                @time pairwise_result = local_alignment(ref_seq, seq)
-                hasalignment(pairwise_result) && print(alignment(pairwise_result))
+        alignment_table[Symbol(genome.spec * "_sequence")] = fill("", nrow(alignment_table))
+        alignment_table[Symbol(genome.spec * "_score")]::Union{Missing, Int} = fill(missing, nrow(alignment_table))
+        for (i, (name, seq)) in enumerate(reads.seqs)
+            pairwise_result = local_alignment(genome.seq, seq, scoremodel)
+            if hasalignment(pairwise_result)
+                a = alignment(pairwise_result)
+                pairs = collect(a)
+                qa = join([p[1] for p in pairs])
+                ra = join([p[1] for p in pairs])
             end
         end
     end

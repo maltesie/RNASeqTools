@@ -134,17 +134,26 @@ function write_wig(coverage_reps::Vector{Dict{String,Vector{Float64}}}, wig_file
 end
 
 struct Genome <: SequenceContainer
-    seqs::Dict{String, LongDNASeq}
+    seq::LongDNASeq
+    chrs::Dict{String, UnitRange{Int}}
     spec::String
 end
 
 function Genome(genome_fasta::String)
     (name, sequences) = read_genomic_fasta(genome_fasta)
-    return Genome(Dict(key=>LongDNASeq(value) for (key, value) in sequences), name)
+    chrs::Dict{String,UnitRange{Int}} = Dict()
+    seq = ""
+    temp_start = 1
+    for (chr, sequence) in sequences
+        chrs[chr] = temp_start:(temp_start+length(seq)-1)
+        temp_start += length(seq)
+        seq *= sequence
+    end
+    return Genome(LongDNASeq(seq), chrs, name)
 end
 
 function Base.write(file::String, genome::Genome)
-    write_genomic_fasta(Dict(key=>String(value) for (key, value) in genome.seqs), file; name=genome.spec)
+    write_genomic_fasta(Dict(chr=>String(genome.seq[s]) for (chr, s) in genome.chrs), file; name=genome.spec)
 end
 
 function read_genomic_fasta(fasta_file::String)
@@ -154,7 +163,7 @@ function read_genomic_fasta(fasta_file::String)
     name = ""
     open(fasta_file, "r") do file
         lines = readlines(file)
-        startswith(line[1], ">") && (name = split(join(split(line[1])[2:end]), "hromosome")[1][1:end-2])
+        startswith(lines[1], ">") && (name = split(join(split(lines[1])[2:end]), "hromosome")[1][1:end-2])
         for (i,line) in enumerate(lines)
             startswith(line, ">") &&  (push!(chrs, split(line," ")[1][2:end]); push!(start_ids, i))
         end
@@ -189,7 +198,7 @@ function FastaReads(fasta_file::String; description="")
 end
 
 function read_reads_fasta(fasta_file::String; nb_reads=-1)
-    reads::Dict{String, String} = Dict()
+    reads::Dict{String, LongDNASeq} = Dict()
     endswith(fasta_file, ".gz") ?
     reader = FASTA.Reader(GzipDecompressorStream(open(fasta_file, "r"))) :
     reader = FASTA.Reader(open(fasta_file, "r"))
@@ -198,7 +207,7 @@ function read_reads_fasta(fasta_file::String; nb_reads=-1)
     while !eof(reader)
         c += 1
         read!(reader, record)
-        push!(reads, FASTA.identifier(record)=>FASTA.sequence(record))
+        push!(reads, FASTA.identifier(record)=>LongDNASeq(FASTA.sequence(record)))
         ((nb_reads > 0) & (c >= nb_reads)) && break
     end
     close(reader)
@@ -218,7 +227,7 @@ end
 
 function read_reads_fastq(fastq_file::String; nb_reads=-1)
     reads::Dict{String, LongDNASeq} = Dict()
-    quality::Dict{String, Vector{UInt8}}
+    qual::Dict{String, UnitRange{Int}} = Dict()
     endswith(fastq_file, ".gz") ?
     reader = FASTQ.Reader(GzipDecompressorStream(open(fastq_file, "r"))) :
     reader = FASTQ.Reader(open(fastq_file, "r"))
@@ -227,8 +236,8 @@ function read_reads_fastq(fastq_file::String; nb_reads=-1)
     while !eof(reader)
         c += 1
         read!(reader, record)
-        push!(reads, FASTQ.identifier(record)=>FASTQ.sequence(record))
-        push!(quality, FASTQ.identifier(record)=>FASTQ.quality(record))
+        push!(reads, FASTQ.identifier(record)=>LongDNASeq(FASTQ.sequence(record)))
+        push!(qual, FASTQ.identifier(record)=>FASTQ.quality(record))
         ((nb_reads > 0) & (c >= nb_reads)) && break
     end
     close(reader)
