@@ -186,25 +186,55 @@ struct FastaReads <: SequenceContainer
     desc::String
 end
 
+function FastaReads(fasta_file::String; description="")
+    FastaReads(read_reads_fasta(fasta_file), description)
+end
+
+function read_reads_fasta(fasta_file::String; nb_reads=-1)
+    reads::Dict{String, String} = Dict()
+    endswith(fasta_file, ".gz") ?
+    reader = FASTA.Reader(GzipDecompressorStream(open(fasta_file, "r"))) :
+    reader = FASTA.Reader(open(fasta_file, "r"))
+    record = FASTA.Record()
+    c = 0
+    while !eof(reader)
+        c += 1
+        read!(reader, record)
+        push!(reads, FASTA.identifier(record)=>FASTA.sequence(record))
+        ((nb_reads > 0) & (c >= nb_reads)) && break
+    end
+    close(reader)
+    return reads
+end
+
 struct FastqReads <: SequenceContainer
     seqs::Dict{String, LongDNASeq}
     qual::Dict{String, Vector{UInt8}}
     desc::String
 end
 
-function read_reads_fastq(fasta_file::String; nb_reads=-1)
-    reads::Dict{String, String} = Dict()
-    reader = FASTQ.Reader(GzipDecompressorStream(open(fasta_file, "r")))
+function FastqReads(fastq_file::String; description="")
+    (reads, quality) = read_reads_fastq(fastq_file)
+    FastqReads(reads, quality, description)
+end
+
+function read_reads_fastq(fastq_file::String; nb_reads=-1)
+    reads::Dict{String, LongDNASeq} = Dict()
+    quality::Dict{String, Vector{UInt8}}
+    endswith(fastq_file, ".gz") ?
+    reader = FASTQ.Reader(GzipDecompressorStream(open(fastq_file, "r"))) :
+    reader = FASTQ.Reader(open(fastq_file, "r"))
     record = FASTQ.Record()
     c = 0
     while !eof(reader)
         c += 1
         read!(reader, record)
         push!(reads, FASTQ.identifier(record)=>FASTQ.sequence(record))
+        push!(quality, FASTQ.identifier(record)=>FASTQ.quality(record))
         ((nb_reads > 0) & (c >= nb_reads)) && break
     end
     close(reader)
-    return reads
+    return reads, quality
 end
 
 function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{String,String}, threeUTR_fasta::String, fiveUTR_fasta::String)
