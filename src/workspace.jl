@@ -1,5 +1,6 @@
 using RNASeqTools
 using DataFrames
+using BioAlignments
 
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
@@ -548,77 +549,40 @@ function run_constervation_table()
 end
 
 function run_local_alignment()
-    fasta = "/home/abc/Workspace/ConservedUTRs/threeUTR2.fasta.gz"
-    outfolder = "/home/abc/Workspace/ConservedUTRs/alignments"
-    genome = "/home/abc/Data/vibrio/genome/NC_016602_3.fna"
-    @time align_local(fasta, outfolder, [genome])
+
+    genomes = [
+        "/home/abc/Data/vibrio/genome/NC_016602_3.fna", 
+        "/home/abc/Data/vibrio/genome/NC_015633_4.fna", 
+        "/home/abc/Data/vibrio/genome/NC_013456_7.fna",
+        
+        ]
+
+    fasta = "/home/abc/Workspace/ConservedUTRs/threeUTR.fasta.gz"
+    outfile = "/home/abc/Workspace/ConservedUTRs/alignments/three_alignment_table.csv"
+    align_local(fasta, genomes, outfile)
+
+    fasta = "/home/abc/Workspace/ConservedUTRs/fiveUTR.fasta.gz"
+    outfile = "/home/abc/Workspace/ConservedUTRs/alignments/five_alignment_table.csv"
+    align_local(fasta, genomes, outfile)
 end
 
-#run_local_alignment()
+@time run_local_alignment()
 
-using FASTX
-using BioSequences
-
-function addRecords!(dest::FASTX.FASTA.Record, src::FASTX.FASTA.Record)
-  append!(dest.data, src.data[src.sequence])
-  dest.filled = UnitRange{Int}(dest.filled.start, dest.filled.stop + src.filled.stop - src.sequence.start + 1)
-  dest.sequence = UnitRange{Int}(dest.sequence.start, dest.sequence.stop + src.sequence.stop - src.sequence.start + 1)
+function dummy_alignments()
+    scoremodel = AffineGapScoreModel(match=5, mismatch=-1, gap_open=-3, gap_extend=-3)
+    seq = LongDNASeq("TTACTACTACTGGGGACTACTGGGGTTTT")
+    ref1 = LongDNASeq("AAAAAAAAAAAAAAAAAAAAAACTACTACTGGGGGGGACTACTGGGGTTTTTTTTTTTTTTTTTTTTTTT")
+    ref2 = LongDNASeq("AAAAAAAAAAAAAAAAAACTACTACTGGGGACTTGGGGTTTTTTTTTTTTTTTTTTTTTTT")
+    ref3 = LongDNASeq("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACTACTTCTGGGGACTACTGGGGTTTTTTTTTTTTTTTTTT")
+    pa1 = pairalign(LocalAlignment(), seq, ref1, scoremodel)
+    pa2 = pairalign(LocalAlignment(), seq, ref2, scoremodel)
+    pa3 = pairalign(LocalAlignment(), seq, ref3, scoremodel)
+    a1 = alignment(pa1)
+    a2 = alignment(pa2)
+    a3 = alignment(pa3)
+    a3.a.aln.anchors[1] = AlignmentAnchor(0, a3.a.aln.anchors[1].refpos-a3.a.aln.anchors[1].seqpos, '0')
+    show(a3.a.aln.anchors)
 end
 
-function concatenate(infiles::Vector{String}, outfile::String)
-  concat = Dict{String, FASTX.FASTA.Record}()
-  allLabels = Set(String[])
-  alignLen = 0
-  alphabet=""
-  firstrecord=true
-  for (i, file) in enumerate(infiles)
-    theseLabels = String[]
-    if i == 1 # first file will have only new ids
-      reader = open(FASTX.FASTA.Reader, file)
-      for record in reader
-        if firstrecord==true
-          alignLen += length(record.sequence)
-          firstrecord=false
-          alphabet = typeof(FASTX.FASTA.sequence(record))
-        end
-        id = FASTX.FASTA.identifier(record)
-        push!(allLabels, id)
-        concat[id] = record
-      end
-      close(reader)
-    else # later records need to check for id existance
-      record = FASTX.FASTA.Record()
-      open(FASTX.FASTA.Reader, file) do reader
-        while !eof(reader)
-          read!(reader, record)
-          id = FASTX.FASTA.identifier(record)
-          push!(theseLabels, id)
-          if id in allLabels
-            addRecords!(concat[id], record)
-          else # need to create and back-propogate gaps
-            push!(allLabels, id)
-            newRecord = FASTX.FASTA.Record(id,repeat("-",alignLen))
-            pop!(newRecord.data)
-            concat[id] = newRecord
-            addRecords!(concat[id], record)
-          end
-        end
-        alignLen += length(record.sequence)
-        # assume last sequence will be representative of alphabet
-        @assert alphabet == typeof(FASTX.FASTA.sequence(record))
-      end
-      missingLabels = setdiff(allLabels, theseLabels)
-      for label in missingLabels
-        gapRecord = copy(record)
-        gapRecord.data[gapRecord.sequence] = repeat(UInt8[0x2d], length(gapRecord.sequence))
-        addRecords!(concat[label], gapRecord)
-      end
-    end
-  end
-  open(FASTX.FASTA.Writer, outfile) do w
-    for (key, value) in concat
-      write(w, value)
-    end
-  end
-  return concat
-end
+#dummy_alignments()
+
