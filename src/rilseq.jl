@@ -613,7 +613,7 @@ function significant_chimeras(project_folders::Array{String, 1}, gff_genome::Str
             f = FisherExactTest(a,b,c,d)
             norm_odds = round(f.ω, digits=2)
             pv = round(pvalue(f), digits=10)
-            (pv > 0.05) && continue
+            #(pv > 0.05) && continue
             
             name1 = get_name(chr1, pos1, annotations)
             
@@ -647,7 +647,7 @@ function significant_chimeras(project_folders::Array{String, 1}, gff_genome::Str
     end
 end
 
-function exaustive_close_indices(pos1::Int, pos2::Int, poss::MyMatrix; expansion_step=200)
+function exaustive_close_indices(pos1::Int, pos2::Int, poss::MyMatrix; expansion_step=100)
     diff1::Array{Int, 1} = [-expansion_step, expansion_step]
     diff2::Array{Int, 1} = [-expansion_step, expansion_step]
     indices::Array{Int, 1} = []
