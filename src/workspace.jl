@@ -550,12 +550,8 @@ end
 
 function run_local_alignment()
 
-    genomes = [
-        "/home/abc/Data/vibrio/genome/NC_016602_3.fna", 
-        "/home/abc/Data/vibrio/genome/NC_015633_4.fna", 
-        "/home/abc/Data/vibrio/genome/NC_013456_7.fna",
-        
-        ]
+    genome_folder = "/home/abc/Data/vibrio/genome/"
+    genomes = [joinpath(genome_folder, genome) for genome in readdir(genome_folder) if endswith(genome, ".fna")]
 
     fasta = "/home/abc/Workspace/ConservedUTRs/threeUTR.fasta.gz"
     outfile = "/home/abc/Workspace/ConservedUTRs/alignments/three_alignment_table.csv"
@@ -580,8 +576,7 @@ function dummy_alignments()
     a1 = alignment(pa1)
     a2 = alignment(pa2)
     a3 = alignment(pa3)
-    a3.a.aln.anchors[1] = AlignmentAnchor(0, a3.a.aln.anchors[1].refpos-a3.a.aln.anchors[1].seqpos, '0')
-    show(a3.a.aln.anchors)
+    return a1, a2, a3
 end
 
 #dummy_alignments()

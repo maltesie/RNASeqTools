@@ -802,12 +802,12 @@ function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, 
     project_folders = [total_rna_folder, rilseq_folder]
 
     for folder in project_folders
-        isdir("$(folder)demultiplexed") || mkpath("$(folder)demultiplexed")
-        isdir("$(folder)trimmed") || mkpath("$(folder)trimmed")
-        isdir("$(folder)pe_bams") || mkpath("$(folder)pe_bams")
-        isdir("$(folder)se_bams") || mkpath("$(folder)se_bams")
-        isdir("$(folder)results") || mkpath("$(folder)results")
-        isdir("$(folder)reports") || mkpath("$(folder)reports")
+        isdir(joinpath(folder, "demultiplexed")) || mkpath(joinpath(folder, "demultiplexed"))
+        isdir(joinpath(folder, "trimmed")) || mkpath(joinpath(folder, "trimmed"))
+        isdir(joinpath(folder, "pe_bams")) || mkpath(joinpath(folder, "pe_bams"))
+        isdir(joinpath(folder, "se_bams")) || mkpath(joinpath(folder, "se_bams"))
+        isdir(joinpath(folder, "results")) || mkpath(joinpath(folder, "results"))
+        isdir(joinpath(folder, "reports")) || mkpath(joinpath(folder, "reports"))
     end
 
     skip_preprocessing || preprocess(input_files, project_folders, barcodes, lib_names, stop_early=stop_early)

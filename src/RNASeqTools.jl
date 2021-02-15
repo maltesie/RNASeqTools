@@ -16,10 +16,10 @@ export rilseq_analysis
 
 include("types.jl")
 include("align.jl")
-include("analysis.jl")
 include("preprocess.jl")
 include("io.jl")
 include("utils.jl")
 include("rilseq.jl")
+include("tss.jl")
 
-end # module
+end
