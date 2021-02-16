@@ -48,8 +48,8 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    align-items: center;
+    justify-content: left;
+    align-items: left;
 }
 
 /* Left column for control elements
@@ -58,13 +58,14 @@
 #left-column {
     margin-right: 1%;
     width:30%;
-    display:flex;
+    height: 200px;
+    display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: top;
     align-items: center;
     padding: 20px;
     border-radius: 25px;
-    border: 3px solid #afafdf;
+    border: 2px solid #1f6fef;
 }
 
 
