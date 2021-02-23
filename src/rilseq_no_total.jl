@@ -9,100 +9,37 @@ using CSV
 using XLSX
 using JSON
 
-function preprocess(input_files::Array{Array{String,1},1}, project_folders::Array{String,1}, 
-    barcodes::Array{String,1}, names::Array{String,1}; stop_early::Int=-1)
-
-    barcode_length::UInt8 = length(barcodes[1])+1
-    dplxr = Demultiplexer(LongDNASeq.(barcodes), n_max_errors=1, distance=:hamming)
-
-    stats_dict::Dict{String,Array{Int,1}} = Dict(folder=>zeros(Int,12) for folder in project_folders)
-    record_1::FASTQ.Record = FASTQ.Record()
-    record_2::FASTQ.Record = FASTQ.Record()
-
-    for ((reads_fastq_file_1, reads_fastq_file_2), folder) in zip(input_files, project_folders)
-        reader_1 = FASTQ.Reader(GzipDecompressorStream(open(reads_fastq_file_1, "r")))
-        reader_2 = FASTQ.Reader(GzipDecompressorStream(open(reads_fastq_file_2, "r")))
-        
-        out_files = [[abspath(folder, "demultiplexed", "$(name)_1.fastq.gz"), 
-                    abspath(folder, "demultiplexed", "$(name)_2.fastq.gz")] 
-                    for name in names]
-        
-        writers = [[FASTQ.Writer(GzipCompressorStream(open(out1, "w"), level=2)),
-                    FASTQ.Writer(GzipCompressorStream(open(out2, "w"), level=2))] 
-                    for (out1, out2) in out_files] 
-        sleep(0.01)
-        
-        reporter = open(abspath(folder, "reports", "demultiplexing.txt"), "w")
-        c = 0
-        while !eof(reader_1)
-            read!(reader_1, record_1)
-            read!(reader_2, record_2)
-            ((c >= stop_early) & (stop_early > 0)) && break
-            c += 1
-
-            read_1 = LongDNASeq(FASTQ.sequence(record_1))
-            (library_id, nb_errors) = demultiplex(dplxr, read_1)
-            nb_errors == -1 && continue
-            stats_dict[folder][library_id] += 1
-            #println(sequence(record_1), " $library_id")
-            record_1.sequence = (record_1.sequence.start + barcode_length):record_1.sequence.stop
-            record_1.quality = (record_1.quality.start + barcode_length):record_1.quality.stop
-            #record_2.sequence = record_2.sequence.start:(record_2.sequence.stop-barcode_length)
-            #record_2.quality = record_2.quality.start:(record_2.quality.stop-barcode_length)
-            #println(sequence(record_1), "\n")
-            write(writers[library_id][1], record_1)
-            write(writers[library_id][2], record_2)
-        end
-        
-        for (writer_1, writer_2) in writers
-            close(writer_1)
-            close(writer_2)
-        end
-        
-        close(reader_1)
-        close(reader_2)
-
-        count_string = join(["$(names[i]) - $(stats_dict[folder][i])\n" for i in 1:12])
-        count_string *= "not identifyable - $(c-sum(stats_dict[folder]))\n"
-        write(reporter, "Counted $c entries in $reads_fastq_file_1\n$count_string\n")
-        close(reporter)
-    end
-end
-
-function trim_fastp(project_folders::Array{String,1}, names::Array{String,1}; fastp_bin="fastp")
+function trim_fastp(folder::String, names::Array{String,1}; fastp_bin="fastp")
 
     record = FASTQ.Record()
-    
-    for folder in project_folders
-    
-        in_files = [[abspath(folder, "demultiplexed", "$(name)_1.fastq.gz"), 
-                    abspath(folder, "demultiplexed", "$(name)_2.fastq.gz")] 
+    in_files = [[abspath(folder, "demultiplexed", "$(name)_1.fastq.gz"), 
+                abspath(folder, "demultiplexed", "$(name)_2.fastq.gz")] 
+                for name in names]
+    out_files = [[abspath(folder, "trimmed", "$(name)_1.fastq.gz"), 
+                    abspath(folder, "trimmed", "$(name)_2.fastq.gz")] 
                     for name in names]
-        out_files = [[abspath(folder, "trimmed", "$(name)_1.fastq.gz"), 
-                      abspath(folder, "trimmed", "$(name)_2.fastq.gz")] 
-                      for name in names]
+    
+    reporter = open(abspath(folder, "reports", "quality.txt"), "w")
+    
+    c = 0
+    for ((file1, file2), (out1, out2), name) in zip(in_files, out_files, names)
         
-        reporter = open(abspath(folder, "reports", "quality.txt"), "w")
-        
-        c = 0
-        for ((file1, file2), (out1, out2), name) in zip(in_files, out_files, names)
-            
-            cmd = `$fastp_bin --adapter_sequence AGATCGGAAG --adapter_sequence_r2 AGATCGGAAG -i $file1 -I $file2 -o $out1 -O $out2 -M 25 -l 25 --trim_poly_g 10 --cut_front --cut_tail --trim_front1 9`# --trim_poly_g 10 -r --cut_right_window_size=6`
-            run(cmd)
-            cc = 0
-            reader = FASTQ.Reader(GzipDecompressorStream(open(out1, "r")))
-            while !eof(reader)
-                read!(reader, record)
-                c += 1
-                cc += 1
-            end
-            report = "$name\t$(cc) * 2\n"
-            write(reporter, report)
-        end 
-        report = "$(c) * 2 reads in total after quality trimming in $folder\n"
+        cmd = `$fastp_bin --adapter_sequence AGATCGGAAG --adapter_sequence_r2 AGATCGGAAG -i $file1 -I $file2 -o $out1 -O $out2 -M 25 -l 25 --trim_poly_g 10 --cut_front --cut_tail --umi --umi_loc read1 --umi_len 9`# --trim_poly_g 10 -r --cut_right_window_size=6`
+        run(cmd)
+        cc = 0
+        reader = FASTQ.Reader(GzipDecompressorStream(open(out1, "r")))
+        while !eof(reader)
+            read!(reader, record)
+            c += 1
+            cc += 1
+        end
+        report = "$name\t$(cc) * 2\n"
         write(reporter, report)
-        close(reporter)
-    end
+    end 
+    report = "$(c) * 2 reads in total after quality trimming in $folder\n"
+    write(reporter, report)
+    close(reporter)
+
 end
 
 function isread1(record::BAM.Record)::Bool
@@ -149,77 +86,74 @@ function cut_fastq_reads(pe_bam::String, out_fastq1::String, out_fastq2::String;
     close(fastq_writer2)
 end
 
-function align(project_folders::Array{String,1}, fasta_genome::String, 
+function align(folder::String, fasta_genome::String, 
                 names::Array{String,1}; rev_complement=false, index_genome=true, 
-                se_miss=2, pe_miss=0, se_length=25, bwa_bin="bwa", sam_bin="samtools")
+                se_miss=3, pe_miss=3, se_length=25, bwa_bin="bwa", sam_bin="samtools")
 
-    for folder in project_folders
+    in_files = [[abspath(folder, "trimmed", "$(name)_1.fastq.gz"), 
+                    abspath(folder, "trimmed", "$(name)_2.fastq.gz")] 
+                    for name in names]
+    
+    pe_files = [abspath(folder, "pe_bams", "$(name).bam") for name in names]
+    
+    se_files = [[abspath(folder, "se_bams", "$(name)_1.bam"), 
+                    abspath(folder, "se_bams", "$(name)_2.bam")] 
+                    for name in names]
+    
+    reporter = open(abspath(folder, "reports", "pe_alignment.txt"), "w")
+    record1::BAM.Record = BAM.Record()
+    
+    for ((file1, file2), pe_bam, (se_bam1, se_bam2), name) in zip(in_files, pe_files, se_files, names)
         
-        in_files = [[abspath(folder, "trimmed", "$(name)_1.fastq.gz"), 
-                     abspath(folder, "trimmed", "$(name)_2.fastq.gz")] 
-                     for name in names]
+        cmd = pipeline(`$bwa_bin index -a is $fasta_genome`, stdout=nothing)
+        index_genome && run(cmd)
+        cmd = pipeline(`$bwa_bin aln -n $pe_miss -t 8 -R 200 $fasta_genome $file1`, stdout="tmp1.sai")
+        run(cmd)
+        cmd = pipeline(`$bwa_bin aln -n $pe_miss -t 8 -R 200 $fasta_genome $file2`, stdout="tmp2.sai")
+        run(cmd)
+        cmd = pipeline(`$bwa_bin sampe -a 1500 -P $fasta_genome tmp1.sai tmp2.sai $file1 $file2`, 
+            stdout="tmp.bwa")
+        run(cmd)
+        cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
+        run(cmd)
+        cmd = pipeline(`$sam_bin sort tmp.view -o $pe_bam`, stdout=nothing)
+        run(cmd)
+        cmd = pipeline(`$sam_bin index $pe_bam`, stdout=nothing)
+        run(cmd)
         
-        pe_files = [abspath(folder, "pe_bams", "$(name).bam") for name in names]
+        cut_fastq_reads(pe_bam, "tmp1.fastq", "tmp2.fastq";
+            rev_complement=rev_complement, cut_len=se_length)
         
-        se_files = [[abspath(folder, "se_bams", "$(name)_1.bam"), 
-                      abspath(folder, "se_bams", "$(name)_2.bam")] 
-                      for name in names]
-        
-        reporter = open(abspath(folder, "reports", "pe_alignment.txt"), "w")
-        record1::BAM.Record = BAM.Record()
-        
-        for ((file1, file2), pe_bam, (se_bam1, se_bam2), name) in zip(in_files, pe_files, se_files, names)
-            
-            cmd = pipeline(`$bwa_bin index -a is $fasta_genome`, stdout=nothing)
-            index_genome && run(cmd)
-            cmd = pipeline(`$bwa_bin aln -n $pe_miss -t 8 -R 200 $fasta_genome $file1`, stdout="tmp1.sai")
-            run(cmd)
-            cmd = pipeline(`$bwa_bin aln -n $pe_miss -t 8 -R 200 $fasta_genome $file2`, stdout="tmp2.sai")
-            run(cmd)
-            cmd = pipeline(`$bwa_bin sampe -a 1500 -P $fasta_genome tmp1.sai tmp2.sai $file1 $file2`, 
-                stdout="tmp.bwa")
-            run(cmd)
-            cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
-            run(cmd)
-            cmd = pipeline(`$sam_bin sort tmp.view -o $pe_bam`, stdout=nothing)
-            run(cmd)
-            cmd = pipeline(`$sam_bin index $pe_bam`, stdout=nothing)
-            run(cmd)
-            
-            cut_fastq_reads(pe_bam, "tmp1.fastq", "tmp2.fastq";
-                rev_complement=rev_complement, cut_len=se_length)
-            
-            cmd = pipeline(`$bwa_bin aln -n $se_miss -t 6 -R 200 $fasta_genome tmp1.fastq`, stdout="tmp1.sai")
-            run(cmd)
-            cmd = pipeline(`$bwa_bin samse $fasta_genome tmp1.sai tmp1.fastq`, stdout="tmp.bwa")
-            run(cmd)
-            cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
-            run(cmd)
-            cmd = pipeline(`$sam_bin sort tmp.view -o $se_bam1`)
-            run(cmd)
-            cmd = pipeline(`$sam_bin index $se_bam1`)
-            run(cmd)
+        cmd = pipeline(`$bwa_bin aln -n $se_miss -t 6 -R 200 $fasta_genome tmp1.fastq`, stdout="tmp1.sai")
+        run(cmd)
+        cmd = pipeline(`$bwa_bin samse $fasta_genome tmp1.sai tmp1.fastq`, stdout="tmp.bwa")
+        run(cmd)
+        cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
+        run(cmd)
+        cmd = pipeline(`$sam_bin sort tmp.view -o $se_bam1`)
+        run(cmd)
+        cmd = pipeline(`$sam_bin index $se_bam1`)
+        run(cmd)
 
-            cmd = pipeline(`$bwa_bin aln -n $se_miss -t 6 -R 200 $fasta_genome tmp2.fastq`, stdout="tmp2.sai")
-            run(cmd)
-            cmd = pipeline(`$bwa_bin samse $fasta_genome tmp2.sai tmp2.fastq`, stdout="tmp.bwa")
-            run(cmd)
-            cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
-            run(cmd)
-            cmd = pipeline(`$sam_bin sort tmp.view -o $se_bam2`)
-            run(cmd)
-            cmd = pipeline(`$sam_bin index $se_bam2`)
-            run(cmd)
-            
-            rm("tmp1.sai")
-            rm("tmp2.sai")
-            rm("tmp.bwa")
-            rm("tmp.view")
-            rm("tmp1.fastq")
-            rm("tmp2.fastq")
-            
-        end 
-    end
+        cmd = pipeline(`$bwa_bin aln -n $se_miss -t 6 -R 200 $fasta_genome tmp2.fastq`, stdout="tmp2.sai")
+        run(cmd)
+        cmd = pipeline(`$bwa_bin samse $fasta_genome tmp2.sai tmp2.fastq`, stdout="tmp.bwa")
+        run(cmd)
+        cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
+        run(cmd)
+        cmd = pipeline(`$sam_bin sort tmp.view -o $se_bam2`)
+        run(cmd)
+        cmd = pipeline(`$sam_bin index $se_bam2`)
+        run(cmd)
+        
+        rm("tmp1.sai")
+        rm("tmp2.sai")
+        rm("tmp.bwa")
+        rm("tmp.view")
+        rm("tmp1.fastq")
+        rm("tmp2.fastq")
+        
+    end 
 end
 
 @inline function get_position(pos::Int, chr::String, aux::String, nm::Int)::Tuple{Int, String}
@@ -286,7 +220,113 @@ function write_chimeric_fragments(read1_names::Array{String,1}, read1_poss::Arra
     return nb_single1, nb_single2, nb_chimeric
 end
 
-function all_interactions(project_folders::Array{String}, fasta_genome::String, names::Array{String}; 
+@inline function isproperpair(record::BAM.Record)::Bool
+    return (BAM.flag(record) & SAM.FLAG_PROPER_PAIR) != 0
+end
+
+function write_file(filename::String, content::String)
+    open(filename, "w") do f
+        write(f, content)
+    end
+end
+
+function strandint(record::BAM.Record; is_rev=false)
+    BAM.ispositivestrand(record) ? strand = 1 : strand = -1
+    is_rev ? (return strand * -1) : (return strand)
+end
+
+@inline function translated_data(data::Array{UInt8,1})::String
+    for i in 1:length(data)
+        (data[i] == 0x00) && (return String(data[1:i-1]))
+    end
+end
+
+@inline function get_NM_tag(data::Array{UInt8,1})::Int
+    for i in 1:length(data)-2
+      (0x4d == data[i]) & (0x43 == data[i+1]) && (return Int(data[i+2]))
+    end
+    return -1
+end
+
+@inline function get_XA_tag(data::Array{UInt8,1})::String
+    t = UInt8['X', 'A']
+    for i in 1:length(data)-2
+        (0x00 == data[i]) & (t[1] == data[i+1]) & (t[2] == data[i+2]) && 
+        (return translated_data(data[i+4:end]))
+    end
+    return "-"
+end
+
+function merge_bam_row!(a::DataFrameRow, b::DataFrameRow)
+    (start1, stop1, start2, stop2) = sort([a[:start], a[:stop], b[:start], b[:stop]])
+    a[:start] = start1
+    a[:stop] = stop2
+    a[:nm] = a[:nm] + b[:nm] + start2 - stop1
+end
+
+@inline function areconcordant(pos1::Int, pos2::Int, chr1::String, chr2::String, aux1::String, aux2::String)::Bool
+    
+    poss1::Array{Int,1} = [pos1]
+    chrs1::Array{String,1} = [chr1]
+    for alignment in split(aux1, ";")
+        (isempty(alignment) | (alignment == "-")) && continue
+        push!(poss1, parse(Int, split(alignment, ",")[2]))
+        push!(chrs1, String(split(alignment, ",")[1]))
+    end
+    
+    poss2::Array{Int,1} = [pos2]
+    chrs2::Array{String,1} = [chr2]
+    for alignment in split(aux2, ";")
+        (isempty(alignment) | (alignment == "-")) && continue
+        push!(poss2, parse(Int, split(alignment, ",")[2]))
+        push!(chrs2, split(alignment, ",")[1])
+    end
+    
+    for (p1::Int, c1::String) in zip(poss1, chrs1)
+        for (p2::Int, c2::String) in zip(poss2, chrs2)
+            c1 != c2 && continue
+            (abs(p1-p2) <1000) && (return true)
+        end
+    end
+    return false
+end
+
+function get_single_fragment_set(bam_file::String; nb_reads::Int=-1)::Set{String}
+    reader = open(BAM.Reader, bam_file)
+    record::BAM.Record = BAM.Record()
+    single_fragments::Array{String, 1} = []
+    c::Int = 0 
+    while !eof(reader)
+        read!(reader, record)
+        isproperpair(record) && push!(single_fragments, BAM.tempname(record))
+        c += 1
+        ((nb_reads > 0) & (c >= nb_reads)) && break 
+    end
+    close(reader)
+    single_fragment_set::Set{String} = Set(single_fragments) 
+    return single_fragment_set
+end
+
+function read_bam(bam_file::String; nb_reads::Int = -1)
+    record::BAM.Record = BAM.Record()
+    reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
+    aligned_reads = DataFrame(name=String[], start=Int[], stop=Int[], chr=String[], nm=Int[], aux=String[], cigar=String[])
+    c::Int = 0
+    while !eof(reader)
+        read!(reader, record)
+        !BAM.ismapped(record) && continue
+        (start, stop) = sort([BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)])
+        aux_data = BAM.auxdata(record).data
+        new_row = DataFrame(name=BAM.tempname(record), start=start, stop=stop, chr=BAM.refname(record), 
+                            nm=get_NM_tag(aux_data), aux=get_XA_tag(aux_data), cigar=BAM.cigar(record))
+        append!(aligned_reads, new_row)
+        ((nb_reads > 0) & (c >= nb_reads)) && break 
+    end
+    close(reader)
+    return aligned_reads[:,:name], aligned_reads[:,:start], aligned_reads[:,:chr], aligned_reads[:,:aux], aligned_reads[:,:nm]
+end
+
+function all_interactions(folder::String, fasta_genome::String, names::Array{String}; 
                         generate_bams=true, cut_len=25, read1_reversed=false, read2_reversed=false)
     
     read1_names::Array{String,1}, read1_chrs::Array{String,1}, read1_auxs::Array{String,1} = [], [], []
@@ -295,45 +335,42 @@ function all_interactions(project_folders::Array{String}, fasta_genome::String, 
     read2_poss::Array{Int,1}, read2_nms::Array{Int,1} = [], []
     
     single_fragment_set::Set{String} = Set()
-    
-    for folder in project_folders
-        
-        fastq_files = [[abspath(folder, "trimmed", "$(name)_1.fastq.gz"), 
-                        abspath(folder, "trimmed", "$(name)_2.fastq.gz")] 
-                        for name in names]
-        
-        pe_files = [abspath(folder, "pe_bams", "$(name).bam") for name in names]
-        
-        se_files = [[abspath(folder, "se_bams", "$(name)_1.bam"), 
-                      abspath(folder, "se_bams", "$(name)_2.bam")] 
-                      for name in names]
-        
-        chimeric_files = [abspath(folder, "results", "$(name)_raw.txt.gz") for name in names]
-        
-        reporter = open(abspath(folder, "reports", "all_pairs.txt"), "w")
-        total_count::Int = 0
-        
-        for (pe_file, (se_file1, se_file2), (fastq_file1, fastq_file2), chimeric_file, name) in 
-            zip(pe_files, se_files, fastq_files, chimeric_files, names)
-            
-            single_fragment_set = get_single_fragment_set(pe_file)
-    
-            read1_names, read1_poss, read1_chrs, read1_auxs, read1_nms = read_bam(se_file1)
-    
-            read2_names, read2_poss, read2_chrs, read2_auxs, read2_nms = read_bam(se_file2)
 
-            single_count1, single_count2, chimeric_count = write_chimeric_fragments(read1_names, 
-                read1_poss, read1_chrs, read1_auxs, read1_nms, read2_names, read2_poss, read2_chrs, 
-                read2_auxs, read2_nms, single_fragment_set, chimeric_file)
+    fastq_files = [[abspath(folder, "trimmed", "$(name)_1.fastq.gz"), 
+                    abspath(folder, "trimmed", "$(name)_2.fastq.gz")] 
+                    for name in names]
+    
+    pe_files = [abspath(folder, "pe_bams", "$(name).bam") for name in names]
+    
+    se_files = [[abspath(folder, "se_bams", "$(name)_1.bam"), 
+                    abspath(folder, "se_bams", "$(name)_2.bam")] 
+                    for name in names]
+    
+    chimeric_files = [abspath(folder, "results", "$(name)_raw.txt.gz") for name in names]
+    
+    reporter = open(abspath(folder, "reports", "all_pairs.txt"), "w")
+    total_count::Int = 0
+    
+    for (pe_file, (se_file1, se_file2), (fastq_file1, fastq_file2), chimeric_file, name) in 
+        zip(pe_files, se_files, fastq_files, chimeric_files, names)
+        
+        single_fragment_set = Set()#get_single_fragment_set(pe_file)
 
-            total_count += single_count1 + single_count2 + chimeric_count
-            report = "$name\t$single_count1\t$single_count2\t$chimeric_count\n"
-            write(reporter, report)
-        end
-        report = "Found $total_count transcripts in total for $folder.\n"
+        read1_names, read1_poss, read1_chrs, read1_auxs, read1_nms = read_bam(se_file1)
+
+        read2_names, read2_poss, read2_chrs, read2_auxs, read2_nms = read_bam(se_file2)
+
+        single_count1, single_count2, chimeric_count = write_chimeric_fragments(read1_names, 
+            read1_poss, read1_chrs, read1_auxs, read1_nms, read2_names, read2_poss, read2_chrs, 
+            read2_auxs, read2_nms, single_fragment_set, chimeric_file)
+
+        total_count += single_count1 + single_count2 + chimeric_count
+        report = "$name\t$single_count1\t$single_count2\t$chimeric_count\n"
         write(reporter, report)
-        close(reporter)
     end
+    report = "Found $total_count transcripts in total for $folder.\n"
+    write(reporter, report)
+    close(reporter)
 end
 
 Coord = Pair{Int, String}
@@ -395,7 +432,7 @@ function get_annotations(gff_file::String; utr_length=150)::Dict{String, DataFra
     for line in split(gff, "\n")
         startswith(line, "#") | isempty(line) && continue
         chr, _, typ, start, stop, _, strand, _, aux = split(line, "\t")
-        typ == "CDS" || continue
+        typ == "Gene" || continue
         if strand == "-"
             start_int = parse(Int, stop) * -1
             stop_int = parse(Int, start) * -1
@@ -493,7 +530,7 @@ function get_rrna(gff_file::String)::Tuple{Array{Int, 2}, Dict{String,Int}}
                         results = [results; [chr_trans[chr], parse(Int, stop)*-1, parse(Int, start)*-1]']
     end
     close(reader)
-    
+    #print(results)
     return results, chr_trans
 end
 
@@ -501,34 +538,38 @@ function check_rrna(pos1::Int, pos2::Int, chr1::String, chr2::String,
         rrna::Array{Int, 2}, chr_trans::Dict{String, Int})::Bool
     
     if chr1 in keys(chr_trans)
-        any((chr_trans[chr1] .== rrna[:,1]) .& (pos1 .>= rrna[:,2]) .& (pos1 .<= rrna[:,3])) && (return true)
+        any((chr_trans[chr1] .== rrna[:,1]) .& (pos1 + 2 .>= rrna[:,2]) .& (pos1 .<= rrna[:,3])) && (return true)
     end
     if chr2 in keys(chr_trans)
-        any((chr_trans[chr2] .== rrna[:,1]) .& (pos2 .>= rrna[:,2]) .& (pos2 .<= rrna[:,3])) && (return true)
+        any((chr_trans[chr2] .== rrna[:,1]) .& (pos2 + 2 .>= rrna[:,2]) .& (pos2 .<= rrna[:,3])) && (return true)
     end
     return false
 end
 
 function process_interactions(interaction_file::String, rrna::Array{Int, 2}, chr_trans::Dict{String, Int};
     seglen=100, minints=5)
-    
+
     reader = GzipDecompressorStream(open(interaction_file, "r"))
     region_interactions::Dict{Interact, Array{Pair{Int, Int},1}} = Dict()
     count_reads1::Dict{Coord, Int} = Dict()
     count_reads2::Dict{Coord, Int} = Dict()
     count_total = 0
     count_rrna = 0
-
+    #for (key, value) in region_interactions
+    #    ((1293000 < abs(key[1][1]) < 1294000) || (1293000 < abs(key[2][1]) < 1294000)) && println("inside1 $key $(length(value))")
+    #end
     while !eof(reader)
-        line::Array{SubString{String},1} = split(readline(reader))
-        #println(line)
-        name::String = line[1] 
-        typ::String = line[2]
-        pos1::Int = parse(Int, line[3]) 
-        pos2::Int = parse(Int, line[4]) 
-        chr1::String = line[5] 
-        chr2::String = line[6] 
-        check_rrna(pos1, pos2, chr1, chr2, rrna, chr_trans) && (count_rrna += 1; continue)
+        line = String.(split(readline(reader)))
+        name = line[1] 
+        typ = line[2]
+        (typ == "chimeric") || continue
+        pos1 = parse(Int, line[3]) 
+        pos2  = parse(Int, line[4]) 
+        chr1 = line[5] 
+        chr2 = line[6] 
+        #((1293900 < abs(pos1) < 1294000) || (1293900 < abs(pos2) < 1294000)) && println("before check pos 1 $pos1 pos 2 $pos2") 
+        check_rrna(pos1, pos2, chr1, chr2, rrna, chr_trans) && continue
+        #((1293900 < abs(pos1) < 1294000) || (1293900 < abs(pos2) < 1294000)) && println("after check pos 1 $pos1 pos 2 $pos2") 
         count_total += 1
         seg1::Int = (pos1÷seglen)*seglen
         seg1<0 && (seg1-=seglen)
@@ -537,12 +578,9 @@ function process_interactions(interaction_file::String, rrna::Array{Int, 2}, chr
         coord1 = Coord(seg1, chr1)
         coord2 = Coord(seg2, chr2)
         interaction = Interact(coord1, coord2)
-
-        if (typ == "chimeric") 
-            interaction in keys(region_interactions) ? 
-            push!(region_interactions[interaction], pos1=>pos2) :
-            region_interactions[interaction] = [pos1=>pos2]
-        end
+        #((interaction[1][1] == 1293900) || (interaction[2][1] == 1293900)) && println(interaction, " ", pos1, " ", pos2)
+        
+        (interaction in keys(region_interactions)) ? push!(region_interactions[interaction], pos1=>pos2) : (region_interactions[interaction] = [pos1=>pos2])
 
         coord1 in keys(count_reads1) ? 
         (count_reads1[coord1] += 1) : 
@@ -551,20 +589,21 @@ function process_interactions(interaction_file::String, rrna::Array{Int, 2}, chr
         (count_reads2[coord2] += 1) : 
         push!(count_reads2, coord2=>1)
 
+        #(((361800 => "NC_002505") => (1293900 => "NC_002505")) in keys(region_interactions)) && println("hey")
     end
     close(reader)
-    #println(count_rrna, " rRNA vs. ", count_total, " rest")
+
     sum_pairs::Dict{Interact, Int} = Dict()
     for interaction in keys(region_interactions)
         nb_interactions = length(region_interactions[interaction])
         (nb_interactions >= minints) && (sum_pairs[interaction] = nb_interactions)
     end
-    
+
     return region_interactions, sum_pairs, count_reads1, count_reads2, count_total
 end
 
 
-function significant_chimeras(project_folders::Array{String, 1}, gff_genome::String, names::Array{String, 1}; 
+function significant_chimeras(folder::String, gff_genome::String, names::Array{String, 1}; 
             seglen=100, minints=5, minodds=1.0, utr_length=150)
     
     report = ""
@@ -573,28 +612,25 @@ function significant_chimeras(project_folders::Array{String, 1}, gff_genome::Str
     annotations = get_annotations(gff_genome, utr_length=utr_length)
 
     header = ["Name RNA1", "pos1", "Name RNA2", "pos2", "# of chimeric fragments", "library", "norm. odds ration", "p-value",
-            "IP interactions RNA1", "IP interactions RNA2", "Total interactions RNA1", "Total interactions RNA2",
-            "RNA1 chromosome", "RNA1 first start", "RNA1 last start",
-            "RNA2 chromosome", "RNA2 first start", "RNA2 last start", "b", 
-            "c", "d"]
+            "IP interactions RNA1", "IP interactions RNA2", "RNA1 chromosome", "RNA1 first start", "RNA1 last start",
+            "RNA2 chromosome", "RNA2 first start", "RNA2 last start", "b", "c", "d"]
     
-    interaction_files =[[abspath(project_folders[1], "results", "$(name)_raw.txt.gz"),
-                        abspath(project_folders[2], "results", "$(name)_raw.txt.gz")] for name in names]
+    interaction_files =[abspath(folder, "results", "$(name)_raw.txt.gz") for name in names]
     
-    out_files =[abspath(project_folders[2], "results", "$(name).csv") for name in names]
+    out_files =[abspath(folder, "results", "$(name).csv") for name in names]
     c=0
 
-    for ((tot_interaction_file, ip_interaction_file), out_file) in zip(interaction_files, out_files)
+    for (ip_interaction_file, out_file) in zip(interaction_files, out_files)
         
         ip_interactions, ip_interaction_count, ip_reads1_count, ip_reads2_count, ip_total_count = 
         process_interactions(ip_interaction_file, rrna, chr_trans)
-        tot_interactions, tot_interaction_count, tot_reads1_count, tot_reads2_count, tot_total_count = 
-        process_interactions(tot_interaction_file, rrna, chr_trans)
         
+        #for (key, value) in ip_interactions
+        #    ((1293000 < abs(key[1][1]) < 1294000) || (1293000 < abs(key[2][1]) < 1294000)) && println("outside $key $(length(value))")
+        #end
+
         results = DataFrame(name1=String[], pos1s=Int[], name2=String[], pos2s=Int[], nb_fragments=Int[], libs=String[], 
-            norm_odds=Float64[], p_value=Float64[], ip_int1=Float64[], ip_int2=Float64[],
-            total_int1=Float64[], total_int2=Float64[],
-            chromosome1=String[], first_start1=Int[], last_start1=Int[], chromosome2=String[], 
+            norm_odds=Float64[], p_value=Float64[], ip_int1=Float64[], ip_int2=Float64[], chromosome1=String[], first_start1=Int[], last_start1=Int[], chromosome2=String[], 
             first_start2=Int[], last_start2=Int[], b=Int[], c=Int[], d=Int[])
         
         for (interaction, interaction_count) in sort(collect(ip_interaction_count), by=x->x[2], rev=true)
@@ -622,21 +658,15 @@ function significant_chimeras(project_folders::Array{String, 1}, gff_genome::Str
             lib = "tbd"
             
             ip_int1 = ip_reads1_count[coord1]/ip_total_count
-            coord1 in keys(tot_reads1_count) ? 
-                    (total_int1 = tot_reads1_count[coord1]/tot_total_count) :
-                    (total_int1 = 0)
             ip_int2 = ip_reads2_count[coord2]/ip_total_count
-            coord2 in keys(tot_reads2_count) ? 
-                    (total_int2 = tot_reads2_count[coord2]/tot_total_count) :
-                    (total_int2 = 0)
+
             starts1 = sort(ip_interactions[interaction], by=x->x[1])
             first_start1, last_start1 = starts1[1][1], starts1[end][1]
             starts2 = sort(ip_interactions[interaction], by=x->x[2])
             first_start2, last_start2 = starts2[1][2], starts2[end][2]
 
             row = DataFrame(name1=name1, pos1s=pos1, name2=name2, pos2s=pos2, nb_fragments=interaction_count, 
-                libs=lib, norm_odds=norm_odds, p_value=pv, ip_int1=ip_int1, total_int1=total_int1, 
-                ip_int2=ip_int2, total_int2=total_int2, 
+                libs=lib, norm_odds=norm_odds, p_value=pv, ip_int1=ip_int1, ip_int2=ip_int2, 
                 chromosome1=chr1, first_start1=first_start1, last_start1=last_start1, 
                 chromosome2=chr2, first_start2=first_start2, last_start2=last_start2, 
                 b=b, c=c, d=d)
@@ -647,7 +677,7 @@ function significant_chimeras(project_folders::Array{String, 1}, gff_genome::Str
     end
 end
 
-function exaustive_close_indices(pos1::Int, pos2::Int, poss::MyMatrix; expansion_step=100)
+function exaustive_close_indices(pos1::Int, pos2::Int, poss::MyMatrix; expansion_step=200)
     diff1::Array{Int, 1} = [-expansion_step, expansion_step]
     diff2::Array{Int, 1} = [-expansion_step, expansion_step]
     indices::Array{Int, 1} = []
@@ -675,9 +705,8 @@ function merged_table(table::CSV.File, annotations::Dict{String,DataFrame}; utr_
     already_found::Set{Int} = Set() 
     merged_data = DataFrame(name1=String[], gene1=String[], name2=String[], gene2=String[], 
         type1=String[], type2=String[], relpos1=Float64[], relpos2=Float64[], nb_fragments=Int[], 
-        libs=String[], norm_odds=Float64[], p_value=Float64[], ip_total_ratio1=Float64[], 
-        ip_total_ratio2=Float64[], chromosome1=String[], first_start1=Int[], last_start1=Int[], 
-        chromosome2=String[], first_start2=Int[], last_start2=Int[])
+        libs=String[], norm_odds=Float64[], p_value=Float64[], chromosome1=String[], 
+        first_start1=Int[], last_start1=Int[], chromosome2=String[], first_start2=Int[], last_start2=Int[])
     for (i, row) in enumerate(table)
         (i in already_found) && continue
         pos1, pos2 = row[:pos1], row[:pos2]
@@ -696,9 +725,6 @@ function merged_table(table::CSV.File, annotations::Dict{String,DataFrame}; utr_
         last2 = maximum([r[Symbol("RNA2 last start")] for r in table[indices]])
         ips1 = sum([r[Symbol("IP interactions RNA1")] for r in table[indices]])
         ips2 = sum([r[Symbol("IP interactions RNA2")] for r in table[indices]])
-        tot1 = sum([r[Symbol("Total interactions RNA1")] for r in table[indices]])
-        tot2 = sum([r[Symbol("Total interactions RNA2")] for r in table[indices]])
-        rat1, rat2 = round(ips1/tot1, digits=2), round(ips2/tot2, digits=2)
             
         n1, gene1, type1, rel_pos1 = get_full_name(chr1, first1, last1, annotations; utr_length=utr_length)
         n2, gene2, type2, rel_pos2 = get_full_name(chr2, first2, last2, annotations; utr_length=utr_length)
@@ -713,13 +739,12 @@ function merged_table(table::CSV.File, annotations::Dict{String,DataFrame}; utr_
         f = FisherExactTest(nb,b,c,d)
         norm_odds = round(f.ω, digits=2)
         pv = round(pvalue(f), digits=10)
-        (pv > 0.05) && continue
+        #(pv > 0.05) && continue
         
         row = DataFrame(name1=n1, name2=n2, gene1=gene1, gene2=gene2, type1=type1,
         type2=type2, relpos1=rel_pos1, relpos2=rel_pos2, nb_fragments=nb, libs=lib, 
-        norm_odds=norm_odds, p_value=pv, ip_total_ratio1=rat1, ip_total_ratio2=rat2, 
-        chromosome1=chr1, first_start1=first1, last_start1=last1, chromosome2=chr2, 
-        first_start2=first2, last_start2=last2)
+        norm_odds=norm_odds, p_value=pv, chromosome1=chr1, first_start1=first1, 
+        last_start1=last1, chromosome2=chr2, first_start2=first2, last_start2=last2)
         append!(merged_data, row)
     end
     return merged_data
@@ -777,7 +802,7 @@ function postprocess(folder::String, gff_genome::String, names::Array{String, 1}
     table_files =[[abspath(folder, "results", "$(names[i]).csv"),
                     abspath(folder, "results", "$(names[i+1]).csv")] for i in 1:2:length(names)-1]
     
-    unified_sheet_names = ["$(join(split(names[i], "_")[[1,3]], "_"))" for i in 1:2:length(names)-1]
+    unified_sheet_names = ["$(names[i])" for i in 1:2:length(names)-1]
     
     annotations = get_annotations(gff_genome, utr_length=utr_length)
     XLSX.openxlsx(abspath(fname), mode="w") do xf
@@ -793,27 +818,58 @@ function postprocess(folder::String, gff_genome::String, names::Array{String, 1}
     end
 end
 
-function rilseq_analysis(lib_names::Array{String,1}, barcodes::Array{String,1}, rilseq_reads1::String, rilseq_reads2::String, 
-    total_rna_reads1::String, total_rna_reads2::String, rilseq_folder::String, total_rna_folder::String, fasta_genome::String,
-    gff_genome::String; utr_length=150, stop_early=-1, skip_preprocessing=false, skip_trimming=false, skip_aligning=false, skip_interactions=false,
-    export_single_csv=true, bwa_bin="bwa", sam_bin="samtools", fastp_bin="fastp")
+function rilseq_analysis(lib_names::Array{String,1}, rilseq_folder::String, fasta_genome::String, gff_genome::String; 
+    utr_length=150, stop_early=-1, skip_trimming=false, skip_aligning=false, skip_interactions=false, export_single_csv=true, 
+    skip_significant=false, skip_postprocess=false, bwa_bin="bwa", sam_bin="samtools", fastp_bin="fastp")
 
-    input_files = [[total_rna_reads1, total_rna_reads2], [rilseq_reads1, rilseq_reads2]]
-    project_folders = [total_rna_folder, rilseq_folder]
-
-    for folder in project_folders
-        isdir(joinpath(folder, "demultiplexed")) || mkpath(joinpath(folder, "demultiplexed"))
-        isdir(joinpath(folder, "trimmed")) || mkpath(joinpath(folder, "trimmed"))
-        isdir(joinpath(folder, "pe_bams")) || mkpath(joinpath(folder, "pe_bams"))
-        isdir(joinpath(folder, "se_bams")) || mkpath(joinpath(folder, "se_bams"))
-        isdir(joinpath(folder, "results")) || mkpath(joinpath(folder, "results"))
-        isdir(joinpath(folder, "reports")) || mkpath(joinpath(folder, "reports"))
-    end
-
-    skip_preprocessing || preprocess(input_files, project_folders, barcodes, lib_names, stop_early=stop_early)
-    skip_trimming || trim_fastp(project_folders, lib_names, fastp_bin=fastp_bin)
-    skip_aligning || align(project_folders, fasta_genome, lib_names; rev_complement=true, se_miss=1, pe_miss=3, bwa_bin=bwa_bin, sam_bin=sam_bin)
-    skip_interactions || all_interactions(project_folders, fasta_genome, lib_names)
-    skip_interactions || significant_chimeras(project_folders, gff_genome, lib_names; utr_length=utr_length)
-    postprocess(rilseq_folder, gff_genome, lib_names, abspath(rilseq_folder, "combined_results.xlsx"); export_single_csv=export_single_csv, utr_length=150)
+    isdir(joinpath(rilseq_folder, "demultiplexed")) || mkpath(joinpath(rilseq_folder, "demultiplexed"))
+    isdir(joinpath(rilseq_folder, "trimmed")) || mkpath(joinpath(rilseq_folder, "trimmed"))
+    isdir(joinpath(rilseq_folder, "pe_bams")) || mkpath(joinpath(rilseq_folder, "pe_bams"))
+    isdir(joinpath(rilseq_folder, "se_bams")) || mkpath(joinpath(rilseq_folder, "se_bams"))
+    isdir(joinpath(rilseq_folder, "results")) || mkpath(joinpath(rilseq_folder, "results"))
+    isdir(joinpath(rilseq_folder, "reports")) || mkpath(joinpath(rilseq_folder, "reports"))
+    
+    skip_trimming || trim_fastp(rilseq_folder, lib_names, fastp_bin=fastp_bin)
+    skip_aligning || align(rilseq_folder, fasta_genome, lib_names; rev_complement=true, se_miss=3, pe_miss=3, bwa_bin=bwa_bin, sam_bin=sam_bin)
+    skip_interactions || all_interactions(rilseq_folder, fasta_genome, lib_names)
+    skip_significant || significant_chimeras(rilseq_folder, gff_genome, lib_names; utr_length=utr_length)
+    skip_postprocess || postprocess(rilseq_folder, gff_genome, lib_names, abspath(rilseq_folder, "combined_results.xlsx"); export_single_csv=export_single_csv, utr_length=150)
 end
+
+function run_rilseq_analysis()
+    barcodes_cc = [
+        "AATAATGT",
+        "CAACACTT",
+        "ATAATTCT",
+        "GTCCATAT"
+    ]
+    barcodes_vc = [
+        "CAAGTGAT",
+        "CGACTTGG",
+        "GCGAGTTG",
+        "AAGACGGG"
+    ]
+    libnames_cc = [
+        "CC1",
+        "CC2",
+        "CC3",
+        "CC4"
+    ]
+    libnames_vc = [
+        "VC1",
+        "VC2",
+        "VC3",
+        "VC4"
+    ]
+    folder_vc = "/home/abc/Data/vibrio/rilseq/library_rilseq/"
+    folder_cc = "/home/abc/Data/caulo/rilseq/"
+    gff_cc = "/home/abc/Data/caulo/annotation/NC_011916.gff"
+    gff_vc = "/home/abc/Data/vibrio/annotation/NC_002505_6.gff3"
+    fasta_cc = "/home/abc/Data/caulo/genome/GCF_000022005.1_ASM2200v1_genomic.fna"
+    fasta_vc = "/home/abc/Data/vibrio/genome/NC_002505_6.fa"
+
+    rilseq_analysis(libnames_vc, folder_vc, fasta_vc, gff_vc; skip_trimming=true, skip_aligning=false, skip_interactions=false, skip_significant=false, skip_postprocess=false)
+    rilseq_analysis(libnames_vc, folder_vc, fasta_vc, gff_vc)
+end
+
+run_rilseq_analysis() 

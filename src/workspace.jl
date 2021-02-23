@@ -1,4 +1,5 @@
 using RNASeqTools
+using BioSequences
 using DataFrames
 using BioAlignments
 
@@ -562,7 +563,7 @@ function run_local_alignment()
     align_local(fasta, genomes, outfile)
 end
 
-@time run_local_alignment()
+#@time run_local_alignment()
 
 function dummy_alignments()
     scoremodel = AffineGapScoreModel(match=5, mismatch=-1, gap_open=-3, gap_extend=-3)
@@ -581,3 +582,73 @@ end
 
 #dummy_alignments()
 
+function run_demultiplex()
+    file1 = "/home/abc/Data/rilseq/210212_A00685_0114_AH27HJDRXY_Februar10/noBarcode.1.1.fastq"
+    filep = "/home/abc/Data/rilseq/210212_A00685_0114_AH27HJDRXY_Februar10/8bp_1.fastq.gz"
+    file2 = "/home/abc/Data/rilseq/210212_A00685_0114_AH27HJDRXY_Februar10/noBarcode.1.2.fastq"
+    out_folder = "/home/abc/Data/rilseq/210212_A00685_0114_AH27HJDRXY_Februar10/demultiplexed"
+    barcodes1 = [
+        "ATCACG",
+        "CGATGT",
+        "TTAGGC",
+        "TGACCA",
+        "ACAGTG",
+        "GCCAAT",
+        "CAGATC",
+        "ACTTGA",
+        "GATCAG",
+        "TAGCTT",
+        "GGCTAC",
+        "CTTGTA",
+        "AGTCAA",
+        "AGTTCC",
+        "ATGTCA",
+        "CCGTCC",
+        "GTAGAG",
+        "GTCCGC",
+        "GTGAAA",
+        "GTGGCC",
+        "GTTTCG"
+    ]
+    libnames1 = [
+        "NEB$i" for i in 1:21
+    ]
+    barcodes2 = [
+        "AATAATGT",
+        "CAACACTT",
+        "ATAATTCT",
+        "GTCCATAT",
+        "CAAGTGAT",
+        "CGACTTGG",
+        "GCGAGTTG",
+        "AAGACGGG"
+    ]
+    libnames2 = [
+        "CC1",
+        "CC2",
+        "CC3",
+        "CC4",
+        "VC1",
+        "VC2",
+        "VC3",
+        "VC4"
+    ]
+    split_libs(file1, filep, file2, barcodes1, libnames1, out_folder; report_file="demultiplex_1.txt")
+    split_libs(file1, filep, file2, barcodes2, libnames2, out_folder; report_file="demultiplex_2.txt")
+end
+    
+#run_demultiplex()
+
+function run_annotation_check()
+    bam_file1 = "/home/abc/Data/vibrio/rilseq/library_rilseq/se_bams/VC3_1.bam"
+    bam_file2 = "/home/abc/Data/vibrio/rilseq/library_rilseq/se_bams/VC3_2.bam"
+    table1 = read_bam(bam_file1)
+    table2 = read_bam(bam_file2)
+    names = table1[table2[!,:chr] .== "NC_rybb", :name]
+    for name in names[1:100]
+        println(name)
+        println(table1[table1[!,:name] .== name,:start], "\n")
+    end
+end
+
+@time run_annotation_check()

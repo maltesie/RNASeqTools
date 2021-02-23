@@ -50,8 +50,7 @@ function read_bam(bam_file::String; nb_reads::Int = -1)
         aux_data = BAM.auxdata(record).data
         new_row = DataFrame(name=BAM.tempname(record), start=start, stop=stop, chr=BAM.refname(record), 
                             nm=get_NM_tag(aux_data), aux=get_XA_tag(aux_data), cigar=BAM.cigar(record))
-        index = aligned_reads[!, :name] .== new_row[1, :name]
-        (sum(index) > 0) ? merge_bam_row!(@view(aligned_reads[argmax(index), :]), new_row[1, :]) : append!(aligned_reads, new_row)
+        append!(aligned_reads, new_row)
         ((nb_reads > 0) & (c >= nb_reads)) && break 
     end
     close(reader)
@@ -274,4 +273,17 @@ function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{Stri
     end
     close(five_writer)
     close(three_writer)
+end
+
+struct SingleTypeFiles <: FileCollection
+    list::Dict{String, String}
+    type::String
+end
+
+function FastaFiles(files::Vector{String})
+    for file in files
+    end
+end
+
+function FastaFiles(folder::String)
 end
