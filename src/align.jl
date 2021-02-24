@@ -46,11 +46,11 @@ function align_backtrack(in_file1::String, in_file2::String, out_file::String, g
 end
 
 function align_mem(in_file::String, out_file::String, genome_file::String; 
-    bwa_bin="bwa", sam_bin="samtools")
+    z_score=100, bwa_bin="bwa", sam_bin="samtools")
 
     cmd = pipeline(`$bwa_bin index -a is $genome_file`)
     run(cmd)
-    cmd = pipeline(`$bwa_bin mem -t 6 $genome_file $in_file`, stdout="tmp.bwa")
+    cmd = pipeline(`$bwa_bin mem -d $z_score -t 6 $genome_file $in_file`, stdout="tmp.bwa")
     run(cmd)
     cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
     run(cmd)
@@ -64,11 +64,11 @@ function align_mem(in_file::String, out_file::String, genome_file::String;
 end
 
 function align_mem(in_file1::String, in_file2::String, out_file::String, genome_file::String; 
-    bwa_bin="bwa", sam_bin="samtools")
+    z_score=100, bwa_bin="bwa", sam_bin="samtools")
 
     cmd = pipeline(`$bwa_bin index -a is $genome_file`)
     run(cmd)
-    cmd = pipeline(`$bwa_bin mem -t 6 $genome_file $in_file1 $in_file2`, stdout="tmp.bwa")
+    cmd = pipeline(`$bwa_bin mem -d $z_score -t 6 $genome_file $in_file1 $in_file2`, stdout="tmp.bwa")
     run(cmd)
     cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
     run(cmd)
@@ -81,10 +81,10 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm("tmp.view")
 end
 
-function align_mem(sequence_fasta::String, out_folder::String, genome_files::Vector{String}; bwa_bin="bwa", sam_bin="samtools")
+function align_mem(sequence_fasta::String, out_folder::String, genome_files::Vector{String}; z_score=100, bwa_bin="bwa", sam_bin="samtools")
     for genome in genome_files
         out_file = joinpath(out_folder, join(split(basename(genome), ".")[1:end-1],".") * ".bam")
-        align_mem(sequence_fasta, out_file, genome; bwa_bin=bwa_bin, sam_bin=sam_bin)
+        align_mem(sequence_fasta, out_file, genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
 end
 
