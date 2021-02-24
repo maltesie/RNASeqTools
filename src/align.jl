@@ -1,5 +1,3 @@
-include("io.jl")
-
 function align_backtrack(in_file::String, out_file::String, genome_file::String; 
     max_miss=2, bwa_bin="bwa", sam_bin="samtools")
 
@@ -81,6 +79,7 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm("tmp.view")
 end
 
+<<<<<<< HEAD
 function align_mem(sequence_fasta::String, out_folder::String, genome_files::Vector{String}; z_score=100, bwa_bin="bwa", sam_bin="samtools")
     for genome in genome_files
         out_file = joinpath(out_folder, join(split(basename(genome), ".")[1:end-1],".") * ".bam")
@@ -96,4 +95,6 @@ function local_alignment(long_sequence::String, short_sequence::String)
     return collect(res)
 end
 
+=======
+>>>>>>> 294285f775d3ca8fd7ee00dccdfaec6b3f78fdcb
 

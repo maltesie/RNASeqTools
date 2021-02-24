@@ -1,14 +1,7 @@
+#using RNASeqTools
+using BioSequences
 using DataFrames
-using CSV
-using XLSX
-using Statistics
-using XAM
 using BioAlignments
-using CodecZlib
-
-include("preprocess.jl")
-include("align.jl")
-include("tss.jl")
 
 function convert_annotation(xls_annot::String, csv_annot::String)
     df = DataFrame(XLSX.readtable(xls_annot, 1)...)
@@ -443,14 +436,6 @@ function translation_dict(from_sequence::String, to_sequence::String)
     return trans_dict
 end
 
-function local_alignment(long_sequence::String, short_sequence::String)
-    s1 = LongDNASeq(long_sequence)
-    s2 = LongDNASeq(short_sequence)
-    scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
-    res = alignment(pairalign(LocalAlignment(), s1, s2, scoremodel))
-    return collect(res)
-end
-
 function run_local_align()
     check_sequence = "ATTTCTCTGAGATGTTCGCAAGCGGGCCAGTCCCCTGAGCCGATATTTCATACCACAAGAATGTGGCGCTCCGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGTGAGCATGCTCGGTCCGTCCGAGAAGCCTAAAAACTGCGACGACACATTCACCTTGAACCAAGGGTTCAAGGGTTAAAAAACAGCCTGCGGCGGCATCTCGGAGATTC"
     @time genome = read_genomic_fasta("/home/malte/Workspace/data/ecoli/annotations/mg1655.fna")
@@ -573,6 +558,237 @@ function run_constervation_table()
     CSV.write("/home/abc/Workspace/ConservedUTRs/threeUTR_table.csv", three_table)
 end
 
+<<<<<<< HEAD
 run_constervation_table()
 
 #read_bam("/home/abc/Workspace/ConservedUTRs/threeUTRs/GCF_000024825.1_ASM2482v1_genomic.bam")
+=======
+function run_local_alignment()
+
+    genome_folder = "/home/abc/Data/vibrio/genome/"
+    genomes = [joinpath(genome_folder, genome) for genome in readdir(genome_folder) if endswith(genome, ".fna")]
+
+    fasta = "/home/abc/Workspace/ConservedUTRs/threeUTR.fasta.gz"
+    outfile = "/home/abc/Workspace/ConservedUTRs/alignments/three_alignment_table.csv"
+    align_local(fasta, genomes, outfile)
+
+    fasta = "/home/abc/Workspace/ConservedUTRs/fiveUTR.fasta.gz"
+    outfile = "/home/abc/Workspace/ConservedUTRs/alignments/five_alignment_table.csv"
+    align_local(fasta, genomes, outfile)
+end
+
+#@time run_local_alignment()
+
+function dummy_alignments()
+    scoremodel = AffineGapScoreModel(match=5, mismatch=-1, gap_open=-3, gap_extend=-3)
+    seq = LongDNASeq("TTACTACTACTGGGGACTACTGGGGTTTT")
+    ref1 = LongDNASeq("AAAAAAAAAAAAAAAAAAAAAACTACTACTGGGGGGGACTACTGGGGTTTTTTTTTTTTTTTTTTTTTTT")
+    ref2 = LongDNASeq("AAAAAAAAAAAAAAAAAACTACTACTGGGGACTTGGGGTTTTTTTTTTTTTTTTTTTTTTT")
+    ref3 = LongDNASeq("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACTACTTCTGGGGACTACTGGGGTTTTTTTTTTTTTTTTTT")
+    pa1 = pairalign(LocalAlignment(), seq, ref1, scoremodel)
+    pa2 = pairalign(LocalAlignment(), seq, ref2, scoremodel)
+    pa3 = pairalign(LocalAlignment(), seq, ref3, scoremodel)
+    a1 = alignment(pa1)
+    a2 = alignment(pa2)
+    a3 = alignment(pa3)
+    return a1, a2, a3
+end
+
+#dummy_alignments()
+
+function run_demultiplex()
+    file1 = "/home/abc/Data/rilseq/210212_A00685_0114_AH27HJDRXY_Februar10/noBarcode.1.1.fastq"
+    filep = "/home/abc/Data/rilseq/210212_A00685_0114_AH27HJDRXY_Februar10/8bp_1.fastq.gz"
+    file2 = "/home/abc/Data/rilseq/210212_A00685_0114_AH27HJDRXY_Februar10/noBarcode.1.2.fastq"
+    out_folder = "/home/abc/Data/rilseq/210212_A00685_0114_AH27HJDRXY_Februar10/demultiplexed"
+    barcodes1 = [
+        "ATCACG",
+        "CGATGT",
+        "TTAGGC",
+        "TGACCA",
+        "ACAGTG",
+        "GCCAAT",
+        "CAGATC",
+        "ACTTGA",
+        "GATCAG",
+        "TAGCTT",
+        "GGCTAC",
+        "CTTGTA",
+        "AGTCAA",
+        "AGTTCC",
+        "ATGTCA",
+        "CCGTCC",
+        "GTAGAG",
+        "GTCCGC",
+        "GTGAAA",
+        "GTGGCC",
+        "GTTTCG"
+    ]
+    libnames1 = [
+        "NEB$i" for i in 1:21
+    ]
+    barcodes2 = [
+        "AATAATGT",
+        "CAACACTT",
+        "ATAATTCT",
+        "GTCCATAT",
+        "CAAGTGAT",
+        "CGACTTGG",
+        "GCGAGTTG",
+        "AAGACGGG"
+    ]
+    libnames2 = [
+        "CC1",
+        "CC2",
+        "CC3",
+        "CC4",
+        "VC1",
+        "VC2",
+        "VC3",
+        "VC4"
+    ]
+    split_libs(file1, filep, file2, barcodes1, libnames1, out_folder; report_file="demultiplex_1.txt")
+    split_libs(file1, filep, file2, barcodes2, libnames2, out_folder; report_file="demultiplex_2.txt")
+end
+    
+#run_demultiplex()
+
+function run_annotation_check()
+    bam_file1 = "/home/abc/Data/vibrio/rilseq/library_rilseq/se_bams/VC3_1.bam"
+    bam_file2 = "/home/abc/Data/vibrio/rilseq/library_rilseq/se_bams/VC3_2.bam"
+    table1 = read_bam(bam_file1)
+    table2 = read_bam(bam_file2)
+    names = table1[table2[!,:chr] .== "NC_rybb", :name]
+    for name in names[1:100]
+        println(name)
+        println(table1[table1[!,:name] .== name,:start], "\n")
+    end
+end
+
+#@time run_annotation_check()
+
+function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{String,String}, threeUTR_fasta::String, fiveUTR_fasta::String)
+    record = FASTA.Record()
+    five_writer = FASTA.Writer(GzipCompressorStream(open(fiveUTR_fasta, "w")))
+    three_writer = FASTA.Writer(GzipCompressorStream(open(threeUTR_fasta, "w")))
+    for (chr, sequence) in genome
+        for (i,row) in enumerate(eachrow(annotations[chr]))
+            ((row[:threeType] == "max") || (row[:fiveType] == "max")) || continue
+            name = row["name"]
+            if (row[:threeType] == "max") 
+                (row["start"] < 0) ? 
+                threeUTR = reverse_complement(LongDNASeq(sequence[-row["threeUTR"]:-row["stop"]])) : 
+                threeUTR = sequence[row["stop"]:row["threeUTR"]]
+                if length(threeUTR) > 20
+                    record = FASTA.Record("$(name)_threeUTR", threeUTR)
+                    write(three_writer, record)
+                end
+            end
+            if (row["fiveType"] == "max")
+                (row["start"] < 0) ?
+                fiveUTR = reverse_complement(LongDNASeq(sequence[-row["start"]:-row["fiveUTR"]])) :
+                fiveUTR = sequence[row["fiveUTR"]:row["start"]]
+                if length(fiveUTR) > 20
+                    record = FASTA.Record("$(name)_fiveUTR", fiveUTR)
+                    write(five_writer, record)
+                end
+            end
+        end
+    end
+    close(five_writer)
+    close(three_writer)
+end
+
+function align_mem(sequence_fasta::String, genome_files::Vector{String}, out_folder::String; bwa_bin="bwa", sam_bin="samtools")
+    for genome in genome_files
+        out_file = joinpath(out_folder, join(split(basename(genome), ".")[1:end-1],".") * ".bam")
+        align_mem(sequence_fasta, out_file, genome; bwa_bin=bwa_bin, sam_bin=sam_bin)
+    end
+end
+
+function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)
+    res = pairalign(LocalAlignment(), query_sequence, reference_sequence, scoremodel)
+    return res
+end
+
+function align_local(sequence_fasta::String, genome_files::Vector{String}, out_file::String)
+    occursin(".fasta", sequence_fasta) ? reads = FastaReads(sequence_fasta) : reads = FastqReads(sequence_fasta)
+    scoremodel = AffineGapScoreModel(match=5, mismatch=-1, gap_open=-3, gap_extend=-3)
+    alignment_table = DataFrame(name=String[], length=Int[], sequence=String[])
+    index_dict::Dict{String, Int} = Dict()
+    for genome_file in genome_files
+        genome = Genome(genome_file)
+        alignment_table[!, Symbol(genome.spec * "_seqaln")] = fill("", nrow(alignment_table))
+        alignment_table[!, Symbol(genome.spec * "_refaln")] = fill("", nrow(alignment_table))
+        alignment_table[!, Symbol(genome.spec * "_score")] = Vector{Union{Missing,Float64}}(fill(missing, nrow(alignment_table)))
+        for (i, (name, seq)) in enumerate(reads.seqs)
+            pairwise_result = local_alignment(genome.seq, seq, scoremodel)
+            if hasalignment(pairwise_result)
+                a = alignment(pairwise_result)
+                (name in keys(index_dict)) ? index = index_dict[name] : (index = nrow(alignment_table)+1; push!(index_dict, name=>index))
+                (index > nrow(alignment_table)) && append!(alignment_table, 
+                                                            DataFrame(merge(Dict("name"=>name, "length"=>length(seq), "sequence"=>String(seq)), 
+                                                            Dict((endswith(column_name, "score") ? column_name=>0.0 : column_name=>"") for column_name in names(alignment_table) 
+                                                            if !(column_name in ["name", "length", "sequence"])))))
+                a.a.aln.anchors[1] = AlignmentAnchor(0, a.a.aln.anchors[1].refpos-a.a.aln.anchors[1].seqpos, '0')
+                skip_end = length(seq) - a.a.aln.anchors[end].seqpos
+                a.a.aln.anchors[end] = AlignmentAnchor(a.a.aln.anchors[end].seqpos + skip_end, a.a.aln.anchors[end].refpos + skip_end, a.a.aln.anchors[end].op)
+                pairs = collect(a)
+                qa = join([p[1] for p in pairs])
+                ra = join([p[2] for p in pairs])
+                alignment_table[index, Symbol(genome.spec * "_seqaln")] = qa
+                alignment_table[index, Symbol(genome.spec * "_refaln")] = ra
+                alignment_table[index, Symbol(genome.spec * "_score")] = score(pairwise_result)/length(seq)
+            end
+        end
+    end
+    CSV.write(out_file, alignment_table)
+end
+
+using XAM
+
+function strandint(record::BAM.Record; is_rev=false)
+    BAM.ispositivestrand(record) ? strand = 1 : strand = -1
+    is_rev ? (return strand * -1) : (return strand)
+end
+
+@inline function translated_data(data::SubArray{UInt8,1})
+    for i in 1:length(data)
+        (data[i] == 0x00) && (return data[1:i-1])
+    end
+end
+
+@inline function get_NM_tag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+      (0x4d == data[i]) & (0x43 == data[i+1]) && (return Int(data[i+2]))
+    end
+    return nothing
+end
+
+@inline function get_XA_tag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+        (0x00 == data[i]) & (UInt8('X') == data[i+1]) & (UInt8('A') == data[i+2]) && 
+        (return translated_data(@view(data[i+4:end])))
+    end
+    return nothing
+end
+
+function mytest()
+    file = "/home/abc/Data/caulo/rilseq/se_bams/CC4_1.bam"
+    reader = BAM.Reader(open(file), index=file*".bai")
+    record = BAM.Record()
+    c = 0
+    @time while !eof(reader)
+        c += 1
+        read!(reader, record)
+        start, stop = BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)
+        start > stop && ((start, stop) = (stop, start))
+        slice = BAM.auxdata_position(record):BAM.data_size(record)
+        aux = get_XA_tag(@view(record.data[slice]))
+        nms = get_NM_tag(@view(record.data[slice]))
+        !isnothing(aux) && println(String(aux), " ", nms)
+        c == 1000000 && break
+    end
+end
+mytest()
+>>>>>>> 294285f775d3ca8fd7ee00dccdfaec6b3f78fdcb
