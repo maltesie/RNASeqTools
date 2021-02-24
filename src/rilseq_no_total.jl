@@ -431,8 +431,8 @@ function get_annotations(gff_file::String; utr_length=150)::Dict{String, DataFra
 
     for line in split(gff, "\n")
         startswith(line, "#") | isempty(line) && continue
-        chr, _, typ, start, stop, _, strand, _, aux = split(line, "\t")
-        typ == "Gene" || continue
+        chr, _, typ, start, stop, _, strand, _, aux = String.(split(line, "\t"))
+        (typ in ["Gene", "gene"]) || continue
         if strand == "-"
             start_int = parse(Int, stop) * -1
             stop_int = parse(Int, start) * -1
@@ -440,8 +440,13 @@ function get_annotations(gff_file::String; utr_length=150)::Dict{String, DataFra
             start_int = parse(Int, start)
             stop_int = parse(Int, stop)
         end
-        name = split(aux, ";")[1][6:end]
-        typ = "gene"
+        if (typ == "gene") 
+            name = String(split(aux, ";")[2][6:end])
+            if startswith(name, "CCNA_") 
+                (name[6] == 'R') && (typ = "srna")
+            end
+        end
+        (typ == "Gene") && (name = String.(split(aux, ";")[1][6:end]); typ="gene")
         (occursin("locus_tag", aux) || ("VC" == aux[6:7])) || (typ = "srna")
         row = DataFrame(name=name, start=start_int, stop=stop_int, typ=typ)
         chr in keys(results) ? append!(results[chr], row) : results[chr] = row
@@ -568,7 +573,7 @@ function process_interactions(interaction_file::String, rrna::Array{Int, 2}, chr
         chr1 = line[5] 
         chr2 = line[6] 
         #((1293900 < abs(pos1) < 1294000) || (1293900 < abs(pos2) < 1294000)) && println("before check pos 1 $pos1 pos 2 $pos2") 
-        check_rrna(pos1, pos2, chr1, chr2, rrna, chr_trans) && continue
+        check_rrna(pos1, pos2, chr1, chr2, rrna, chr_trans) && (continue; count_rrna+=1)
         #((1293900 < abs(pos1) < 1294000) || (1293900 < abs(pos2) < 1294000)) && println("after check pos 1 $pos1 pos 2 $pos2") 
         count_total += 1
         seg1::Int = (pos1÷seglen)*seglen
@@ -592,7 +597,7 @@ function process_interactions(interaction_file::String, rrna::Array{Int, 2}, chr
         #(((361800 => "NC_002505") => (1293900 => "NC_002505")) in keys(region_interactions)) && println("hey")
     end
     close(reader)
-
+    println(count_total, " ", count_rrna)
     sum_pairs::Dict{Interact, Int} = Dict()
     for interaction in keys(region_interactions)
         nb_interactions = length(region_interactions[interaction])
@@ -868,8 +873,12 @@ function run_rilseq_analysis()
     fasta_cc = "/home/abc/Data/caulo/genome/GCF_000022005.1_ASM2200v1_genomic.fna"
     fasta_vc = "/home/abc/Data/vibrio/genome/NC_002505_6.fa"
 
-    rilseq_analysis(libnames_vc, folder_vc, fasta_vc, gff_vc; skip_trimming=true, skip_aligning=false, skip_interactions=false, skip_significant=false, skip_postprocess=false)
-    rilseq_analysis(libnames_vc, folder_vc, fasta_vc, gff_vc)
+    #rilseq_analysis(libnames_vc, folder_vc, fasta_vc, gff_vc; skip_trimming=true, skip_aligning=true, skip_interactions=false, skip_significant=false, skip_postprocess=false)
+    rilseq_analysis(libnames_cc, folder_cc, fasta_cc, gff_cc; skip_trimming=true, skip_aligning=true, skip_interactions=true, skip_significant=false, skip_postprocess=false)
 end
 
 run_rilseq_analysis() 
+
+#a = get_annotations("/home/abc/Data/caulo/annotation/NC_011916.gff")
+#println(a)
+#println([sum(a[chr][!, :typ] .== "srna") for chr in keys(a)])

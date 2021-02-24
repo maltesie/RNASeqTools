@@ -113,7 +113,7 @@ end
     return (BAM.flag(record) & SAM.FLAG_PROPER_PAIR) != 0
 end
 
-@inline function areconcordant(pos1::Int, pos2::Int, chr1::String, chr2::String, aux1::String, aux2::String)::Bool
+@inline function areconcordant(pos1::Int, pos2::Int, chr1::String, chr2::String, aux1::String, aux2::String; distance=1000)::Bool
     
     poss1::Array{Int,1} = [pos1]
     chrs1::Array{String,1} = [chr1]
@@ -134,24 +134,8 @@ end
     for (p1::Int, c1::String) in zip(poss1, chrs1)
         for (p2::Int, c2::String) in zip(poss2, chrs2)
             c1 != c2 && continue
-            (abs(p1-p2) <1000) && (return true)
+            (abs(p1-p2) < distance) && (return true)
         end
     end
     return false
-end
-
-function get_single_fragment_set(bam_file::String; nb_reads::Int=-1)::Set{String}
-    reader = open(BAM.Reader, bam_file)
-    record::BAM.Record = BAM.Record()
-    single_fragments::Array{String, 1} = []
-    c::Int = 0 
-    while !eof(reader)
-        read!(reader, record)
-        isproperpair(record) && push!(single_fragments, BAM.tempname(record))
-        c += 1
-        ((nb_reads > 0) & (c >= nb_reads)) && break 
-    end
-    close(reader)
-    single_fragment_set::Set{String} = Set(single_fragments) 
-    return single_fragment_set
 end

@@ -43,4 +43,4 @@ function visualize_conserved_utrs(conservation_file::String)
     run_server(app, "0.0.0.0", 8083)
 end
 
-visualize_conserved_utrs("/home/abc/Workspace/ConservedUTRs/alignments/three_alignment_table (copy).csv")
+#visualize_conserved_utrs("/home/abc/Workspace/ConservedUTRs/alignments/three_alignment_table (copy).csv")

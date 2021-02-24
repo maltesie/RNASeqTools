@@ -17,7 +17,6 @@ function coverage(bam_file::String; norm=10000000, is_reversed=false, unique_map
         (BAM.ispositivestrand(record) == !is_reversed)  ? (coverage_f[ref][pos:pos+len-1] .+= 1) : (coverage_r[ref][pos:pos+len-1] .-= 1)
     end
     close(reader)
-    #println(bam_file, ": ", count)
     norm_factor = norm/count
     return Dict(ref => cov .* norm_factor for (ref,cov) in coverage_f), Dict(ref => cov .* norm_factor for (ref,cov) in coverage_r)
 end

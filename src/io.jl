@@ -38,7 +38,7 @@ function merge_bam_row!(a::DataFrameRow, b::DataFrameRow)
     a[:nm] = a[:nm] + b[:nm] + start2 - stop1
 end
 
-function read_bam(bam_file::String; nb_reads::Int = -1)
+function read_bam(bam_file::String; uniques_only=false, nb_reads::Int=-1)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     aligned_reads = DataFrame(name=String[], start=Int[], stop=Int[], chr=String[], nm=Int[], aux=String[], cigar=String[])
@@ -48,8 +48,10 @@ function read_bam(bam_file::String; nb_reads::Int = -1)
         !BAM.ismapped(record) && continue
         (start, stop) = sort([BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)])
         aux_data = BAM.auxdata(record).data
+        aux_string = get_XA_tag(aux_data)
+        (uniques_only && (aux_string != "-")) && continue
         new_row = DataFrame(name=BAM.tempname(record), start=start, stop=stop, chr=BAM.refname(record), 
-                            nm=get_NM_tag(aux_data), aux=get_XA_tag(aux_data), cigar=BAM.cigar(record))
+                            nm=get_NM_tag(aux_data), aux=aux_string, cigar=BAM.cigar(record))
         append!(aligned_reads, new_row)
         ((nb_reads > 0) & (c >= nb_reads)) && break 
     end
@@ -57,24 +59,15 @@ function read_bam(bam_file::String; nb_reads::Int = -1)
     return aligned_reads
 end
 
-function read_gff(gff_file::String, annotation_types = ["CDS"])::Dict{String, DataFrame}
-    
-    results::Dict{String, DataFrame} = Dict()
-    open(gff_file) do file
-        gff = readlines(file)
-        for line in gff
-            startswith(line, "#") && continue
-            chr, _, typ, start, stop, _, strand, _, aux = split(line, "\t")
-            typ in annotation_types || continue
-            start_int = parse(Int, start)
-            stop_int = parse(Int, stop)
-            (strand == "-") && ((start_int, stop_int) = (-stop_int, -start_int))
-            name = split(aux, ";")[1][6:end]
-            row = DataFrame(name=name, start=start_int, stop=stop_int)
-            chr in keys(results) ? append!(results[chr], row) : results[chr] = row
-        end
-    end
-    return results
+struct Alignments <: Annotation
+    table::DataFrame
+    file::String
+    uniqe::Bool
+end
+
+function Alignments(bam_file::String; uniques_only=false, nb_reads=-1)
+    table = read_bam(bam_file; uniques_only=uniques_only, nb_reads=nb_reads)
+    Alignments(table, bam_file, uniques_only)
 end
 
 function read_wig(wig_file::String)
@@ -117,20 +110,7 @@ function read_wig(wig_file::String)
     return coverages
 end
 
-function write_wig(coverage_reps::Vector{Dict{String,Vector{Float64}}}, wig_file::String; track_name="\"\"")
-
-    open(wig_file, "w") do file
-        for (i,coverage) in enumerate(coverage_reps)
-            println(file, "track type=wiggle_$i name=$track_name")
-            for (chr, cov) in coverage
-                println(file, "variableStep chrom=$chr span=1")
-                for (ii,value) in enumerate(cov)
-                    (value == zero(value)) || println(file, "$ii $value")
-                end
-            end
-        end
-    end
-end
+Coverage
 
 struct Genome <: SequenceContainer
     seq::LongDNASeq
@@ -243,47 +223,22 @@ function read_reads_fastq(fastq_file::String; nb_reads=-1)
     return reads, quality
 end
 
-function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{String,String}, threeUTR_fasta::String, fiveUTR_fasta::String)
-    record = FASTA.Record()
-    five_writer = FASTA.Writer(GzipCompressorStream(open(fiveUTR_fasta, "w")))
-    three_writer = FASTA.Writer(GzipCompressorStream(open(threeUTR_fasta, "w")))
-    for (chr, sequence) in genome
-        for (i,row) in enumerate(eachrow(annotations[chr]))
-            ((row[:threeType] == "max") || (row[:fiveType] == "max")) || continue
-            name = row["name"]
-            if (row[:threeType] == "max") 
-                (row["start"] < 0) ? 
-                threeUTR = reverse_complement(LongDNASeq(sequence[-row["threeUTR"]:-row["stop"]])) : 
-                threeUTR = sequence[row["stop"]:row["threeUTR"]]
-                if length(threeUTR) > 20
-                    record = FASTA.Record("$(name)_threeUTR", threeUTR)
-                    write(three_writer, record)
-                end
-            end
-            if (row["fiveType"] == "max")
-                (row["start"] < 0) ?
-                fiveUTR = reverse_complement(LongDNASeq(sequence[-row["start"]:-row["fiveUTR"]])) :
-                fiveUTR = sequence[row["fiveUTR"]:row["start"]]
-                if length(fiveUTR) > 20
-                    record = FASTA.Record("$(name)_fiveUTR", fiveUTR)
-                    write(five_writer, record)
-                end
-            end
-        end
-    end
-    close(five_writer)
-    close(three_writer)
-end
-
 struct SingleTypeFiles <: FileCollection
-    list::Dict{String, String}
+    list::Vector{String}
     type::String
 end
 
-function FastaFiles(files::Vector{String})
-    for file in files
-    end
+function SingleTypeFiles(files::Vector{String})
+    endings = [fname[findlast(fname, "."):end] for fname in files]
+    @assert length(unique(endings)) == 1
+    SingleTypeFiles(files, endings[1])
 end
 
-function FastaFiles(folder::String)
+function SingleTypeFiles(folder::String, type::String)
+    SingleTypeFiles([joinpath(folder, fname) for fname in readdir(folder) if endswith(fname, type)], type)
 end
+
+function SingleTypeFiles(folder::String, type::String, prefix::String)
+    SingleTypeFiles([joinpath(folder, fname) for fname in readdir(folder) if (endswith(fname, type) && startswith(fname, prefix))], type)
+end
+
