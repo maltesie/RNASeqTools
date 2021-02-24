@@ -558,11 +558,6 @@ function run_constervation_table()
     CSV.write("/home/abc/Workspace/ConservedUTRs/threeUTR_table.csv", three_table)
 end
 
-<<<<<<< HEAD
-run_constervation_table()
-
-#read_bam("/home/abc/Workspace/ConservedUTRs/threeUTRs/GCF_000024825.1_ASM2482v1_genomic.bam")
-=======
 function run_local_alignment()
 
     genome_folder = "/home/abc/Data/vibrio/genome/"
@@ -791,4 +786,3 @@ function mytest()
     end
 end
 mytest()
->>>>>>> 294285f775d3ca8fd7ee00dccdfaec6b3f78fdcb

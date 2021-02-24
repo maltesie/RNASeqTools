@@ -79,22 +79,4 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm("tmp.view")
 end
 
-<<<<<<< HEAD
-function align_mem(sequence_fasta::String, out_folder::String, genome_files::Vector{String}; z_score=100, bwa_bin="bwa", sam_bin="samtools")
-    for genome in genome_files
-        out_file = joinpath(out_folder, join(split(basename(genome), ".")[1:end-1],".") * ".bam")
-        align_mem(sequence_fasta, out_file, genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
-    end
-end
-
-function local_alignment(long_sequence::String, short_sequence::String)
-    s1 = LongDNASeq(long_sequence)
-    s2 = LongDNASeq(short_sequence)
-    scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
-    res = alignment(pairalign(LocalAlignment(), s1, s2, scoremodel))
-    return collect(res)
-end
-
-=======
->>>>>>> 294285f775d3ca8fd7ee00dccdfaec6b3f78fdcb
 
