@@ -9,49 +9,44 @@ function strandint(record::BAM.Record; is_rev=false)
     is_rev ? (return strand * -1) : (return strand)
 end
 
-@inline function translated_data(data::Array{UInt8,1})::String
+@inline function translated_data(data::SubArray{UInt8,1})
     for i in 1:length(data)
-        (data[i] == 0x00) && (return String(data[1:i-1]))
+        (data[i] == 0x00) && (return data[1:i-1])
     end
 end
 
-@inline function get_NM_tag(data::Array{UInt8,1})::Int
+@inline function get_NM_tag(data::SubArray{UInt8,1})
     for i in 1:length(data)-2
       (0x4d == data[i]) & (0x43 == data[i+1]) && (return Int(data[i+2]))
     end
-    return -1
+    return nothing
 end
 
-@inline function get_XA_tag(data::Array{UInt8,1})::String
-    t = UInt8['X', 'A']
+@inline function get_XA_tag(data::SubArray{UInt8,1})
     for i in 1:length(data)-2
-        (0x00 == data[i]) & (t[1] == data[i+1]) & (t[2] == data[i+2]) && 
-        (return translated_data(data[i+4:end]))
+        (0x00 == data[i]) & (UInt8('X') == data[i+1]) & (UInt8('A') == data[i+2]) && 
+        (return translated_data(@view(data[i+4:end])))
     end
-    return "-"
-end
-
-function merge_bam_row!(a::DataFrameRow, b::DataFrameRow)
-    (start1, stop1, start2, stop2) = sort([a[:start], a[:stop], b[:start], b[:stop]])
-    a[:start] = start1
-    a[:stop] = stop2
-    a[:nm] = a[:nm] + b[:nm] + start2 - stop1
+    return nothing
 end
 
 function read_bam(bam_file::String; uniques_only=false, nb_reads::Int=-1)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
-    aligned_reads = DataFrame(name=String[], start=Int[], stop=Int[], chr=String[], nm=Int[], aux=String[], cigar=String[])
+    aligned_reads = DataFrame(name=String[], start=Int[], stop=Int[], chr=String[], nm=Int[], xa=Interval[], cigar=String[])
     c::Int = 0
     while !eof(reader)
         read!(reader, record)
         !BAM.ismapped(record) && continue
-        (start, stop) = sort([BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)])
-        aux_data = BAM.auxdata(record).data
-        aux_string = get_XA_tag(aux_data)
-        (uniques_only && (aux_string != "-")) && continue
+        start, stop = BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)
+        start > stop && ((start, stop) = (stop, start))
+        slice = BAM.auxdata_position(record):BAM.data_size(record)
+        xa = get_XA_tag(@view(record.data[slice]))
+        (uniques_only && !isnothing(xa)) && continue
+        xa_string = String(xa)
+        nms = get_NM_tag(@view(record.data[slice]))
         new_row = DataFrame(name=BAM.tempname(record), start=start, stop=stop, chr=BAM.refname(record), 
-                            nm=get_NM_tag(aux_data), aux=aux_string, cigar=BAM.cigar(record))
+                            nm=nms, xa=xa_string, cigar=BAM.cigar(record))
         append!(aligned_reads, new_row)
         ((nb_reads > 0) & (c >= nb_reads)) && break 
     end
@@ -110,7 +105,8 @@ function read_wig(wig_file::String)
     return coverages
 end
 
-Coverage
+struct Coverage <: Annotation
+end
 
 struct Genome <: SequenceContainer
     seq::LongDNASeq

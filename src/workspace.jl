@@ -1,4 +1,4 @@
-using RNASeqTools
+#using RNASeqTools
 using BioSequences
 using DataFrames
 using BioAlignments
@@ -651,7 +651,7 @@ function run_annotation_check()
     end
 end
 
-@time run_annotation_check()
+#@time run_annotation_check()
 
 function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{String,String}, threeUTR_fasta::String, fiveUTR_fasta::String)
     record = FASTA.Record()
@@ -730,3 +730,50 @@ function align_local(sequence_fasta::String, genome_files::Vector{String}, out_f
     end
     CSV.write(out_file, alignment_table)
 end
+
+using XAM
+
+function strandint(record::BAM.Record; is_rev=false)
+    BAM.ispositivestrand(record) ? strand = 1 : strand = -1
+    is_rev ? (return strand * -1) : (return strand)
+end
+
+@inline function translated_data(data::SubArray{UInt8,1})
+    for i in 1:length(data)
+        (data[i] == 0x00) && (return data[1:i-1])
+    end
+end
+
+@inline function get_NM_tag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+      (0x4d == data[i]) & (0x43 == data[i+1]) && (return Int(data[i+2]))
+    end
+    return nothing
+end
+
+@inline function get_XA_tag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+        (0x00 == data[i]) & (UInt8('X') == data[i+1]) & (UInt8('A') == data[i+2]) && 
+        (return translated_data(@view(data[i+4:end])))
+    end
+    return nothing
+end
+
+function mytest()
+    file = "/home/abc/Data/caulo/rilseq/se_bams/CC4_1.bam"
+    reader = BAM.Reader(open(file), index=file*".bai")
+    record = BAM.Record()
+    c = 0
+    @time while !eof(reader)
+        c += 1
+        read!(reader, record)
+        start, stop = BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)
+        start > stop && ((start, stop) = (stop, start))
+        slice = BAM.auxdata_position(record):BAM.data_size(record)
+        aux = get_XA_tag(@view(record.data[slice]))
+        nms = get_NM_tag(@view(record.data[slice]))
+        !isnothing(aux) && println(String(aux), " ", nms)
+        c == 1000000 && break
+    end
+end
+mytest()

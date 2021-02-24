@@ -8,6 +8,7 @@ using XLSX
 using DataFrames
 using BioSequences
 using CodecZlib
+using GenomicFeatures
 
 export align_mem, align_backtrack, align_local
 export trim_fastp, split_libs 
@@ -21,7 +22,6 @@ include("align.jl")
 include("preprocess.jl")
 include("io.jl")
 include("utils.jl")
-include("rilseq.jl")
-include("tss.jl")
+include("annotate.jl")
 
 end
