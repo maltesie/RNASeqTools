@@ -516,11 +516,11 @@ function run_multi_genome_align()
     fivefolder = "/home/abc/Workspace/ConservedUTRs/fiveUTRs/"
     threefolder = "/home/abc/Workspace/ConservedUTRs/threeUTRs/"
 
-    align_mem(fiveutrs, fivefolder, genomes)
-    align_mem(threeutrs, threefolder, genomes)
+    align_mem(fiveutrs, fivefolder, genomes; z_score=1000)
+    align_mem(threeutrs, threefolder, genomes; z_score=1000)
 end
 
-#run_multi_genome_align()
+run_multi_genome_align()
 
 function conservation_table(bam_files::Vector{String})
     name_trans = Dict(
@@ -549,6 +549,15 @@ function conservation_table(bam_files::Vector{String})
             #(sum(table.name .== row[:name]) > 1) && println("$name $nb_hits")
         end
     end
+    trans = Dict{String,String}()
+    open("/home/abc/Data/vibrio/annotations/vibrio_altname.txt") do f
+        lines = readlines(f)
+        for line in lines[2:end]
+            (vc_name, alt_name, color) = split(line)
+            trans[alt_name] = vc_name
+        end
+    end
+    table[!, :vc_name] = [(name in keys(trans)) ? trans[name] : name for name in table[!, :name]]
     return table
 end
 
@@ -565,3 +574,5 @@ function run_constervation_table()
 end
 
 run_constervation_table()
+
+#read_bam("/home/abc/Workspace/ConservedUTRs/threeUTRs/GCF_000024825.1_ASM2482v1_genomic.bam")
