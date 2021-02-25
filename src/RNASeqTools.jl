@@ -14,8 +14,8 @@ export align_mem, align_backtrack, align_local
 export trim_fastp, split_libs 
 export read_bam, read_wig, read_gff, Genome, FastqReads, FastaReads
 export tss, terms, annotate_utrs!
-export rilseq_analysis
 export visualize_conserved_utrs
+export Reads, PairedReads
 
 include("types.jl")
 include("align.jl")

@@ -4,8 +4,8 @@ function Base.filter!(f, reads::Reads)
     end
 end
 
-function Base.filter!(f, reads::PairedReads)
+function Base.filter!(f, reads::PairedReads; both=false)
     for (key, (read1, read2)) in reads.dict
-        (f(read1) || f(read2)) || delete!(reads, key)
+        both ? (f(read1) && f(read2)) || delete!(reads, key) : (f(read1) || f(read2)) || delete!(reads, key)
     end
 end
