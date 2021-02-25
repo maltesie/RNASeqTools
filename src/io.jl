@@ -54,17 +54,6 @@ function read_bam(bam_file::String; uniques_only=false, nb_reads::Int=-1)
     return aligned_reads
 end
 
-struct Alignments <: Annotation
-    table::DataFrame
-    file::String
-    uniqe::Bool
-end
-
-function Alignments(bam_file::String; uniques_only=false, nb_reads=-1)
-    table = read_bam(bam_file; uniques_only=uniques_only, nb_reads=nb_reads)
-    Alignments(table, bam_file, uniques_only)
-end
-
 function read_wig(wig_file::String)
     coverages::Vector{Dict{String,Vector{Float64}}} = []
     temp_collect = Dict()
@@ -105,9 +94,6 @@ function read_wig(wig_file::String)
     return coverages
 end
 
-struct Coverage <: Annotation
-end
-
 struct Genome <: SequenceContainer
     seq::LongDNASeq
     chrs::Dict{String, UnitRange{Int}}
@@ -138,7 +124,7 @@ function read_genomic_fasta(fasta_file::String)
     name = ""
     open(fasta_file, "r") do file
         lines = readlines(file)
-        startswith(lines[1], ">") && (name = split(join(split(lines[1])[2:end]), "hromosome")[1][1:end-2])
+        startswith(lines[1], ">") && (name = join(split(lines[1])[2:end]))
         for (i,line) in enumerate(lines)
             startswith(line, ">") &&  (push!(chrs, split(line," ")[1][2:end]); push!(start_ids, i))
         end
@@ -163,60 +149,70 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
     end
 end
 
-struct FastaReads <: SequenceContainer
-    seqs::Dict{String, LongDNASeq}
-    desc::String
+struct PairedReads <: SequenceContainer
+    dict::Dict{Int, LongDNASeqPair}
+    name::String
 end
 
-function FastaReads(fasta_file::String; description="")
-    FastaReads(read_reads_fasta(fasta_file), description)
+function PairedReads(file1::String, file2::String; description="", nb_reads=nothing)
+    reads1 = read_reads(file1; nb_reads=nb_reads)
+    reads2 = read_reads(file2; nb_reads=nb_reads)
+    @assert length(reads1) == length(reads2)
+    @assert all([haskey(reads2, key) for key in keys(read1s)])
+    PairedReads(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)), description)
 end
 
-function read_reads_fasta(fasta_file::String; nb_reads=-1)
-    reads::Dict{String, LongDNASeq} = Dict()
-    endswith(fasta_file, ".gz") ?
-    reader = FASTA.Reader(GzipDecompressorStream(open(fasta_file, "r"))) :
-    reader = FASTA.Reader(open(fasta_file, "r"))
-    record = FASTA.Record()
+function Base.write(file1::String, file2::String, reads::PairedReads)
+    writer1 = FASTA.Writer(GzipCompressorStream(open(file1, "w")))
+    writer2 = FASTA.Writer(GzipCompressorStream(open(file2, "w")))
+    for (key, (read1, read2)) in reads.dict
+        record1 = FASTA.Record(key, read1)
+        record2 = FASTA.Record(key, read2)
+        write(writer1, record1)
+        write(writer2, record2)
+    end
+    close(writer1)
+    close(writer2)
+end
+
+struct Reads <: SequenceContainer
+    dict::Dict{Int, LongDNASeq}
+    name::String
+end
+
+function Base.write(file::String, reads::Reads)
+    writer = FASTA.Writer(GzipCompressorStream(open(file, "w")))
+    for (key, (read1, read2)) in reads.dict
+        record = FASTA.Record(key, read1)
+        write(writer, record)
+    end
+    close(writer)
+end
+
+function Reads(file::String; description="", nb_reads=nothing)
+    reads = read_reads(file, nb_reads=nb_reads)
+    Reads(reads, description)
+end
+
+function read_reads(file::String; nb_reads=nothing)
+    @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
+    reads::Dict{Int, LongDNASeq} = Dict()
+    is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
+    is_zipped = endswith(file, ".gz")
+    (is_zipped && is_fastq) && (reader = FASTQ.Reader(GzipDecompressorStream(open(file, "r"))))
+    (is_zipped && !is_fastq) && (reader = FASTA.Reader(GzipDecompressorStream(open(file, "r"))))
+    (!is_zipped && is_fastq) && (reader = FASTQ.Reader(open(file, "r")))
+    (!is_zipped && !is_fastq) && (reader = FASTA.Reader(open(file, "r"))) 
+    is_fastq ? record = FASTQ.Record() : record = FASTA.Record()
     c = 0
     while !eof(reader)
         c += 1
         read!(reader, record)
-        push!(reads, FASTA.identifier(record)=>LongDNASeq(FASTA.sequence(record)))
-        ((nb_reads > 0) & (c >= nb_reads)) && break
+        push!(reads, hash(record.data[record.identifier])=>LongDNASeq(record.data[record.sequence]))
+        isnothing(nb_reads) || ((c >= nb_reads) && break)
     end
     close(reader)
     return reads
-end
-
-struct FastqReads <: SequenceContainer
-    seqs::Dict{String, LongDNASeq}
-    qual::Dict{String, Vector{UInt8}}
-    desc::String
-end
-
-function FastqReads(fastq_file::String; description="")
-    (reads, quality) = read_reads_fastq(fastq_file)
-    FastqReads(reads, quality, description)
-end
-
-function read_reads_fastq(fastq_file::String; nb_reads=-1)
-    reads::Dict{String, LongDNASeq} = Dict()
-    qual::Dict{String, UnitRange{Int}} = Dict()
-    endswith(fastq_file, ".gz") ?
-    reader = FASTQ.Reader(GzipDecompressorStream(open(fastq_file, "r"))) :
-    reader = FASTQ.Reader(open(fastq_file, "r"))
-    record = FASTQ.Record()
-    c = 0
-    while !eof(reader)
-        c += 1
-        read!(reader, record)
-        push!(reads, FASTQ.identifier(record)=>LongDNASeq(FASTQ.sequence(record)))
-        push!(qual, FASTQ.identifier(record)=>FASTQ.quality(record))
-        ((nb_reads > 0) & (c >= nb_reads)) && break
-    end
-    close(reader)
-    return reads, quality
 end
 
 struct SingleTypeFiles <: FileCollection

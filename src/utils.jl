@@ -70,6 +70,10 @@ function get_chr_from_wig(wig_file::String)
     return chrs
 end
 
+function approxoccursin(a::LongDNASeq, b::LongDNASeq; k=1)
+    return approxsearch(a, b, k) != 0:-1
+end
+
 function get_position(pos::Int, chr::String, aux::String; reversed=false)::Tuple{Int, String}
     poss::Array{Int,1} = [pos]
     chrs::Array{String,1} = [chr]
