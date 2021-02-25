@@ -805,20 +805,27 @@ end
 using Plots 
 
 function plot_paired_reads()
-    file1 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_1.fastq.gz"
-    file2 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_2.fastq.gz"
-    nb_reads = 10000
-    @time reads = PairedReads(file1, file2, nb_reads=nb_reads)
-    @time RNASeqTools.reverse_complement!(reads)
-    @time filter!(s->RNASeqTools.approxoccursin(s, dna"TTCTTTGATG"), reads)
-    
+    file1 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC4_1.fastq.gz"
+    file2 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC4_2.fastq.gz"
+    nb_reads = 1000000
+    reads = PairedReads(file1, file2, nb_reads=nb_reads)
+    RNASeqTools.reverse_complement!(reads)
+    filter!(s->RNASeqTools.approxoccursin(s, dna"TTTCTTTGATGTCCCCA"), reads)
     println(length(reads.dict)/nb_reads*100)
-    @time h1 = hist_length_distribution(reads)
-    @time h2 = hist_similarity(reads)
-    plot(h1, h2, layout = (2,1))
-    filter!(s->RNASeqTools.approxoccursin(s, dna"TTCTTTGATG"), reads; both=true)
-    @time RNASeqTools.cut!(reads, dna"TTCTTTGATG")
-    RNASeqTools.cut!(reads, 9; from_left=false)
-    line_nucleotide_distribution(reads, align_left=false)
+    #h1 = hist_length_distribution(reads)
+    #h2 = hist_similarity(reads)
+    #hists = plot(h1, h2, layout = (2,1))
+    filter!(s->RNASeqTools.approxoccursin(s, dna"TTTCTTTGATGTCCCCA"), reads; both=true)
+    println(length(reads.dict)/nb_reads*100)
+    RNASeqTools.cut!(reads, dna"TTTCTTTGATGTCCCCA", keep_left=true)
+    RNASeqTools.cut!(reads, 10)
+    #lines = line_nucleotide_distribution(reads, align_left=false)
+    self_count = 0
+    for (key, (read1, read2)) in reads.dict
+        (read1 == read2) && (self_count += 1)
+    end
+    println(self_count/nb_reads*100)
+    #plot(hists, lines, layout=(2,1), size=(400, 800))
+    #savefig("/home/abc/Workspace/rep1.png")
 end
 plot_paired_reads()
