@@ -1,39 +1,70 @@
-function combine_gffs(gff_files::Array{String, 1}; out_file="out.gff3")
-    writer = open(out_file, "w")
-    for gff_in_file in gff_files
-        reader = open(gff_in_file)
-        write(writer, read(reader, String))
-        close(reader)
+function reverse_complement!(reads::Reads)
+    for (key, read) in reads.dict
+        BioSequences.reverse_complement!(read)
     end
-    close(writer)
 end
 
-function reverse_complement_reads(in_file::String, out_file::String)
-
-    record1::FASTQ.Record = FASTQ.Record()
-    record2::FASTQ.Record = FASTQ.Record()
-    ide::String = ""
-    des::String = ""
-    seq::String = ""
-    qua::String = ""
-
-    if endswith(in_file, ".fastq.gz")
-        reader = FASTQ.Reader(GzipDecompressorStream(open(in_file, "r")))
-    elseif endswith(in_file, ".fastq")
-        reader = FASTQ.Reader(open(in_file, "r"))
-    else
-        throw(ErrorException("Only .fastq and .fastq.gz files are supported."))
+function reverse_complement!(reads::PairedReads; use_read1=true)
+    for (key, (read1, read2)) in reads.dict
+        use_read1 ? BioSequences.reverse_complement!(read1) : BioSequences.reverse_complement!(read2)
     end
-    writer = FASTQ.Writer(GzipCompressorStream(open(out_file, "w")))
-    
-    while !eof(reader)
-        read!(reader, record1)
-        seq = convert(String, reverse_complement(LongDNASeq(FASTQ.sequence(record1))))
-        record2 = FASTQ.Record(identifier(record1), description(record1), seq, reverse(quality(record1)))
-        write(writer, record2)
+end
+
+function cut!(read::LongDNASeq, pos::Int; keep_left=true, from_left=true)
+    from_left ? my_pos = pos : my_pos = length(read) - pos 
+    println(read)
+    keep_left ? read = read[1:my_pos-1] : read = read[my_pos+1:end]
+    println(read)
+end
+
+function cut!(reads::Reads, pos::Int; keep_left=true, from_left=true)
+    for (key, read) in reads.dict
+        (pos > length(read)) || cut!(read, pos; keep_left=keep_left, from_left=from_left)
     end
-    close(reader)
-    close(writer)
+end
+
+function cut!(reads::PairedReads, pos::Int; keep_left=true, from_left=true)
+    for (key, (read1, read2)) in reads.dict
+        (pos > length(read1)) || cut!(read1, pos; keep_left=keep_left, from_left=from_left)
+        (pos > length(read2)) || cut!(read2, pos; keep_left=keep_left, from_left=from_left)
+        println(read1, " ", read2)
+    end
+end
+
+function cut!(reads::Reads, seq::LongDNASeq; keep_seq=false, keep_left=true)
+    for (key, read) in reads.dict
+        slice = approxsearch(read, seq, 1)
+        slice == 0:-1 && continue
+        ((keep_seq && keep_left) || (!keep_seq && !keep_left)) ? pos = last(slice) : pos = first(slice)
+        (pos > length(read)) || cut!(read, pos; keep_left=keep_left)
+    end
+end
+
+function cut!(reads::PairedReads, seq::LongDNASeq; keep_seq=false, keep_left=true)
+    for (key, (read1, read2)) in reads.dict
+        slice1 = approxsearch(read1, seq, 1)
+        slice2 = approxsearch(read2, seq, 1)
+        if slice1 != 0:-1
+            ((keep_seq && keep_left) || (!keep_seq && !keep_left)) ? pos = last(slice1) : pos = first(slice1)
+            (pos > length(read1))|| cut!(read1, pos; keep_left=keep_left)
+        end
+        if slice2 != 0:-1
+            ((keep_seq && keep_left) || (!keep_seq && !keep_left)) ? pos = last(slice2) : pos = first(slice2)
+            (pos > length(read2)) || cut!(read2, pos; keep_left=keep_left)
+        end
+    end
+end
+
+function Base.filter!(f, reads::Reads)
+    for (key, read) in reads.dict
+        f(read) || delete!(reads.dict, key)
+    end
+end
+
+function Base.filter!(f, reads::PairedReads; both=false)
+    for (key, (read1, read2)) in reads.dict
+        both ? (f(read1) && f(read2)) || delete!(reads.dict, key) : (f(read1) || f(read2)) || delete!(reads.dict, key)
+    end
 end
 
 function join_replicates(coverage_notex::Vector{Dict{String,Vector{Float64}}}, coverage_tex::Vector{Dict{String,Vector{Float64}}}, chr::String)
@@ -74,72 +105,4 @@ function approxoccursin(a::LongDNASeq, b::LongDNASeq; k=1)
     return approxsearch(a, b, k) != 0:-1
 end
 
-function get_position(pos::Int, chr::String, aux::String; reversed=false)::Tuple{Int, String}
-    poss::Array{Int,1} = [pos]
-    chrs::Array{String,1} = [chr]
-    reversed ? factor = -1 : factor = 1
-    for alignment in split(aux, ";")
-        (alignment == "-") && (return pos, chr)
-        isempty(alignment) && continue
-        c, p, q, e = split(alignment, ",")
-        push!(poss, factor * parse(Int, p))
-        push!(chrs, String(c))
-    end
-    ind = sortperm(abs.(poss))[1]
-    spos = poss[ind]
-    schr = chrs[ind]
-    return spos, schr
-end
 
-function bam_chromosome_lengths(reader::BAM.Reader)
-    chr_lengths = Int[]
-    for meta in findall(BAM.header(reader), "SQ")
-        push!(chr_lengths, parse(Int, meta["LN"]))
-    end
-    return chr_lengths
-end
-
-function bam_chromosome_names(reader::BAM.Reader)
-    chr_names = String[]
-    for meta in findall(BAM.header(reader), "SQ")
-        push!(chr_names, meta["SN"])
-    end
-    return chr_names
-end
-
-function translate_positions!(pos::Vector{Int}, trans_dict::Dict{Int, Union{Int, Nothing}})
-    for p in pos
-        p = trans_dict[p]
-    end
-end
-
-@inline function isproperpair(record::BAM.Record)::Bool
-    return (BAM.flag(record) & SAM.FLAG_PROPER_PAIR) != 0
-end
-
-@inline function areconcordant(pos1::Int, pos2::Int, chr1::String, chr2::String, aux1::String, aux2::String; distance=1000)::Bool
-    
-    poss1::Array{Int,1} = [pos1]
-    chrs1::Array{String,1} = [chr1]
-    for alignment in split(aux1, ";")
-        (isempty(alignment) | (alignment == "-")) && continue
-        push!(poss1, parse(Int, split(alignment, ",")[2]))
-        push!(chrs1, String(split(alignment, ",")[1]))
-    end
-    
-    poss2::Array{Int,1} = [pos2]
-    chrs2::Array{String,1} = [chr2]
-    for alignment in split(aux2, ";")
-        (isempty(alignment) | (alignment == "-")) && continue
-        push!(poss2, parse(Int, split(alignment, ",")[2]))
-        push!(chrs2, split(alignment, ",")[1])
-    end
-    
-    for (p1::Int, c1::String) in zip(poss1, chrs1)
-        for (p2::Int, c2::String) in zip(poss2, chrs2)
-            c1 != c2 && continue
-            (abs(p1-p2) < distance) && (return true)
-        end
-    end
-    return false
-end

@@ -158,7 +158,7 @@ function PairedReads(file1::String, file2::String; description="", nb_reads=noth
     reads1 = read_reads(file1; nb_reads=nb_reads)
     reads2 = read_reads(file2; nb_reads=nb_reads)
     @assert length(reads1) == length(reads2)
-    @assert all([haskey(reads2, key) for key in keys(read1s)])
+    @assert all([haskey(reads2, key) for key in keys(reads1)])
     PairedReads(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)), description)
 end
 

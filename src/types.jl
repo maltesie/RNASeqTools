@@ -6,4 +6,4 @@ abstract type FileCollection end
 
 abstract type Report end
 
-LongDNASeqPair = Tuple{LongRNASeq, LongRNASeq}
+LongDNASeqPair = Tuple{LongDNASeq, LongDNASeq}

@@ -1,18 +1,4 @@
-using Dash, DashHtmlComponents, DashCoreComponents, DashTable
-using DataFrames, CSV
-
-function datatable_columns(df::SubDataFrame)
-    [(id=column, name=column) for column in names(df)[1:end-3]]
-end
-
-function datatabele_data(df::SubDataFrame)
-    [Dict(name=>row[Symbol(name)] for name in names(df)[1:end-3]) for row in eachrow(df)]
-end
-
-function visualize_conserved_utrs(conservation_file::String)
-
-    conservation_table = CSV.read(conservation_file, DataFrame)
-    show_table = @view(conservation_table[!, vcat([:name, :length], [Symbol(name) for name in names(conservation_table) if endswith(name, "score")])])
+function dashboard(reads::Reads)
 
     app = dash(assets_folder=joinpath(@__DIR__, "assets"))
 
@@ -36,11 +22,42 @@ function visualize_conserved_utrs(conservation_file::String)
         end
     end
 
-    callback!(app, Output("my-div1", "children"), Input("my-id1", "value")) do input_value
-        "You've entered kot 2 $(input_value)"
-    end
-
     run_server(app, "0.0.0.0", 8083)
 end
 
-#visualize_conserved_utrs("/home/abc/Workspace/ConservedUTRs/alignments/three_alignment_table (copy).csv")
+function hist_length_distribution(reads::Reads)
+end
+
+function hist_length_distribution(reads::PairedReads)
+    lengths = vcat([[length(read1) length(read2)] for (read1, read2) in values(reads.dict)]...)
+    histogram(lengths, labels=["read1" "read2"])
+end
+
+function line_nucleotide_distribution(reads::Reads)
+end
+
+function line_nucleotide_distribution(reads::PairedReads; align_left=true)
+    max_length = maximum(vcat([[length(read1) length(read2)] for (read1, read2) in values(reads.dict)]...))
+    count1 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
+    count2 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
+    nb_reads = length(reads.dict)
+    for (key, (read1, read2)) in reads.dict
+        align_left ? 
+        (index1 = 1:length(read1); index2 = 1:length(read2)) : 
+        (index1 = (max_length - length(read1) + 1):max_length; index2 = (max_length - length(read2) + 1):max_length)
+        for ((i1, n1),(i2, n2)) in zip(zip(index1, read1), zip(index2, read2))
+            count1[n1][i1]
+            count2[n2][i2]
+        end
+    end
+    dna_trans = Dict(DNA_A => "A", DNA_T=>"T", DNA_G=>"G", DNA_C=>"C", DNA_N=>"N")
+    label = reshape([dna_trans[key] for key in keys(count1)], (1, length(dna_trans)))
+    p1 = plot(collect(values(count1)), label=label)
+    p2 = plot(collect(values(count2)), legend=false)
+    plot(p1, p2, layout=(2,1))
+end
+
+function hist_similarity(reads::PairedReads; window_size=10, step_size=5)
+    sim = similarity(reads; window_size=window_size, step_size=step_size)
+    histogram(collect(values(sim)))
+end

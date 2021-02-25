@@ -793,7 +793,7 @@ function align_search()
     reads = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC1_1.fastq.gz"
     genome = "/home/abc/Data/vibrio/genome/NC_002505_6.fa"
 
-    my_reads = Reads(reads)
+    my_reads = Reads(reads; nb_reads=100)
     my_genome = Genome(genome)
 
     @time for (key, seq) in my_reads.dict
@@ -801,4 +801,24 @@ function align_search()
     end
 end
 
-align_search()
+#align_search()
+using Plots 
+
+function plot_paired_reads()
+    file1 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_1.fastq.gz"
+    file2 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_2.fastq.gz"
+    nb_reads = 10000
+    @time reads = PairedReads(file1, file2, nb_reads=nb_reads)
+    @time RNASeqTools.reverse_complement!(reads)
+    @time filter!(s->RNASeqTools.approxoccursin(s, dna"TTCTTTGATG"), reads)
+    
+    println(length(reads.dict)/nb_reads*100)
+    @time h1 = hist_length_distribution(reads)
+    @time h2 = hist_similarity(reads)
+    plot(h1, h2, layout = (2,1))
+    filter!(s->RNASeqTools.approxoccursin(s, dna"TTCTTTGATG"), reads; both=true)
+    @time RNASeqTools.cut!(reads, dna"TTCTTTGATG")
+    RNASeqTools.cut!(reads, 9; from_left=false)
+    line_nucleotide_distribution(reads, align_left=false)
+end
+plot_paired_reads()

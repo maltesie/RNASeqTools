@@ -1,27 +1,28 @@
 module RNASeqTools
 
-using XAM
-using FASTX
-using BioAlignments
-using CSV
-using XLSX
+using XAM, FASTX, CSV, XLSX, CodecZlib
+using BioAlignments, BioSequences, GenomicFeatures
 using DataFrames
-using BioSequences
-using CodecZlib
-using GenomicFeatures
+using Plots
+using Dash, DashHtmlComponents, DashCoreComponents, DashTable
 
 export align_mem, align_backtrack, align_local
 export trim_fastp, split_libs 
 export read_bam, read_wig, read_gff, Genome, FastqReads, FastaReads
 export tss, terms, annotate_utrs!
-export visualize_conserved_utrs
+#export similarity
+export dashboard, hist_length_distribution, hist_similarity, line_nucleotide_distribution
 export Reads, PairedReads
 
 include("types.jl")
-include("align.jl")
+include("misc.jl")
 include("preprocess.jl")
+include("align.jl")
+
 include("io.jl")
 include("utils.jl")
 include("annotate.jl")
+include("analyse.jl")
+include("visualize.jl")
 
 end
