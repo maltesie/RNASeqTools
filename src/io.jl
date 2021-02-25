@@ -150,7 +150,7 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
 end
 
 struct PairedReads <: SequenceContainer
-    dict::Dict{Int, LongDNASeqPair}
+    dict::Dict{UInt64, LongDNASeqPair}
     name::String
 end
 
@@ -176,7 +176,7 @@ function Base.write(file1::String, file2::String, reads::PairedReads)
 end
 
 struct Reads <: SequenceContainer
-    dict::Dict{Int, LongDNASeq}
+    dict::Dict{UInt64, LongDNASeq}
     name::String
 end
 
@@ -196,7 +196,7 @@ end
 
 function read_reads(file::String; nb_reads=nothing)
     @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
-    reads::Dict{Int, LongDNASeq} = Dict()
+    reads::Dict{UInt64, LongDNASeq} = Dict()
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped = endswith(file, ".gz")
     (is_zipped && is_fastq) && (reader = FASTQ.Reader(GzipDecompressorStream(open(file, "r"))))
