@@ -1,4 +1,4 @@
-#using RNASeqTools
+using RNASeqTools
 using BioSequences
 using DataFrames
 using BioAlignments
@@ -505,7 +505,7 @@ function run_multi_genome_align()
     align_mem(threeutrs, threefolder, genomes; z_score=1000)
 end
 
-run_multi_genome_align()
+#run_multi_genome_align()
 
 function conservation_table(bam_files::Vector{String})
     name_trans = Dict(
@@ -694,7 +694,7 @@ function write_utrs_fasta(annotations::Dict{String,DataFrame}, genome::Dict{Stri
     close(three_writer)
 end
 
-function align_mem(sequence_fasta::String, genome_files::Vector{String}, out_folder::String; bwa_bin="bwa", sam_bin="samtools")
+function align_mem2(sequence_fasta::String, genome_files::Vector{String}, out_folder::String; bwa_bin="bwa", sam_bin="samtools")
     for genome in genome_files
         out_file = joinpath(out_folder, join(split(basename(genome), ".")[1:end-1],".") * ".bam")
         align_mem(sequence_fasta, out_file, genome; bwa_bin=bwa_bin, sam_bin=sam_bin)
@@ -785,4 +785,20 @@ function mytest()
         c == 1000000 && break
     end
 end
-mytest()
+#mytest()
+
+using BioSequences
+
+function align_search()
+    reads = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC1_1.fastq.gz"
+    genome = "/home/abc/Data/vibrio/genome/NC_002505_6.fa"
+
+    my_reads = Reads(reads)
+    my_genome = Genome(genome)
+
+    @time for (key, seq) in my_reads.dict
+        s = approxrsearch(my_genome.seq, seq, 3)
+    end
+end
+
+align_search()
