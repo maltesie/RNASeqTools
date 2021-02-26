@@ -79,4 +79,7 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm("tmp.view")
 end
 
-
+function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)
+    res = pairalign(LocalAlignment(), query_sequence, reference_sequence, scoremodel)
+    return res
+end

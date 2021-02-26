@@ -701,10 +701,7 @@ function align_mem2(sequence_fasta::String, genome_files::Vector{String}, out_fo
     end
 end
 
-function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)
-    res = pairalign(LocalAlignment(), query_sequence, reference_sequence, scoremodel)
-    return res
-end
+
 
 function align_local(sequence_fasta::String, genome_files::Vector{String}, out_file::String)
     occursin(".fasta", sequence_fasta) ? reads = FastaReads(sequence_fasta) : reads = FastqReads(sequence_fasta)
@@ -805,26 +802,24 @@ end
 using Plots 
 
 function plot_paired_reads()
-    file1 = "/home/abc/Data/vibrio/rilseq/library_rilseq/demultiplexed/VC3_1.fastq.gz"
-    file2 = "/home/abc/Data/vibrio/rilseq/library_rilseq/demultiplexed/VC3_2.fastq.gz"
+    file1 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_1.fastq.gz"
+    file2 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_2.fastq.gz"
     stop_at = nothing
-    reads = PairedReads(file1, file2; stop_at=stop_at)
+    @time reads = PairedReads(file1, file2; stop_at=stop_at)
     nb_reads = reads.count
-    RNASeqTools.reverse_complement!(reads)
-    filter!(s->RNASeqTools.approxoccursin(s, dna"TTTCTTTGATGTCCCCA"), reads)
+    @time RNASeqTools.reverse_complement!(reads)
+    query = dna"TTTCTTTGATGTCCCCA"
+    @time filter!(s->occursin(query, s), reads)
     contains_rybb = length(reads.dict)
-    h1 = hist_length_distribution(reads)
+    @time h1 = hist_length_distribution(reads)
     @time h2 = hist_similarity(reads)
     hists = plot(h1, h2, layout = (2,1))
-    filter!(s->RNASeqTools.approxoccursin(s, dna"TTTCTTTGATGTCCCCA"), reads; both=true)
+    @time filter!(s->occursin(query, s), reads; both=true)
     both_rybb = length(reads.dict)
-    RNASeqTools.cut!(reads, dna"TTTCTTTGATGTCCCCA", keep=:left)
-    RNASeqTools.cut!(reads, 9, from=:right, keep=:right)
-    lines = line_nucleotide_distribution(reads, align=:right)
-    self_count = 0
-    for (key, (read1, read2)) in reads.dict
-        (read1 == read2) && (self_count += 1)
-    end
+    @time RNASeqTools.cut!(reads, query, keep=:left_of_query)
+    @time RNASeqTools.cut!(reads, 9, from=:right, keep=:right)
+    @time lines = line_nucleotide_distribution(reads, align=:right)
+    self_count = sum([read1 == read2 for (read1, read2) in values(reads.dict)])
     println(
         "summary:\nrybb and other: ", (contains_rybb-both_rybb)/nb_reads*100, "% = ", (contains_rybb-both_rybb),
         "\nrybb with itself: ", self_count/nb_reads*100, "% = ", self_count,

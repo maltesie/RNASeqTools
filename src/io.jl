@@ -4,6 +4,17 @@ function write_file(filename::String, content::String)
     end
 end
 
+struct Alignment <: Annotation
+    start::Int
+    stop::Int
+    data::Vector{UInt8}
+end
+
+struct Alignments <: SequenceContainer
+    dict::Dict{UInt, Alignment}
+    chrs::Dict{Int, String}
+end
+
 function strandint(record::BAM.Record; is_rev=false)
     BAM.ispositivestrand(record) ? strand = 1 : strand = -1
     is_rev ? (return strand * -1) : (return strand)
@@ -30,11 +41,12 @@ end
     return nothing
 end
 
-function read_bam(bam_file::String; uniques_only=false, nb_reads::Int=-1)
-    record::BAM.Record = BAM.Record()
+function read_bam(bam_file::String; uniques_only=false, stop_at=nothing)
+    record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
-    aligned_reads = DataFrame(name=String[], start=Int[], stop=Int[], chr=String[], nm=Int[], xa=Interval[], cigar=String[])
-    c::Int = 0
+    chrs = Dict(i=>name for (i,name) in enumerate(bam_chromosome_names(reader)))
+    aligned_reads = Dict()
+    c = 0
     while !eof(reader)
         read!(reader, record)
         !BAM.ismapped(record) && continue
@@ -43,7 +55,6 @@ function read_bam(bam_file::String; uniques_only=false, nb_reads::Int=-1)
         slice = BAM.auxdata_position(record):BAM.data_size(record)
         xa = get_XA_tag(@view(record.data[slice]))
         (uniques_only && !isnothing(xa)) && continue
-        xa_string = String(xa)
         nms = get_NM_tag(@view(record.data[slice]))
         new_row = DataFrame(name=BAM.tempname(record), start=start, stop=stop, chr=BAM.refname(record), 
                             nm=nms, xa=xa_string, cigar=BAM.cigar(record))
@@ -206,11 +217,13 @@ function read_reads(file::String; nb_reads=nothing)
     (!is_zipped && is_fastq) && (reader = FASTQ.Reader(open(file, "r")))
     (!is_zipped && !is_fastq) && (reader = FASTA.Reader(open(file, "r"))) 
     is_fastq ? record = FASTQ.Record() : record = FASTA.Record()
+    my_seq = LongDNASeq()
     c = 0
     while !eof(reader)
         c += 1
         read!(reader, record)
-        push!(reads, hash(record.data[record.identifier])=>LongDNASeq(record.data[record.sequence]))
+        my_seq = LongDNASeq(record.data[record.sequence])
+        push!(reads, hash(record.data[record.identifier])=>my_seq)
         isnothing(nb_reads) || ((c >= nb_reads) && break)
     end
     close(reader)

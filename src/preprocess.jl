@@ -173,8 +173,8 @@ function trim_fastp(input_files::Vector{Vector{String}}, output_folder::String;
     for ((in_file1, in_file2), (out_file1, out_file2), adapter) in zip(input_files, output_files, adapters)
         
         isnothing(adapter) ? 
-        cmd = `$fastp_bin -i $in_file1 -o $out_file1 -I $in_file2 -O $out_file2 -M 25 -l $min_length --trim_poly_g 10 --cut_front --cut_tail` :
-        cmd = `$fastp_bin -a $adapter $in_file1 -o $out_file1 -I $in_file2 -O $out_file2 -M 25 -l $min_length --trim_poly_g 10 --cut_front --cut_tail`
+        cmd = `$fastp_bin -i $in_file1 -o $out_file1 -I $in_file2 -O $out_file2 -M 25 -l $min_length --trim_poly_x 10 --cut_front --cut_tail` :
+        cmd = `$fastp_bin -a $adapter $in_file1 -o $out_file1 -I $in_file2 -O $out_file2 -M 25 -l $min_length --trim_poly_x 10 --cut_front --cut_tail`
         run(cmd)
         cc = 0
         reader = FASTQ.Reader(GzipDecompressorStream(open(out_file, "r")))
