@@ -36,13 +36,13 @@ end
 function line_nucleotide_distribution(reads::Reads)
 end
 
-function line_nucleotide_distribution(reads::PairedReads; align_left=true, title1="nucleotides of read1", title2="nucleotides of read2")
+function line_nucleotide_distribution(reads::PairedReads; align=:left, title1="nucleotides of read1", title2="nucleotides of read2")
     max_length = maximum(vcat([[length(read1) length(read2)] for (read1, read2) in values(reads.dict)]...))
     count1 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     count2 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     nb_reads = length(reads.dict)
     for (key, (read1, read2)) in reads.dict
-        align_left ? 
+        (align==:left) ? 
         (index1 = 1:length(read1); index2 = 1:length(read2)) : 
         (index1 = (max_length - length(read1) + 1):max_length; index2 = (max_length - length(read2) + 1):max_length)
         for ((i1, n1),(i2, n2)) in zip(zip(index1, read1), zip(index2, read2))

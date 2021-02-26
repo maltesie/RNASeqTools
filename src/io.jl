@@ -152,14 +152,15 @@ end
 struct PairedReads <: SequenceContainer
     dict::Dict{UInt64, LongDNASeqPair}
     name::String
+    count::Int
 end
 
-function PairedReads(file1::String, file2::String; description="", nb_reads=nothing)
-    reads1 = read_reads(file1; nb_reads=nb_reads)
-    reads2 = read_reads(file2; nb_reads=nb_reads)
+function PairedReads(file1::String, file2::String; description="", stop_at=nothing)
+    reads1 = read_reads(file1; nb_reads=stop_at)
+    reads2 = read_reads(file2; nb_reads=stop_at)
     @assert length(reads1) == length(reads2)
     @assert all([haskey(reads2, key) for key in keys(reads1)])
-    PairedReads(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)), description)
+    PairedReads(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)), description, length(reads1))
 end
 
 function Base.write(file1::String, file2::String, reads::PairedReads)
@@ -178,6 +179,7 @@ end
 struct Reads <: SequenceContainer
     dict::Dict{UInt64, LongDNASeq}
     name::String
+    count::Int
 end
 
 function Base.write(file::String, reads::Reads)
@@ -189,9 +191,9 @@ function Base.write(file::String, reads::Reads)
     close(writer)
 end
 
-function Reads(file::String; description="", nb_reads=nothing)
-    reads = read_reads(file, nb_reads=nb_reads)
-    Reads(reads, description)
+function Reads(file::String; description="", stop_at=nothing)
+    reads = read_reads(file, nb_reads=stop_at)
+    Reads(reads, description, length(reads))
 end
 
 function read_reads(file::String; nb_reads=nothing)

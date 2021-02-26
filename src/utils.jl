@@ -10,47 +10,48 @@ function reverse_complement!(reads::PairedReads; use_read1=true)
     end
 end
 
-function cut(read::LongDNASeq, pos::Int; keep_left=true, from_left=true)
-    from_left ? my_pos = pos : my_pos = length(read) - pos 
-    keep_left ? read = read[1:my_pos-1] : read = read[my_pos+1:end]
+function cut(read::LongDNASeq, pos::Int; keep=:left, from=:left)
+    (from == :left) ? 
+    ((keep == :left) ? read = read[1:pos] : read = read[pos+1:end]) : 
+    ((keep == :left) ? read = read[1:length(read) - pos] : read = read[length(read)-pos+1:end])
 end
 
-function cut!(reads::Reads, pos::Int; keep_left=true, from_left=true)
+function cut!(reads::Reads, pos::Int; keep=:left, from=:left)
     for (key, read) in reads.dict
-        (pos > length(read)) || (reads.dict[key]=cut(read, pos; keep_left=keep_left, from_left=from_left))
+        (pos > length(read)) || (reads.dict[key]=cut(read, pos; keep=keep, from=from))
     end
 end
 
-function cut!(reads::PairedReads, pos::Int; keep_left=true, from_left=true)
+function cut!(reads::PairedReads, pos::Int; keep=:left, from=:left)
     for (key, (read1, read2)) in reads.dict
         ((pos > length(read1)) && (pos > length(read2))) && continue
-        (pos > length(read1)) || (read1 = cut(read1, pos; keep_left=keep_left, from_left=from_left))
-        (pos > length(read2)) || (read2 = cut(read2, pos; keep_left=keep_left, from_left=from_left))
+        (pos > length(read1)) || (read1 = cut(read1, pos; keep=keep, from=from))
+        (pos > length(read2)) || (read2 = cut(read2, pos; keep=keep, from=from))
         reads.dict[key] = (read1, read2)
         #println(read1, " ", read2)
     end
 end
 
-function cut!(reads::Reads, seq::LongDNASeq; keep_seq=false, keep_left=true)
+function cut!(reads::Reads, seq::LongDNASeq; keep_seq=false, keep=:left)
     for (key, read) in reads.dict
         slice = approxsearch(read, seq, 1)
         slice == 0:-1 && continue
-        ((keep_seq && keep_left) || (!keep_seq && !keep_left)) ? pos = last(slice) : pos = first(slice)
-        (pos > length(read)) || (reads.dict[key] = cut(read, pos; keep_left=keep_left))
+        ((keep_seq && (keep == :left)) || (!keep_seq && !(keep == :left))) ? pos = last(slice)-1 : pos = first(slice)-1
+        (pos > length(read)) || (reads.dict[key] = cut(read, pos; keep=keep))
     end
 end
 
-function cut!(reads::PairedReads, seq::LongDNASeq; keep_seq=false, keep_left=true)
+function cut!(reads::PairedReads, seq::LongDNASeq; keep_seq=false, keep=:left)
     for (key, (read1, read2)) in reads.dict
         slice1 = approxsearch(read1, seq, 1)
         slice2 = approxsearch(read2, seq, 1)
         if slice1 != 0:-1
-            ((keep_seq && keep_left) || (!keep_seq && !keep_left)) ? pos = last(slice1) : pos = first(slice1)
-            (pos > length(read1))|| (read1 = cut(read1, pos; keep_left=keep_left))
+            ((keep_seq && (keep == :left)) || (!keep_seq && !(keep == :left))) ? pos = last(slice1) : pos = first(slice1)
+            (pos > length(read1))|| (read1 = cut(read1, pos; keep=keep))
         end
         if slice2 != 0:-1
-            ((keep_seq && keep_left) || (!keep_seq && !keep_left)) ? pos = last(slice2) : pos = first(slice2)
-            (pos > length(read2)) || (read2 = cut(read2, pos; keep_left=keep_left))
+            ((keep_seq && (keep == :left)) || (!keep_seq && !(keep == :left))) ? pos = last(slice2) : pos = first(slice2)
+            (pos > length(read2)) || (read2 = cut(read2, pos; keep=keep))
         end
         (slice1 != 0:-1 || slice2 != 0:-1) && (reads.dict[key] = (read1, read2))
     end

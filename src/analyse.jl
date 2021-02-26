@@ -4,7 +4,7 @@ function similarity(read1::LongDNASeq, read2::LongDNASeq; window_size=10, step_s
     @assert nb_windows > 0
     window_counter = 0
     for window_start in 1:step_size:length(short_seq)-window_size
-        approxoccursin(long_seq, short_seq[window_start:window_start+window_size]) && (window_counter += 1)
+        approxoccursin(long_seq, @view(short_seq[window_start:window_start+window_size])) && (window_counter += 1)
     end
     return window_counter / nb_windows
 end
