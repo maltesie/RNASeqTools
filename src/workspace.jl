@@ -802,9 +802,9 @@ end
 using Plots 
 
 function plot_paired_reads()
-    file1 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_1.fastq.gz"
-    file2 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_2.fastq.gz"
-    stop_at = nothing
+    file1 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC4_1.fastq.gz"
+    file2 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC4_2.fastq.gz"
+    stop_at = 10000
     @time reads = PairedReads(file1, file2; stop_at=stop_at)
     nb_reads = reads.count
     @time RNASeqTools.reverse_complement!(reads)
@@ -826,7 +826,7 @@ function plot_paired_reads()
         "\nboth rybb: ", both_rybb/nb_reads*100, "% = ", both_rybb,
         "\nat least 1 rybb: ", contains_rybb/nb_reads*100, "% = ", contains_rybb
         )
-    plot(hists, lines, layout=(2,1), size=(400, 800))
-    savefig("/home/abc/Workspace/rep1.png")
+    plot(hists, lines, layout=(2,1), size=(400, 800), left_margin=10mm)
+    savefig("/home/abc/Workspace/rep2.png")
 end
 plot_paired_reads()

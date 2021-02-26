@@ -3,7 +3,7 @@ module RNASeqTools
 using XAM, FASTX, CSV, XLSX, CodecZlib
 using BioAlignments, BioSequences, GenomicFeatures
 using DataFrames
-using Plots
+using Plots, Measures
 using Dash, DashHtmlComponents, DashCoreComponents, DashTable
 
 export align_mem, align_backtrack, align_local

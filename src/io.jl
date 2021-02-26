@@ -7,12 +7,38 @@ end
 struct Alignment <: Annotation
     start::Int
     stop::Int
-    data::Vector{UInt8}
+    chr::String
+    cigar::String
+    aux::Union{String, Nothing}
+    tag::Union{String, Nothing}
 end
 
 struct Alignments <: SequenceContainer
     dict::Dict{UInt, Alignment}
-    chrs::Dict{Int, String}
+    count::Int
+end
+
+function Alignments(bam_file::String; uniques_only=false, stop_at=nothing, use_if_pe=:read1)
+    @assert use_if_pe in [:read1, :read2]
+    alignments = read_bam(bam_file; uniques_only=uniques_only, stop_at=stop_at, use_if_pe=use_if_pe)
+    Alignments(alignments, length(alignments))
+end
+
+function PairedAlignments <: SequenceContainer
+    dict::Dict{Uint, Tuple{Alignment, Alignment}}
+    count::Int
+end
+
+function PairedAlignments(bam_file1::String, bam_file2::String; uniques_only=false, stop_at=nothing)
+    alignments1 = read_bam(bam_file1; uniques_only=uniques_only, stop_at=stop_at)
+    alignments2 = read_bam(bam_file2; uniques_only=uniques_only, stop_at=stop_at)
+    alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
+    PairedAlignments(alignments, length(alignments))
+end
+
+function PairedAlignments(pebam_file::String; uniques_only=false, stop_at=nothing)
+    alignments = read_bam(pebam_file; uniques_only=uniques_only, stop_at=stop_at, use_if_pe=:both)
+    PairedAlignments(alignments, length(alignments))
 end
 
 function strandint(record::BAM.Record; is_rev=false)
