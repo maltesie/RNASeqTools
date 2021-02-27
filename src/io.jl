@@ -213,9 +213,9 @@ function PairedReads(file1::String, file2::String; description="", stop_at=nothi
     PairedReads(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)), description, length(reads1))
 end
 
-function Base.write(file1::String, file2::String, reads::PairedReads)
-    writer1 = FASTA.Writer(GzipCompressorStream(open(file1, "w")))
-    writer2 = FASTA.Writer(GzipCompressorStream(open(file2, "w")))
+function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedReads)
+    writer1 = endswith(fasta_file1, ".gz") ? FASTA.Writer(GzipCompressorStream(open(fasta_file1, "w"))) : FASTA.Writer(open(fasta_file1, "w"))
+    writer2 = endswith(fasta_file2, ".gz") ? FASTA.Writer(GzipCompressorStream(open(fasta_file2, "w"))) : FASTA.Writer(open(fasta_file2, "w"))
     for (key, (read1, read2)) in reads.dict
         record1 = FASTA.Record(key, read1)
         record2 = FASTA.Record(key, read2)
@@ -232,8 +232,8 @@ struct Reads <: SequenceContainer
     count::Int
 end
 
-function Base.write(file::String, reads::Reads)
-    writer = FASTA.Writer(GzipCompressorStream(open(file, "w")))
+function Base.write(fasta_file::String, reads::Reads)
+    writer = endswith(fasta_file, ".gz") ? FASTA.Writer(GzipCompressorStream(open(fasta_file, "w"))) : FASTA.Writer(open(fasta_file, "w"))
     for (key, (read1, read2)) in reads.dict
         record = FASTA.Record(key, read1)
         write(writer, record)
@@ -261,8 +261,7 @@ function read_reads(file::String; nb_reads=nothing)
     while !eof(reader)
         c += 1
         read!(reader, record)
-        my_seq = LongDNASeq(record.data[record.sequence])
-        push!(reads, hash(record.data[record.identifier])=>my_seq)
+        push!(reads, hash(record.data[record.identifier])=>LongDNASeq(record.data[record.sequence]))
         isnothing(nb_reads) || ((c >= nb_reads) && break)
     end
     close(reader)
