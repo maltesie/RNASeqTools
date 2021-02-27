@@ -151,13 +151,16 @@ function Genome(genome_fasta::String)
 end
 
 function Base.iterate(genome::Genome)
-    ((genome.chrs.keys[1], genome.seq[genome.chrs.vals[1]]), 1)
+    (chr, slice) = first(genome.chrs)
+    ((chr, genome.seq[slice]), 1)
 end
 
 function Base.iterate(genome::Genome, state::Int)
     state += 1
     state > genome.chrs.count && (return nothing)
-    ((genome.chrs.keys[state], genome.seq[genome.chrs.vals[state]]), state+1)
+    for (i, (chr, slice)) in enumerate(genome.chrs)
+        (i == state) && (return ((chr, genome.seq[slice]), state))
+    end
 end
 
 function Base.write(file::String, genome::Genome)

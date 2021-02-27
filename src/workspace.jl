@@ -844,6 +844,11 @@ function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1, check_indels=true)
 end
 
 #@time approxoccursin(dna"GATAT", dna"CCCCCCCCCCCCCCCATAT")
-testseq = fill(dna"GATAT", 5000000)
-testref = fill(dna"CCCCCCCCCCCCCCCATAT", 5000000)
-@time a = approxsearch.(testref, testseq, 1)
+#testseq = fill(dna"GATAT", 5000000)
+#testref = fill(dna"CCCCCCCCCCCCCCCATAT", 5000000)
+#@time a = approxsearch.(testref, testseq, 1)
+
+g = Genome(dna"CCCCCCCCCCCCCCCATAT", Dict("test1"=>1:10, "test2"=>11:17), "test")
+for (chr, seq) in g
+    println("$chr $seq")
+end
