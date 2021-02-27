@@ -24,8 +24,8 @@ function Alignments(bam_file::String; uniques_only=false, stop_at=nothing, use_i
     Alignments(alignments, length(alignments))
 end
 
-function PairedAlignments <: SequenceContainer
-    dict::Dict{Uint, Tuple{Alignment, Alignment}}
+struct PairedAlignments <: SequenceContainer
+    dict::Dict{UInt, Tuple{Alignment, Alignment}}
     count::Int
 end
 

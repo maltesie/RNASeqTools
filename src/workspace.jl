@@ -829,16 +829,21 @@ function plot_paired_reads()
 end
 #plot_paired_reads()
 
-function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1, check_indels=false)
+function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1, check_indels=true)
     length(s2) < length(s1) && (return false)
     if !check_indels
+        check = zeros(Bool, length(s1))
         for i in 1:length(s2)-length(s1)+1
-            (sum(@view(s2[i:i+length(s1)-1]) .!== s1) <= k) && (return true) 
+            check = s2[i:i+length(s1)-1] .!== s1
+            (sum(check) <= k) && (return true) 
         end
         return false
     else
-        return approxsearch(a, b, k) != 0:-1
+        return approxsearch(s2, s1, k) != 0:-1
     end
 end
 
-@time approxoccursin(dna"CCCCCCCCCCCCCCCATAT", dna"GATAT")
+#@time approxoccursin(dna"GATAT", dna"CCCCCCCCCCCCCCCATAT")
+testseq = fill(dna"GATAT", 5000000)
+testref = fill(dna"CCCCCCCCCCCCCCCATAT", 5000000)
+@time a = approxsearch.(testref, testseq, 1)
