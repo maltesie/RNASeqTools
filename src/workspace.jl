@@ -797,9 +797,7 @@ function align_search()
         s = approxrsearch(my_genome.seq, seq, 3)
     end
 end
-
 #align_search()
-using Plots, Measures
 
 function plot_paired_reads()
     file1 = "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_1.fastq.gz"
@@ -829,4 +827,18 @@ function plot_paired_reads()
     plot(hists, lines, layout=(2,1), size=(400, 800), left_margin=3mm)
     savefig("/home/abc/Workspace/rep1.png")
 end
-plot_paired_reads()
+#plot_paired_reads()
+
+function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1, check_indels=false)
+    length(s2) < length(s1) && (return false)
+    if !check_indels
+        for i in 1:length(s2)-length(s1)+1
+            (sum(@view(s2[i:i+length(s1)-1]) .!== s1) <= k) && (return true) 
+        end
+        return false
+    else
+        return approxsearch(a, b, k) != 0:-1
+    end
+end
+
+@time approxoccursin(dna"CCCCCCCCCCCCCCCATAT", dna"GATAT")

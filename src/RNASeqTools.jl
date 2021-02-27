@@ -8,9 +8,10 @@ using Dash, DashHtmlComponents, DashCoreComponents, DashTable
 
 export align_mem, align_backtrack, align_local
 export trim_fastp, split_libs 
-export read_bam, read_wig, read_gff, Genome, FastqReads, FastaReads
+export Genome, FastqReads, FastaReads, Alignments, PairedAlignments
+export cut!
 export tss, terms, annotate_utrs!
-#export similarity
+export similarity
 export dashboard, hist_length_distribution, hist_similarity, line_nucleotide_distribution
 export Reads, PairedReads
 

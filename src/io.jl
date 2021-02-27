@@ -67,7 +67,7 @@ end
     return nothing
 end
 
-function read_bam(bam_file::String; uniques_only=false, stop_at=nothing)
+function read_bam(bam_file::String; uniques_only=false, stop_at=nothing, use_if_pe=:both)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     chrs = Dict(i=>name for (i,name) in enumerate(bam_chromosome_names(reader)))
@@ -134,7 +134,7 @@ end
 struct Genome <: SequenceContainer
     seq::LongDNASeq
     chrs::Dict{String, UnitRange{Int}}
-    spec::String
+    name::String
 end
 
 function Genome(genome_fasta::String)
@@ -147,11 +147,21 @@ function Genome(genome_fasta::String)
         temp_start += length(seq)
         seq *= sequence
     end
-    return Genome(LongDNASeq(seq), chrs, name)
+    Genome(LongDNASeq(seq), chrs, name)
+end
+
+function Base.iterate(genome::Genome)
+    ((genome.chrs.keys[1], genome.seq[genome.chrs.vals[1]]), 1)
+end
+
+function Base.iterate(genome::Genome, state::Int)
+    state += 1
+    state > genome.chrs.count && (return nothing)
+    ((genome.chrs.keys[state], genome.seq[genome.chrs.vals[state]]), state+1)
 end
 
 function Base.write(file::String, genome::Genome)
-    write_genomic_fasta(Dict(chr=>String(genome.seq[s]) for (chr, s) in genome.chrs), file; name=genome.spec)
+    write_genomic_fasta(Dict(chr=>String(genome.seq[s]) for (chr, s) in genome.chrs), file; name=genome.name)
 end
 
 function read_genomic_fasta(fasta_file::String)

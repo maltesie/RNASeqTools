@@ -83,3 +83,6 @@ function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNA
     res = pairalign(LocalAlignment(), query_sequence, reference_sequence, scoremodel)
     return res
 end
+
+function align_sw()
+end
