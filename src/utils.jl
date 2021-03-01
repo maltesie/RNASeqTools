@@ -38,8 +38,6 @@ function cut!(reads::PairedReads, pos::Int; keep=:left, from=:left)
         ((pos > length(read1)) && (pos > length(read2))) && continue
         cut!(read1, pos; keep=keep, from=from)
         cut!(read2, pos; keep=keep, from=from)
-        #reads.dict[key] = (read1, read2)
-        #println(read1, " ", read2)
     end
 end
 
@@ -88,7 +86,6 @@ function cut!(reads::PairedReads, seq::LongDNASeq; keep=:left_of_query, treat=:b
                 cut!(read2, stop2; keep=:left)
             end
         end
-        #(start1 != 0 || start2 != 0) && (reads.dict[key] = (read1, read2))
     end
 end
 
