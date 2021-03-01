@@ -43,6 +43,13 @@ function align_backtrack(in_file1::String, in_file2::String, out_file::String, g
     rm("tmp.view")
 end
 
+function align_backtrack(reads::Reads, out_file::String, genome_file::String; max_miss=2, bwa_bin="bwa", sam_bin="samtools")
+    tmp_file = joinpath(dirname(out_file), "temp.fasta")
+    write(tmp_file, reads)
+    align_backtrack(tmp_file, out_file, genome_file; max_miss=max_miss, bwa_bin=bwa_bin, sam_bin=sam_bin)
+    rm(tmp_file)
+end
+
 function align_mem(in_file::String, out_file::String, genome_file::String; 
     z_score=100, bwa_bin="bwa", sam_bin="samtools")
 
@@ -77,6 +84,13 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
 
     rm("tmp.bwa")
     rm("tmp.view")
+end
+
+function align_mem(reads::Reads, out_file::String, genome_file::String; z_score=100, bwa_bin="bwa", sam_bin="samtools")
+    tmp_file = joinpath(dirname(out_file), "temp.fasta")
+    write(tmp_file, reads)
+    align_mem(tmp_file, out_file, genome_file; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
+    rm(tmp_file)
 end
 
 function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)

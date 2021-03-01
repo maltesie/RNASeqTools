@@ -142,6 +142,15 @@ function translate_position_mg1655_to_bw25113(pos::Int)::Union{Nothing, Int}
     end
 end
 
+function is_bitstring_fasta(file::String)
+    (endswith(file, ".fasta") || endswith(file, ".fasta.gz")) || (return false)
+    f = endswith(file, ".fasta.gz") ? GzipCompressorStream(open(file, "r")) : open(file, "r")
+    first_line = readline(f)
+    close(f)
+    ((length(first_line) == 65) && all([c in ['0', '1'] for c in first_line[2:end]])) && (return true)
+    return false
+end
+
 function translation_dict(from_sequence::String, to_sequence::String)
     s1 = LongDNASeq(from_sequence)
     s2 = LongDNASeq(to_sequence)

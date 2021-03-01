@@ -8,7 +8,7 @@ struct Alignment <: Annotation
     start::Int
     stop::Int
     chr::String
-    cigar::String
+    nm::Int
     aux::Union{String, Nothing}
     tag::Union{String, Nothing}
 end
@@ -71,7 +71,7 @@ function read_bam(bam_file::String; uniques_only=false, stop_at=nothing, use_if_
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     chrs = Dict(i=>name for (i,name) in enumerate(bam_chromosome_names(reader)))
-    aligned_reads = Dict()
+    aligned_reads = Dict{UInt, Alignment}()
     c = 0
     while !eof(reader)
         read!(reader, record)
@@ -81,11 +81,13 @@ function read_bam(bam_file::String; uniques_only=false, stop_at=nothing, use_if_
         slice = BAM.auxdata_position(record):BAM.data_size(record)
         xa = get_XA_tag(@view(record.data[slice]))
         (uniques_only && !isnothing(xa)) && continue
+        xa_string = isnothing(xa) ? nothing : String(xa)
+        println(record["SA"]::String)
         nms = get_NM_tag(@view(record.data[slice]))
-        new_row = DataFrame(name=BAM.tempname(record), start=start, stop=stop, chr=BAM.refname(record), 
-                            nm=nms, xa=xa_string, cigar=BAM.cigar(record))
-        append!(aligned_reads, new_row)
-        ((nb_reads > 0) & (c >= nb_reads)) && break 
+        new_alignment = Alignment(start, stop, BAM.refname(record), nms, xa_string, "")
+        push!(aligned_reads, hash(record.data[1:BAM.seqname_length(record)])=>new_alignment)
+        c += 1
+        isnothing(stop_at) || ((c >= stop_at) && break) 
     end
     close(reader)
     return aligned_reads
@@ -140,14 +142,14 @@ end
 function Genome(genome_fasta::String)
     (name, sequences) = read_genomic_fasta(genome_fasta)
     chrs::Dict{String,UnitRange{Int}} = Dict()
-    seq = ""
+    total_seq = ""
     temp_start = 1
-    for (chr, sequence) in sequences
-        chrs[chr] = temp_start:(temp_start+length(seq)-1)
-        temp_start += length(seq)
-        seq *= sequence
+    for (chr, chr_seq) in sequences
+        chrs[chr] = temp_start:(temp_start+length(chr_seq)-1)
+        temp_start += length(chr_seq)
+        total_seq *= chr_seq
     end
-    Genome(LongDNASeq(seq), chrs, name)
+    Genome(LongDNASeq(total_seq), chrs, name)
 end
 
 function Base.iterate(genome::Genome)
@@ -233,12 +235,11 @@ struct Reads <: SequenceContainer
 end
 
 function Base.write(fasta_file::String, reads::Reads)
-    writer = endswith(fasta_file, ".gz") ? FASTA.Writer(GzipCompressorStream(open(fasta_file, "w"))) : FASTA.Writer(open(fasta_file, "w"))
-    for (key, (read1, read2)) in reads.dict
-        record = FASTA.Record(key, read1)
-        write(writer, record)
+    f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")
+    for (key, read) in reads.dict
+        write(f, ">$(bitstring(key))\n$(String(read))\n")
     end
-    close(writer)
+    close(f)
 end
 
 function Reads(file::String; description="", stop_at=nothing)
@@ -251,20 +252,15 @@ function read_reads(file::String; nb_reads=nothing)
     reads::Dict{UInt64, LongDNASeq} = Dict()
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped = endswith(file, ".gz")
-    (is_zipped && is_fastq) && (reader = FASTQ.Reader(GzipDecompressorStream(open(file, "r"))))
-    (is_zipped && !is_fastq) && (reader = FASTA.Reader(GzipDecompressorStream(open(file, "r"))))
-    (!is_zipped && is_fastq) && (reader = FASTQ.Reader(open(file, "r")))
-    (!is_zipped && !is_fastq) && (reader = FASTA.Reader(open(file, "r"))) 
-    is_fastq ? record = FASTQ.Record() : record = FASTA.Record()
-    my_seq = LongDNASeq()
-    c = 0
-    while !eof(reader)
-        c += 1
-        read!(reader, record)
-        push!(reads, hash(record.data[record.identifier])=>LongDNASeq(record.data[record.sequence]))
-        isnothing(nb_reads) || ((c >= nb_reads) && break)
+    f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
+    text = readlines(f)
+    close(f)
+    is_bitstring = ((length(text[1]) == 65) && all([c in ['0', '1'] for c in text[1][2:end]]))
+    step = is_fastq ? 4 : 2
+    for i in 1:step:length(text)
+        push!(reads, is_bitstring ? parse(UInt, text[i][2:end]; base=2)=>LongDNASeq(text[i+1]) : hash(text[i])=>LongDNASeq(text[i+1]))
+        isnothing(nb_reads) || ((i >= (nb_reads-1)*step + 1) && break)
     end
-    close(reader)
     return reads
 end
 
