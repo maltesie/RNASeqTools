@@ -247,6 +247,24 @@ function Reads(file::String; description="", stop_at=nothing)
     Reads(reads, description, length(reads))
 end
 
+function Reads(f, paired_reads::PairedReads; use_when_tied=:none)
+    @assert use_when_tied in [:none, :read1, :read2]
+    reads = Dict{UInt, LongDNASeq}()
+    for (key, (read1, read2)) in paired_reads.dict
+        if use_when_tied == :read1 
+            f(read1) ? push!(reads, key=>read1) : (f(read2) && push!(reads, key=>read2))
+        elseif use_when_tied == :read2
+            f(read2) ? push!(reads, key=>read2) : (f(read1) && push!(reads, key=>read1))
+        elseif use_when_tied == :none
+            check1, check2 = f(read1), f(read2)
+            check1 && check2 && continue
+            check1 && push!(reads, key=>read1)
+            check2 && push!(reads, key=>read2)
+        end
+    end
+    Reads(reads, paired_reads.name, length(reads))
+end
+
 function read_reads(file::String; nb_reads=nothing)
     @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
     reads::Dict{UInt64, LongDNASeq} = Dict()
@@ -257,9 +275,10 @@ function read_reads(file::String; nb_reads=nothing)
     close(f)
     is_bitstring = ((length(text[1]) == 65) && all([c in ['0', '1'] for c in text[1][2:end]]))
     step = is_fastq ? 4 : 2
+    isnothing(nb_reads) || (stop_at = (nb_reads-1)*step + 1)
     for i in 1:step:length(text)
-        push!(reads, is_bitstring ? parse(UInt, text[i][2:end]; base=2)=>LongDNASeq(text[i+1]) : hash(text[i])=>LongDNASeq(text[i+1]))
-        isnothing(nb_reads) || ((i >= (nb_reads-1)*step + 1) && break)
+        push!(reads, is_bitstring ? parse(UInt, text[i][2:end]; base=2)=>LongDNASeq(text[i+1]) : hash(split(text[i][2:end])[1])=>LongDNASeq(text[i+1]))
+        isnothing(nb_reads) || ((i >= stop_at) && break)
     end
     return reads
 end

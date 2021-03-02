@@ -29,7 +29,7 @@ function test_mem_aligner()
 end
 
 #reads = Reads("/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC1_1.fastq.gz"; stop_at=100)
-test_mem_aligner()
+#test_mem_aligner()
 #reads = Reads("/home/abc/Workspace/RILSeq/library_rilseq/synthetic_reads.fasta.gz")
 
 #genome = Genome(VC_GENOME_FASTA)
@@ -37,4 +37,16 @@ test_mem_aligner()
 #reads = read_reads("/home/abc/Workspace/RILSeq/library_rilseq/synthetic_reads.fasta.gz"; nb_reads=100)
 
 #align_mem(reads, bam_file, VC_GENOME_FASTA)
+
+
+function run_reads_split()
+    @time mypairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_1.fastq.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_2.fastq.gz"; stop_at=1000)
+    #mypairedreads = PairedReads("/home/abc/Data/test/reads1.fasta", "/home/abc/Data/test/reads2.fasta")
+    query = dna"TTTCTTTGATGTCCCCA"
+    #query = dna"ATATA"
+    @time mysinglereads = Reads(s->occursin(query, s), mypairedreads)
+end
+
+run_reads_split()
+
 
