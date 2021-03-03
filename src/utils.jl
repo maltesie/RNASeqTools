@@ -1,18 +1,20 @@
-function reverse_complement!(reads::Reads)
+function rev_comp!(reads::Reads)
     for (key, read) in reads.dict
         BioSequences.reverse_complement!(read)
     end
 end
 
-function reverse_complement!(reads::PairedReads; use_read1=true)
+function rev_comp!(reads::PairedReads; treat=:both)
+    @assert treat in [:both, :read1, :read2]
     for (key, (read1, read2)) in reads.dict
-        use_read1 ? BioSequences.reverse_complement!(read1) : BioSequences.reverse_complement!(read2)
+        treat in [:both, :read1] && BioSequences.reverse_complement!(read1)
+        treat in [:both, :read2] && BioSequences.reverse_complement!(read2)
     end
 end
 
 function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
-    0 < pos < length(read) || (return nothing)
-    
+    0 <= pos <= length(read) || (return nothing)
+    (pos == 0 || pos == length(read)) && (copy!(read, LongDNASeq("")); return nothing)
     if (from == :left) && (keep == :left)
         copy!(read, @view(read[1:pos]))
     
@@ -41,11 +43,13 @@ function cut!(reads::PairedReads, pos::Int; keep=:left, from=:left)
     end
 end
 
-function cut!(reads::Reads, seq::LongDNASeq; keep=:left_of_query)
+function cut!(reads::Reads, seq::LongDNASeq; keep=:left_of_query, from=:left)
     @assert keep in [:left_of_query, :right_of_query, :left_and_query, :right_and_query]
+    @assert from in [:left, :right]
     for (key, read) in reads.dict
-        (start, stop) = approxsearch(read, seq, 1)
-        start == 0 && continue
+        s = from == :left ? findfirst(seq, read) : findlast(seq, read)
+        isnothing(s) && continue
+        (start, stop) = s
         if keep == :right_of_query
             cut!(read, stop; keep=:right)
         elseif keep == :left_of_query
@@ -62,9 +66,10 @@ function cut!(reads::PairedReads, seq::LongDNASeq; keep=:left_of_query, treat=:b
     @assert keep in [:left_of_query, :right_of_query, :left_and_query, :right_and_query]
     @assert treat in [:read1, :read2, :both]
     for (key, (read1, read2)) in reads.dict
-        (treat in [:both, :read1]) ? (start1, stop1) = approxsearch(read1, seq, 1) : (start1, stop1) = (0,-1)
-        (treat in [:both, :read2]) ? (start2, stop2)  = approxsearch(read2, seq, 1) : (start2, stop2) = (0,-1)
-        if (start1 != 0)
+        s1 = treat in [:both, :read1] ? (from == :left ? findfirst(seq, read1) : findlast(seq, read1)) : nothing
+        s2 = treat in [:both, :read2] ? (from == :left ? findfirst(seq, read2) : findlast(seq, read2)) : nothing
+        if !isnothing(s1)
+            start1, stop1 = s1
             if keep == :right_of_query
                 cut!(read1, stop1; keep=:right)
             elseif keep == :left_of_query
@@ -75,7 +80,8 @@ function cut!(reads::PairedReads, seq::LongDNASeq; keep=:left_of_query, treat=:b
                 cut!(read1, stop1; keep=:left)
             end
         end
-        if (start2 != 0)
+        if !isnothing(s2)
+            start2, stop2 = s1
             if keep == :right_of_query
                 cut!(read2, stop2; keep=:right)
             elseif keep == :left_of_query
@@ -97,7 +103,7 @@ function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1, check_indels=false)
         end
         return false
     else
-        return approxsearch(a, b, k) != 0:-1
+        return approxsearch(s2, s1, k) != 0:-1
     end
 end
 
@@ -107,9 +113,17 @@ function Base.filter!(f, reads::Reads)
     end
 end
 
-function Base.filter!(f, reads::PairedReads; both=false)
+function Base.filter!(f, reads::PairedReads; logic=:or)
+    @assert logic in [:or, :xor, :and]
     for (key, (read1, read2)) in reads.dict
-        both ? (f(read1) && f(read2)) || delete!(reads.dict, key) : (f(read1) || f(read2)) || delete!(reads.dict, key)
+        if logic == :and 
+            f(read1) && f(read2) || delete!(reads.dict, key)
+        elseif logic == :or
+            f(read1) || f(read2) || delete!(reads.dict, key)
+        elseif logic == :xor
+            check1, check2 = f(read1), f(read2)
+            ((check1 && !check2) || (!check1 && check2)) || delete!(reads.dict, key)
+        end
     end
 end
 

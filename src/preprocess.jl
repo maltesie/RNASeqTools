@@ -132,59 +132,56 @@ function split_libs(infile::String, barcodes::Array{String,1}, libnames::Array{S
     write_file(abspath(output_folder, report_file), count_string)
 end
 
-function trim_fastp(input_files::Vector{String}, output_folder::String; 
-    suffix="_trimmed", adapters=String[], fastp_bin="fastp",
-    min_length=25, write_report=true)
+function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}}; 
+    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, umi_loc=:read1, min_length=nothing, 
+    cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=nothing, filter_complexity=nothing,
+    average_window_quality=nothing)
 
-    record = FASTQ.Record()
-    report = ""
-    output_files = [split(in_file, ".fastq")[1]*"$(suffix).fastq.gz" for in_file in input_files]
-    isempty(adapters) && (adapters = fill("", length(input_files)))
-    c = 0
-    for (in_file, out_file, adapter) in zip(input_files, output_files, adapters)
-        
-        isnothing(adapter) ? 
-        cmd = `$fastp_bin -i $in_file -o $out_file -M 25 -l $min_length --trim_poly_x 10 --cut_front --cut_tail` :
-        cmd = `$fastp_bin -a $adapter -i $in_file -o $out_file -M 25 -l $min_length --trim_poly_x 10 --cut_front --cut_tail`
+    for (in_file1, in_file2) in input_files
+        @assert endswith(in_file1, ".fasta") || endswith(in_file1, ".fasta.gz") || endswith(in_file1, ".fastq") || endswith(in_file1, ".fastq.gz")
+        isnothing(in_file2) || (@assert endswith(in_file1, ".fasta") || endswith(in_file1, ".fasta.gz") || endswith(in_file1, ".fastq") || endswith(in_file1, ".fastq.gz"))
+    end
+    @assert umi_loc in [:read1, :read2]
+
+    params = []
+    !isnothing(average_window_quality) && push!(params, "--cut_mean_quality=$average_window_quality")
+    !isnothing(filter_complexity) && append!(params, ["-y" "--complexity_threshold=$filter_complexity"])
+    !isnothing(trim_poly_x) && append!(params, ["-x", "--poly_x_min_len=$trim_poly_x"])
+    !isnothing(trim_poly_g) ? append!(params, ["-g", "--poly_g_min_len=$trim_poly_g"]) : push!(params,"-G")
+    cut_tail && push!(params, "--cut_tail")
+    cut_front && push!(params, "--cut_front")
+    !isnothing(min_length) && push!(params, "--length_required=$min_length")
+    !isnothing(umi) && append!(params, ["-U", "--umi_loc=$(String(umi_loc))", "--umi_len=$umi"])
+    !isnothing(adapter) && push!(params, "--adapter_sequence=$adapter")
+
+    for (in_file1, in_file2) in input_files
+        html_file = joinpath(dirname(in_file1), prefix * (endswith(in_file1, ".gz") ? basename(in_file1)[1:end-9] : basename(in_file1)[1:end-6]) * ".html")
+        json_file = joinpath(dirname(in_file1), prefix * (endswith(in_file1, ".gz") ? basename(in_file1)[1:end-9] : basename(in_file1)[1:end-6]) * ".json")
+        out_file1 = joinpath(dirname(in_file1), prefix * basename(in_file1))
+        out_file2 = !isnothing(in_file2) ? joinpath(dirname(in_file2), prefix * basename(in_file2)) : nothing
+        file_params = ["--in1=$in_file1", "--out1=$out_file1", "--html=$(html_file)", "--json=$(json_file)"]
+        !isnothing(in_file2) && append!(file_params, ["--in2=$in_file2", "--out2=$out_file2"])
+        cmd = `$fastp_bin $file_params $params`
         run(cmd)
-        cc = 0
-        reader = FASTQ.Reader(GzipDecompressorStream(open(out_file, "r")))
-        while !eof(reader)
-            read!(reader, record)
-            cc += 1
-        end
-        report *= "$in_file\t$(cc)\n"
-        c += cc
     end 
-    report *= "$(c) reads in total\n"
-    write_report && write_file(abspath(output_folder, "trimming_report.txt"), report)
 end
 
-function trim_fastp(input_files::Vector{Vector{String}}, output_folder::String; 
-    suffix="_trimmed", adapters=String[], fastp_bin="fastp",
-    min_length=25, write_report=true)
+function trim_fastp(input_files::SingleTypeFiles; 
+    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, min_length=25, 
+    cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=30,
+    average_window_quality=25)
 
-    record = FASTQ.Record()
-    report = ""
-    output_files = [[split(in_file1, ".fastq")[1]*"$(suffix).fastq.gz",
-            split(in_file2, ".fastq")[1]*"$(suffix).fastq.gz"] for (in_file1, in_file2) in input_files]
-    isempty(adapters) && (adapters = fill("", length(input_files)))
-    c = 0
-    for ((in_file1, in_file2), (out_file1, out_file2), adapter) in zip(input_files, output_files, adapters)
-        
-        isnothing(adapter) ? 
-        cmd = `$fastp_bin -i $in_file1 -o $out_file1 -I $in_file2 -O $out_file2 -M 25 -l $min_length --trim_poly_x 10 --cut_front --cut_tail` :
-        cmd = `$fastp_bin -a $adapter $in_file1 -o $out_file1 -I $in_file2 -O $out_file2 -M 25 -l $min_length --trim_poly_x 10 --cut_front --cut_tail`
-        run(cmd)
-        cc = 0
-        reader = FASTQ.Reader(GzipDecompressorStream(open(out_file, "r")))
-        while !eof(reader)
-            read!(reader, record)
-            cc += 1
-        end
-        report *= "$in_file\t$(cc)\n"
-        c += cc
-    end 
-    report *= "$(c) reads in total\n"
-    write_report && write_file(abspath(output_folder, "trimming_report.txt"), report)
+    trim_fastp([(file, nothing) for file in input_files]; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=:read1, min_length=min_length,
+        cut_front=cut_front, cut_tail=cut_tail, trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, average_window_quality=average_window_quality)
+
+end
+
+function trim_fastp(input_files::PairedSingleTypeFiles; 
+    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, umi_loc=:read1, min_length=25, 
+    cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=30,
+    average_window_quality=25)
+
+    files = Vector{Tuple{String, Union{String, Nothing}}}(input_files.list)
+    trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=umi_loc, min_length=min_length, cut_front=cut_front,
+        cut_tail=cut_tail, trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, average_window_quality=average_window_quality)
 end

@@ -82,7 +82,6 @@ function read_bam(bam_file::String; uniques_only=false, stop_at=nothing, use_if_
         xa = get_XA_tag(@view(record.data[slice]))
         (uniques_only && !isnothing(xa)) && continue
         xa_string = isnothing(xa) ? nothing : String(xa)
-        println(record["SA"]::String)
         nms = get_NM_tag(@view(record.data[slice]))
         new_alignment = Alignment(start, stop, BAM.refname(record), nms, xa_string, "")
         push!(aligned_reads, hash(record.data[1:BAM.seqname_length(record)])=>new_alignment)
@@ -216,16 +215,15 @@ function PairedReads(file1::String, file2::String; description="", stop_at=nothi
 end
 
 function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedReads)
-    writer1 = endswith(fasta_file1, ".gz") ? FASTA.Writer(GzipCompressorStream(open(fasta_file1, "w"))) : FASTA.Writer(open(fasta_file1, "w"))
-    writer2 = endswith(fasta_file2, ".gz") ? FASTA.Writer(GzipCompressorStream(open(fasta_file2, "w"))) : FASTA.Writer(open(fasta_file2, "w"))
+    f1 = endswith(fasta_file1, ".gz") ? GzipCompressorStream(open(fasta_file1, "w")) : open(fasta_file1, "w")
+    f2 = endswith(fasta_file2, ".gz") ? GzipCompressorStream(open(fasta_file2, "w")) : open(fasta_file2, "w")
     for (key, (read1, read2)) in reads.dict
-        record1 = FASTA.Record(key, read1)
-        record2 = FASTA.Record(key, read2)
-        write(writer1, record1)
-        write(writer2, record2)
+        bs = bitstring(key)
+        write(f1, ">$bs\n$(String(read1))\n")
+        write(f2, ">$bs\n$(String(read2))\n")
     end
-    close(writer1)
-    close(writer2)
+    close(f1)
+    close(f2)
 end
 
 struct Reads <: SequenceContainer
@@ -270,16 +268,17 @@ function read_reads(file::String; nb_reads=nothing)
     reads::Dict{UInt64, LongDNASeq} = Dict()
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped = endswith(file, ".gz")
+    is_bitstring = is_bitstring_fasta(file)
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
-    text = readlines(f)
-    close(f)
-    is_bitstring = ((length(text[1]) == 65) && all([c in ['0', '1'] for c in text[1][2:end]]))
-    step = is_fastq ? 4 : 2
-    isnothing(nb_reads) || (stop_at = (nb_reads-1)*step + 1)
-    for i in 1:step:length(text)
-        push!(reads, is_bitstring ? parse(UInt, text[i][2:end]; base=2)=>LongDNASeq(text[i+1]) : hash(split(text[i][2:end])[1])=>LongDNASeq(text[i+1]))
-        isnothing(nb_reads) || ((i >= stop_at) && break)
+    read_counter = 0
+    while !eof(f)
+        id = is_bitstring ? parse(UInt, readline(f)[2:end]; base=2) : hash(split(readline(f)[2:end])[1])
+        push!(reads, id => LongDNASeq(readline(f)))
+        is_fastq && (skiplines(f, 2))
+        read_counter += 1
+        isnothing(nb_reads) || (read_counter >= nb_reads && break)
     end
+    close(f)
     return reads
 end
 
@@ -302,3 +301,62 @@ function SingleTypeFiles(folder::String, type::String, prefix::String)
     SingleTypeFiles([joinpath(folder, fname) for fname in readdir(folder) if (endswith(fname, type) && startswith(fname, prefix))], type)
 end
 
+function Base.iterate(files::SingleTypeFiles)
+    isempty(files.list) && (return nothing)
+    return (files.list[1], 1)
+end
+
+function Base.iterate(files::SingleTypeFiles, state::Int)
+    state + 1 > length(files.list) && (return nothing)
+    return (files.list[state+1], state + 1)
+end
+
+function hassingledir(files::SingleTypeFiles)
+    return length(unique(dirname(file) for file in files)) == 1
+end
+
+function Base.dirname(files::SingleTypeFiles)
+    @assert hassingledir(files)
+    return dirname(files.list[1])
+end
+
+struct PairedSingleTypeFiles <: FileCollection
+    list::Vector{Tuple{String,String}}
+    type::String
+end
+
+function PairedSingleTypeFiles(files1::Vector{String}, files2::Vector{String})
+    endingsa = [fname[findlast(fname, "."):end] for fname in files1]
+    endingsb = [fname[findlast(fname, "."):end] for fname in files2]
+    @assert (length(unique(endingsa)) == 1) && (unique(endingsa) == unique(endingsb))
+    PairedSingleTypeFiles(collect(zip(files1, files2)), endingsa[1])
+end
+
+function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffix2="_2", prefix=nothing)
+    type_files = [joinpath(folder, fname) for fname in readdir(folder) if isnothing(prefix) ? endswith(fname, type) : endswith(fname, type) && startswith(fname, prefix)]
+    names1 = [f[1:end-(length(type)+length(suffix1))] for f in type_files if f[end-(length(type)+length(suffix1)-1):end-length(type)] == suffix1]
+    names2 = [f[1:end-(length(type)+length(suffix2))] for f in type_files if f[end-(length(type)+length(suffix2)-1):end-length(type)] == suffix2]
+    @assert Set(names1) == Set(names2)
+    PairedSingleTypeFiles([(joinpath(folder, name * suffix1 * type), joinpath(folder, name * suffix2 * type)) for name in names1], type)
+end
+
+function Base.iterate(files::PairedSingleTypeFiles)
+    isempty(files.list) && (return nothing)
+    return (files.list[1], 1)
+end
+
+function Base.iterate(files::PairedSingleTypeFiles, state::Int)
+    state + 1 > length(files.list) && (return nothing)
+    return (files.list[state+1], state + 1)
+end
+
+function hassingledir(files::PairedSingleTypeFiles)
+    dirs1 = unique([dirname(file[1]) for file in files])
+    dirs2 = unique([dirname(file[2]) for file in files])
+    return length(dirs1) == 1 && Set(dirs1) == Set(dirs2)
+end
+
+function Base.dirname(files::PairedSingleTypeFiles)
+    @assert hassingledir(files)
+    return dirname(files.list[1][1])
+end

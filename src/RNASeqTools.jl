@@ -8,16 +8,16 @@ using Dash, DashHtmlComponents, DashCoreComponents, DashTable
 
 export align_mem, align_backtrack, align_local
 export trim_fastp, split_libs 
-export Genome, Reads, PairedReads, Alignments, PairedAlignments
-export cut!
+export Genome, Reads, PairedReads, Alignments, PairedAlignments, SingleTypeFiles, PairedSingleTypeFiles
+export cut!, rev_comp!, approxoccursin
 export similarity
 export dashboard, hist_length_distribution, hist_similarity, line_nucleotide_distribution
 
 include("types.jl")
 include("misc.jl")
-include("preprocess.jl")
 
 include("io.jl")
+include("preprocess.jl")
 include("align.jl")
 include("utils.jl")
 include("annotate.jl")
