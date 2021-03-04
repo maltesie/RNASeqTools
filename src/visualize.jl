@@ -29,7 +29,7 @@ function hist_length_distribution(reads::Reads)
 end
 
 function hist_length_distribution(reads::PairedReads, title="length of reads")
-    lengths = vcat([[length(read1) length(read2)] for (read1, read2) in values(reads.dict)]...)
+    lengths = vcat([[length(read1) length(read2)] for (read1, read2) in values(reads)]...)
     histogram(lengths, labels=["read1" "read2"], title=title)
 end
 
@@ -37,11 +37,11 @@ function line_nucleotide_distribution(reads::Reads)
 end
 
 function line_nucleotide_distribution(reads::PairedReads; align=:left, title1="nucleotides of read1", title2="nucleotides of read2")
-    max_length = maximum(vcat([[length(read1) length(read2)] for (read1, read2) in values(reads.dict)]...))
+    max_length = maximum(vcat([[length(read1) length(read2)] for (read1, read2) in values(reads)]...))
     count1 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     count2 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
-    nb_reads = length(reads.dict)
-    for (key, (read1, read2)) in reads.dict
+    nb_reads = length(reads)
+    for (read1, read2) in reads
         (align==:left) ? 
         (index1 = 1:length(read1); index2 = 1:length(read2)) : 
         (index1 = (max_length - length(read1) + 1):max_length; index2 = (max_length - length(read2) + 1):max_length)
@@ -51,8 +51,8 @@ function line_nucleotide_distribution(reads::PairedReads; align=:left, title1="n
         end
     end
     for ((key1, c1), (key2, c2)) in zip(count1, count2)
-        c1 ./= length(reads.dict)
-        c2 ./= length(reads.dict)
+        c1 ./= length(reads)
+        c2 ./= length(reads)
     end
     dna_trans = Dict(DNA_A => "A", DNA_T=>"T", DNA_G=>"G", DNA_C=>"C", DNA_N=>"N")
     label = reshape([dna_trans[key] for key in keys(count1)], (1, length(dna_trans)))

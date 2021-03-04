@@ -9,7 +9,7 @@ end
 function similarity(reads::PairedReads; window_size=10, step_size=2)
     similarities = Dict{UInt, Float64}()
     score_model = AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1)
-    for (key, (read1, read2)) in reads.dict
+    for (read1, read2) in reads
         push!(similarities, key=>similarity(read1, read2; score_model=score_model))
     end
     return similarities

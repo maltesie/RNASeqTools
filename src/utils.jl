@@ -1,12 +1,12 @@
 function rev_comp!(reads::Reads)
-    for (key, read) in reads.dict
+    for read in reads
         BioSequences.reverse_complement!(read)
     end
 end
 
 function rev_comp!(reads::PairedReads; treat=:both)
     @assert treat in [:both, :read1, :read2]
-    for (key, (read1, read2)) in reads.dict
+    for (read1, read2) in reads
         treat in [:both, :read1] && BioSequences.reverse_complement!(read1)
         treat in [:both, :read2] && BioSequences.reverse_complement!(read2)
     end
@@ -14,10 +14,10 @@ end
 
 function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
     0 <= pos <= length(read) || (return nothing)
-    (pos == 0 || pos == length(read)) && (copy!(read, LongDNASeq("")); return nothing)
+    
     if (from == :left) && (keep == :left)
         copy!(read, @view(read[1:pos]))
-    
+
     elseif (from == :left) && (keep == :right)
         copy!(read, @view(read[pos+1:end]))
     
@@ -30,13 +30,13 @@ function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
 end
 
 function cut!(reads::Reads, pos::Int; keep=:left, from=:left)
-    for (key, read) in reads.dict
+    for read in reads
         cut!(read, pos; keep=keep, from=from)
     end
 end
 
 function cut!(reads::PairedReads, pos::Int; keep=:left, from=:left)
-    for (key, (read1, read2)) in reads.dict
+    for (read1, read2) in reads
         ((pos > length(read1)) && (pos > length(read2))) && continue
         cut!(read1, pos; keep=keep, from=from)
         cut!(read2, pos; keep=keep, from=from)
@@ -46,7 +46,7 @@ end
 function cut!(reads::Reads, seq::LongDNASeq; keep=:left_of_query, from=:left)
     @assert keep in [:left_of_query, :right_of_query, :left_and_query, :right_and_query]
     @assert from in [:left, :right]
-    for (key, read) in reads.dict
+    for read in reads
         s = from == :left ? findfirst(seq, read) : findlast(seq, read)
         isnothing(s) && continue
         (start, stop) = s
@@ -62,10 +62,11 @@ function cut!(reads::Reads, seq::LongDNASeq; keep=:left_of_query, from=:left)
     end
 end
 
-function cut!(reads::PairedReads, seq::LongDNASeq; keep=:left_of_query, treat=:both)
+function cut!(reads::PairedReads, seq::LongDNASeq; keep=:left_of_query, from=:left, treat=:both)
     @assert keep in [:left_of_query, :right_of_query, :left_and_query, :right_and_query]
     @assert treat in [:read1, :read2, :both]
-    for (key, (read1, read2)) in reads.dict
+    @assert from in [:left, :right]
+    for (read1, read2) in reads
         s1 = treat in [:both, :read1] ? (from == :left ? findfirst(seq, read1) : findlast(seq, read1)) : nothing
         s2 = treat in [:both, :read2] ? (from == :left ? findfirst(seq, read2) : findlast(seq, read2)) : nothing
         if !isnothing(s1)
@@ -81,7 +82,7 @@ function cut!(reads::PairedReads, seq::LongDNASeq; keep=:left_of_query, treat=:b
             end
         end
         if !isnothing(s2)
-            start2, stop2 = s1
+            start2, stop2 = s2
             if keep == :right_of_query
                 cut!(read2, stop2; keep=:right)
             elseif keep == :left_of_query

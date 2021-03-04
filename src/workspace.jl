@@ -43,65 +43,81 @@ end
 
 #align_mem(reads, bam_file, VC_GENOME_FASTA)
 function run_reads_filter()
-    mypairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_1.fastq.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_2.fastq.gz")
+    mypairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/trimmed_VC3_1.fastq.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/trimmed_VC3_2.fastq.gz")
     rev_comp!(mypairedreads; treat=:read1)
     query = dna"TTTCTTTGATGTCCC"
     filter!(s->occursin(query, s), mypairedreads; logic=:or)
-    write("/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_1_rybb.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_2_rybb.fasta.gz", mypairedreads)
+    write("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_2.fasta.gz", mypairedreads)
 end
 
 #run_reads_filter()
 
 function run_reads_split()
-    mypairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_1_rybb.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC3_2_rybb.fasta.gz")
-    query = dna"TTTCTTTGATGTCCCCATTTTGTG"
+    mypairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_2.fasta.gz")
+    query = dna"TTTCTTTGATGTCCC"
     #println(mypairedreads.count)
-    partnerreads = Reads(s->!occursin(query, s), mypairedreads)
+    #partnerreads = Reads(s->!occursin(query, s), mypairedreads)
     #rev_comp!(partnerreads)
     #cut!(partnerreads, 60; from=:left, keep=:left)
-    rybbreads = Reads(s->occursin(query, s), mypairedreads)
-    cut!(rybbreads, query, keep=:left_of_query)
-    cut!(rybbreads, 9, from=:right, keep=:right)
-    println(length(rybbreads.dict))
+    rybbreads = Reads(s->occursin(query, s), mypairedreads; use_when_tied=:read1)
+    bindingsitereads = Reads(s->occursin(query, s), mypairedreads; use_when_tied=:read2)
+    cut!(bindingsitereads, query; keep=:left_of_query)
+    cut!(bindingsitereads, 9; from=:right, keep=:left)
+    cut!(bindingsitereads, 14; from=:right, keep=:right)
+    cut!(rybbreads, query; keep=:left_of_query)
+    cut!(rybbreads, 9; from=:right, keep=:right)
+    cut!(mypairedreads, query; keep=:left_of_query)
+    cut!(mypairedreads, 9; from=:right, keep=:left)
     bam_file = "/home/abc/Workspace/RILSeq/library_rilseq/chimeras.bam"
     bam_index = "/home/abc/Workspace/RILSeq/library_rilseq/chimeras.bam.bai"
-    align_mem(partnerreads, bam_file, VC_GENOME_FASTA)
+    align_mem(mypairedreads, bam_file, VC_GENOME_FASTA)
     features = open(collect, GFF3.Reader, VC_GENOME_GFF)
     filter!(x -> GFF3.featuretype(x) == "Gene", features)
     reader = open(BAM.Reader, bam_file, index=bam_index)
     counts = Dict{String, Int}()
     nucleotides = Dict{String, Dict{LongDNASeq, Int}}()
+    bindingnucleotides = Dict{String, Dict{LongDNASeq, Int}}()
     found_ids = []
     for feature in features
         for record in eachoverlap(reader, feature)
             id = parse(UInt, BAM.tempname(record); base=2)
-            println
             push!(found_ids, id)
             seq = haskey(rybbreads.dict, id) ? rybbreads.dict[id] : LongDNASeq("N")
+            bseq = haskey(bindingsitereads.dict, id) ? bindingsitereads.dict[id] : LongDNASeq("N")
             name = GFF3.attributes(feature, "Name")[1]
             if haskey(nucleotides, name)
                 haskey(nucleotides[name], seq) ? nucleotides[name][seq] += 1 : push!(nucleotides[name], seq=>1)
             else
                 push!(nucleotides, name=>Dict(seq=>1))
             end
+            if haskey(bindingnucleotides, name)
+                haskey(bindingnucleotides[name], bseq) ? bindingnucleotides[name][bseq] += 1 : push!(bindingnucleotides[name], bseq=>1)
+            else
+                push!(bindingnucleotides, name=>Dict(bseq=>1))
+            end
             haskey(counts, name) ? counts[name]+=1 : push!(counts, name=>1)
         end
     end
     all_count = 0
-    out_string = ""
+    out_string1 = ""
+    out_string2 = ""
     for (feature, count) in counts
         nc_string = join(["$seq:$c" for (seq, c) in nucleotides[feature]], ";")
-        out_string *= "$feature,$count,$nc_string\n"
+        bnc_string = join(["$seq:$c" for (seq, c) in bindingnucleotides[feature]], ";")
+        out_string1 *= "$feature,$count,$nc_string\n"
+        out_string2 *= "$feature,$count,$bnc_string\n"
         all_count += count
     end
-    for (key, partnerread) in partnerreads.dict
-        !(key in found_ids) && println(partnerread)
-    end
-    out_string = "all,$all_count,\n" * out_string
-    RNASeqTools.write_file("/home/abc/Workspace/RILSeq/library_rilseq/library_interactions.csv", out_string)
+    #for (key, partnerread) in partnerreads.dict
+    #    !(key in found_ids) && println(partnerread)
+    #end
+    out_string1 = "all,$all_count,\n" * out_string1
+    RNASeqTools.write_file("/home/abc/Workspace/RILSeq/library_rilseq/library_interactions_rybb.csv", out_string1)
+    out_string2 = "all,$all_count,\n" * out_string2
+    RNASeqTools.write_file("/home/abc/Workspace/RILSeq/library_rilseq/library_interactions_other.csv", out_string2)
     #align_mem(mysinglereads, bam_file, VC_GENOME_FASTA)
-    alignments = Alignments(bam_file)
-    println(alignments.count)
+    #alignments = Alignments(bam_file)
+    #println(alignments.count)
     #for alignment in alignments.dict
     #    println(alignment)
     #end
@@ -115,5 +131,15 @@ function run_find_rybb()
     @time println(approxsearch(genome.seq, reverse_complement(dna"TTTCTTTGATGTCCCCA"), 1))
 end
 
-files = PairedSingleTypeFiles("/home/abc/Data/vibrio/rilseq/library_rilseq/reads", ".fastq.gz")
-trim_fastp(files)
+#files = PairedSingleTypeFiles("/home/abc/Data/vibrio/rilseq/library_rilseq/reads", ".fastq.gz")
+#trim_fastp(files; umi=9)
+
+bam_file = "/home/abc/Workspace/RILSeq/library_rilseq/chimeras.bam"
+reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
+#println(BAM.header(reader))
+pairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_2.fasta.gz")
+reads = Reads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz")
+for (i, (key, (read1, read2))) in enumerate(pairedreads)
+    println(read1)
+    i == 5 && break
+end

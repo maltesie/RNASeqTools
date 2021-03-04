@@ -1,8 +1,6 @@
 abstract type SequenceContainer end
 
-abstract type Annotation end
-
-abstract type AnnotationContainer end
+abstract type AlignmentContainer end
 
 abstract type FileCollection end
 

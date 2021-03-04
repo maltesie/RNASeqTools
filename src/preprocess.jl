@@ -155,6 +155,7 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
     !isnothing(adapter) && push!(params, "--adapter_sequence=$adapter")
 
     for (in_file1, in_file2) in input_files
+        startswith(in_file1, prefix) && continue
         html_file = joinpath(dirname(in_file1), prefix * (endswith(in_file1, ".gz") ? basename(in_file1)[1:end-9] : basename(in_file1)[1:end-6]) * ".html")
         json_file = joinpath(dirname(in_file1), prefix * (endswith(in_file1, ".gz") ? basename(in_file1)[1:end-9] : basename(in_file1)[1:end-6]) * ".json")
         out_file1 = joinpath(dirname(in_file1), prefix * basename(in_file1))

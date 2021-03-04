@@ -4,18 +4,8 @@ function write_file(filename::String, content::String)
     end
 end
 
-struct Alignment <: Annotation
-    start::Int
-    stop::Int
-    chr::String
-    nm::Int
-    aux::Union{String, Nothing}
-    tag::Union{String, Nothing}
-end
-
-struct Alignments <: SequenceContainer
-    dict::Dict{UInt, Alignment}
-    count::Int
+struct Alignments <: AlignmentContainer
+    dict::Dict{UInt, BAM.Record}
 end
 
 function Alignments(bam_file::String; uniques_only=false, stop_at=nothing, use_if_pe=:read1)
@@ -24,8 +14,8 @@ function Alignments(bam_file::String; uniques_only=false, stop_at=nothing, use_i
     Alignments(alignments, length(alignments))
 end
 
-struct PairedAlignments <: SequenceContainer
-    dict::Dict{UInt, Tuple{Alignment, Alignment}}
+struct PairedAlignments <: AlignmentContainer
+    dict::Dict{UInt, Tuple{BAM.Record, BAM.Record}}
     count::Int
 end
 
@@ -70,8 +60,8 @@ end
 function read_bam(bam_file::String; uniques_only=false, stop_at=nothing, use_if_pe=:both)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
-    chrs = Dict(i=>name for (i,name) in enumerate(bam_chromosome_names(reader)))
-    aligned_reads = Dict{UInt, Alignment}()
+    reads1 = Dict{UInt, BAM.Record}()
+    reads2 = Dict{UInt, BAM.Record}()
     c = 0
     while !eof(reader)
         read!(reader, record)
@@ -136,6 +126,7 @@ struct Genome <: SequenceContainer
     seq::LongDNASeq
     chrs::Dict{String, UnitRange{Int}}
     name::String
+    file::Union{String, Nothing}
 end
 
 function Genome(genome_fasta::String)
@@ -148,7 +139,7 @@ function Genome(genome_fasta::String)
         temp_start += length(chr_seq)
         total_seq *= chr_seq
     end
-    Genome(LongDNASeq(total_seq), chrs, name)
+    Genome(LongDNASeq(total_seq), chrs, name, genome_fasta)
 end
 
 function Base.iterate(genome::Genome)
@@ -166,6 +157,11 @@ end
 
 function Base.write(file::String, genome::Genome)
     write_genomic_fasta(Dict(chr=>String(genome.seq[s]) for (chr, s) in genome.chrs), file; name=genome.name)
+end
+
+function Base.write(genome::Genome)
+    @assert !isnothing(genome.file)
+    write_genomic_fasta(Dict(chr=>String(genome.seq[s]) for (chr, s) in genome.chrs), genome.file; name=genome.name)
 end
 
 function read_genomic_fasta(fasta_file::String)
@@ -202,16 +198,21 @@ end
 
 struct PairedReads <: SequenceContainer
     dict::Dict{UInt64, LongDNASeqPair}
-    name::String
-    count::Int
+    name::Union{String, Nothing}
 end
 
-function PairedReads(file1::String, file2::String; description="", stop_at=nothing)
+Base.length(reads::PairedReads) = Base.length(reads.dict)
+Base.keys(reads::PairedReads) = Base.keys(reads.dict)
+Base.values(reads::PairedReads) = Base.values(reads.dict)
+Base.iterate(reads::PairedReads) = Base.iterate(reads.dict)[2]
+Base.iterate(reads::PairedReads, state::Int) = Base.iterate(reads.dict, state)[2]
+
+function PairedReads(file1::String, file2::String; description=nothing, stop_at=nothing)
     reads1 = read_reads(file1; nb_reads=stop_at)
     reads2 = read_reads(file2; nb_reads=stop_at)
     @assert length(reads1) == length(reads2)
     @assert all([haskey(reads2, key) for key in keys(reads1)])
-    PairedReads(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)), description, length(reads1))
+    PairedReads(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)), description)
 end
 
 function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedReads)
@@ -228,9 +229,14 @@ end
 
 struct Reads <: SequenceContainer
     dict::Dict{UInt64, LongDNASeq}
-    name::String
-    count::Int
+    name::Union{String, Nothing}
 end
+
+Base.length(reads::Reads) = Base.length(reads.dict)
+Base.keys(reads::Reads) = Base.keys(reads.dict)
+Base.values(reads::Reads) = Base.values(reads.dict)
+Base.iterate(reads::Reads) = Base.iterate(reads.dict)[2]
+Base.iterate(reads::Reads, state::Int) = Base.iterate(reads.dict, state)[2]
 
 function Base.write(fasta_file::String, reads::Reads)
     f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")
@@ -242,25 +248,25 @@ end
 
 function Reads(file::String; description="", stop_at=nothing)
     reads = read_reads(file, nb_reads=stop_at)
-    Reads(reads, description, length(reads))
+    Reads(reads, description)
 end
 
 function Reads(f, paired_reads::PairedReads; use_when_tied=:none)
     @assert use_when_tied in [:none, :read1, :read2]
     reads = Dict{UInt, LongDNASeq}()
-    for (key, (read1, read2)) in paired_reads.dict
+    for (key, (read1, read2)) in paired_reads
         if use_when_tied == :read1 
-            f(read1) ? push!(reads, key=>read1) : (f(read2) && push!(reads, key=>read2))
+            f(read1) ? push!(reads, key=>copy(read1)) : (f(read2) && push!(reads, key=>copy(read2)))
         elseif use_when_tied == :read2
-            f(read2) ? push!(reads, key=>read2) : (f(read1) && push!(reads, key=>read1))
+            f(read2) ? push!(reads, key=>copy(read2)) : (f(read1) && push!(reads, key=>copy(read1)))
         elseif use_when_tied == :none
             check1, check2 = f(read1), f(read2)
             check1 && check2 && continue
-            check1 && push!(reads, key=>read1)
-            check2 && push!(reads, key=>read2)
+            check1 && push!(reads, key=>copy(read1))
+            check2 && push!(reads, key=>copy(read2))
         end
     end
-    Reads(reads, paired_reads.name, length(reads))
+    Reads(reads, paired_reads.name)
 end
 
 function read_reads(file::String; nb_reads=nothing)
@@ -323,13 +329,15 @@ end
 struct PairedSingleTypeFiles <: FileCollection
     list::Vector{Tuple{String,String}}
     type::String
+    suffix1::Union{String,Nothing}
+    suffix2::Union{String,Nothing}
 end
 
 function PairedSingleTypeFiles(files1::Vector{String}, files2::Vector{String})
     endingsa = [fname[findlast(fname, "."):end] for fname in files1]
     endingsb = [fname[findlast(fname, "."):end] for fname in files2]
     @assert (length(unique(endingsa)) == 1) && (unique(endingsa) == unique(endingsb))
-    PairedSingleTypeFiles(collect(zip(files1, files2)), endingsa[1])
+    PairedSingleTypeFiles(collect(zip(files1, files2)), endingsa[1], nothing, nothing)
 end
 
 function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffix2="_2", prefix=nothing)
@@ -337,7 +345,7 @@ function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffi
     names1 = [f[1:end-(length(type)+length(suffix1))] for f in type_files if f[end-(length(type)+length(suffix1)-1):end-length(type)] == suffix1]
     names2 = [f[1:end-(length(type)+length(suffix2))] for f in type_files if f[end-(length(type)+length(suffix2)-1):end-length(type)] == suffix2]
     @assert Set(names1) == Set(names2)
-    PairedSingleTypeFiles([(joinpath(folder, name * suffix1 * type), joinpath(folder, name * suffix2 * type)) for name in names1], type)
+    PairedSingleTypeFiles([(joinpath(folder, name * suffix1 * type), joinpath(folder, name * suffix2 * type)) for name in names1], type, suffix1, suffix2)
 end
 
 function Base.iterate(files::PairedSingleTypeFiles)
