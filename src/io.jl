@@ -6,120 +6,74 @@ end
 
 struct Alignments <: AlignmentContainer
     dict::Dict{UInt, BAM.Record}
+    name::Union{String,Nothing}
 end
 
-function Alignments(bam_file::String; uniques_only=false, stop_at=nothing, use_if_pe=:read1)
+Base.length(alignments::Alignments) = Base.length(alignments.dict)
+Base.keys(alignments::Alignments) = Base.keys(alignments.dict)
+Base.values(alignments::Alignments) = Base.values(alignments.dict)
+function Base.iterate(alignments::Alignments) 
+    ((key, aln), state) = Base.iterate(alignments.dict)
+    return (aln, state)
+end
+function Base.iterate(alignments::Alignments, state::Int) 
+    ((key, aln), state) = Base.iterate(alignments.dict, state)
+    return (aln, state)
+end
+
+function Alignments(bam_file::String; mapped_only=false, uniques_only=false, stop_at=nothing, name=nothing, use_if_pe=:read1)
     @assert use_if_pe in [:read1, :read2]
     alignments = read_bam(bam_file; uniques_only=uniques_only, stop_at=stop_at, use_if_pe=use_if_pe)
-    Alignments(alignments, length(alignments))
+    Alignments(alignments, name)
 end
 
 struct PairedAlignments <: AlignmentContainer
     dict::Dict{UInt, Tuple{BAM.Record, BAM.Record}}
-    count::Int
+    name::Union{String,Nothing}
 end
 
-function PairedAlignments(bam_file1::String, bam_file2::String; uniques_only=false, stop_at=nothing)
+Base.length(alignments::PairedAlignments) = Base.length(alignments.dict)
+Base.keys(alignments::PairedAlignments) = Base.keys(alignments.dict)
+Base.values(alignments::PairedAlignments) = Base.values(alignments.dict)
+function Base.iterate(alignments::PairedAlignments) 
+    ((key, (aln1, aln2)), state) = Base.iterate(alignments.dict)
+    return ((aln1, aln2), state)
+end
+function Base.iterate(alignments::PairedAlignments, state::Int) 
+    ((key, (aln1, aln2)), state) = Base.iterate(alignments.dict, state)
+    return ((aln1, aln2), state)
+end
+
+function PairedAlignments(bam_file1::String, bam_file2::String; mapped_only=false, uniques_only=false, stop_at=nothing, name=nothing)
     alignments1 = read_bam(bam_file1; uniques_only=uniques_only, stop_at=stop_at)
     alignments2 = read_bam(bam_file2; uniques_only=uniques_only, stop_at=stop_at)
     alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
-    PairedAlignments(alignments, length(alignments))
+    PairedAlignments(alignments, name)
 end
 
-function PairedAlignments(pebam_file::String; uniques_only=false, stop_at=nothing)
+function PairedAlignments(pebam_file::String; mapped_only=false, uniques_only=false, stop_at=nothing)
     alignments = read_bam(pebam_file; uniques_only=uniques_only, stop_at=stop_at, use_if_pe=:both)
     PairedAlignments(alignments, length(alignments))
 end
 
-function strandint(record::BAM.Record; is_rev=false)
-    BAM.ispositivestrand(record) ? strand = 1 : strand = -1
-    is_rev ? (return strand * -1) : (return strand)
-end
-
-@inline function translated_data(data::SubArray{UInt8,1})
-    for i in 1:length(data)
-        (data[i] == 0x00) && (return data[1:i-1])
-    end
-end
-
-@inline function get_NM_tag(data::SubArray{UInt8,1})
-    for i in 1:length(data)-2
-      (0x4d == data[i]) & (0x43 == data[i+1]) && (return Int(data[i+2]))
-    end
-    return nothing
-end
-
-@inline function get_XA_tag(data::SubArray{UInt8,1})
-    for i in 1:length(data)-2
-        (0x00 == data[i]) & (UInt8('X') == data[i+1]) & (UInt8('A') == data[i+2]) && 
-        (return translated_data(@view(data[i+4:end])))
-    end
-    return nothing
-end
-
-function read_bam(bam_file::String; uniques_only=false, stop_at=nothing, use_if_pe=:both)
+function read_bam(bam_file::String; mapped_only=false, uniques_only=false, stop_at=nothing, use_if_pe=:both)
     record = BAM.Record()
+    is_bitstring = is_bitstring_bam(bam_file)
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     reads1 = Dict{UInt, BAM.Record}()
     reads2 = Dict{UInt, BAM.Record}()
     c = 0
     while !eof(reader)
         read!(reader, record)
-        !BAM.ismapped(record) && continue
-        start, stop = BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)
-        start > stop && ((start, stop) = (stop, start))
-        slice = BAM.auxdata_position(record):BAM.data_size(record)
-        xa = get_XA_tag(@view(record.data[slice]))
-        (uniques_only && !isnothing(xa)) && continue
-        xa_string = isnothing(xa) ? nothing : String(xa)
-        nms = get_NM_tag(@view(record.data[slice]))
-        new_alignment = Alignment(start, stop, BAM.refname(record), nms, xa_string, "")
-        push!(aligned_reads, hash(record.data[1:BAM.seqname_length(record)])=>new_alignment)
+        (mapped_only && !BAM.ismapped(record)) && continue
+        (uniques_only && has_XA_tag(record)) && continue
+        id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(BAM.tempname(record))
+        isread2(record) ? push!(reads2, id=>copy(record)) : push!(reads1, id=>copy(record))
         c += 1
         isnothing(stop_at) || ((c >= stop_at) && break) 
     end
     close(reader)
-    return aligned_reads
-end
-
-function read_wig(wig_file::String)
-    coverages::Vector{Dict{String,Vector{Float64}}} = []
-    temp_collect = Dict()
-    track = ""
-    span = 0
-    chr = ""
-    text = ""
-    open(wig_file, "r") do file
-        lines = readlines(file)
-        for line in lines
-            if startswith(line, "track")
-                track = split(split(line, " ")[2],"=")[2]
-                temp_collect[track] = Dict()
-            elseif startswith(line, "variableStep")
-                span = parse(Int, split(split(line, " ")[3],"=")[2]) - 1
-                chr = split(split(line, " ")[2],"=")[2]
-                temp_collect[track][chr] = Tuple{Int, Float64}[]
-            else
-                str_index, str_value = split(line, " ")
-                index = parse(Int, str_index)
-                value = parse(Float64, str_value)
-                for i in index:index+span
-                    push!(temp_collect[track][chr], (i, value))
-                end
-            end
-        end
-        for (track, collection) in temp_collect
-            coverage = Dict()
-            for (chr, points) in collection
-                coverage[chr] = zeros(Float64, points[end][1])
-                for (index, value) in points
-                    coverage[chr][index] = value
-                end
-            end
-            push!(coverages, coverage)
-        end
-    end
-    return coverages
+    return reads1, reads2
 end
 
 struct Genome <: SequenceContainer
@@ -204,8 +158,14 @@ end
 Base.length(reads::PairedReads) = Base.length(reads.dict)
 Base.keys(reads::PairedReads) = Base.keys(reads.dict)
 Base.values(reads::PairedReads) = Base.values(reads.dict)
-Base.iterate(reads::PairedReads) = Base.iterate(reads.dict)[2]
-Base.iterate(reads::PairedReads, state::Int) = Base.iterate(reads.dict, state)[2]
+function Base.iterate(reads::PairedReads) 
+    ((key, (read1, read2)), state) = Base.iterate(reads.dict)
+    return ((read1, read2), state)
+end
+function Base.iterate(reads::PairedReads, state::Int) 
+    ((key, (read1, read2)), state) = Base.iterate(reads.dict, state)
+    return ((read1, read2), state)
+end
 
 function PairedReads(file1::String, file2::String; description=nothing, stop_at=nothing)
     reads1 = read_reads(file1; nb_reads=stop_at)
@@ -235,8 +195,14 @@ end
 Base.length(reads::Reads) = Base.length(reads.dict)
 Base.keys(reads::Reads) = Base.keys(reads.dict)
 Base.values(reads::Reads) = Base.values(reads.dict)
-Base.iterate(reads::Reads) = Base.iterate(reads.dict)[2]
-Base.iterate(reads::Reads, state::Int) = Base.iterate(reads.dict, state)[2]
+function Base.iterate(reads::Reads) 
+    ((key, read), state) = Base.iterate(reads.dict)
+    return (read, state)
+end
+function Base.iterate(reads::Reads, state::Int) 
+    ((key, (read1, read2)), state) = Base.iterate(reads.dict, state)
+    return (read, state)
+end
 
 function Base.write(fasta_file::String, reads::Reads)
     f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")

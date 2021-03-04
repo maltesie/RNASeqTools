@@ -134,12 +134,17 @@ end
 #files = PairedSingleTypeFiles("/home/abc/Data/vibrio/rilseq/library_rilseq/reads", ".fastq.gz")
 #trim_fastp(files; umi=9)
 
-bam_file = "/home/abc/Workspace/RILSeq/library_rilseq/chimeras.bam"
-reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
+bam_file = "/home/abc/Data/vibrio/rilseq/micha_rilseq/se_bams/hfq_1_0.2_1.bam"
+alns = PairedAlignments(bam_file)
+for (i, record) in enumerate(reader)
+    #println(BAM.alignlength(record) == BAM.rightposition(record) - BAM.position(record) + 1)
+    println(RNASeqTools.isread1(record) || RNASeqTools.isread2(record))
+    i == 5 && break
+end
 #println(BAM.header(reader))
 pairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_2.fasta.gz")
 reads = Reads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz")
-for (i, (key, (read1, read2))) in enumerate(pairedreads)
-    println(read1)
-    i == 5 && break
-end
+#for (i, (read1, read2)) in enumerate(pairedreads)
+#    println(read1)
+#    i == 5 && break
+#end

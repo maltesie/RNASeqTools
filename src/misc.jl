@@ -1,3 +1,43 @@
+function read_wig(wig_file::String)
+    coverages::Vector{Dict{String,Vector{Float64}}} = []
+    temp_collect = Dict()
+    track = ""
+    span = 0
+    chr = ""
+    text = ""
+    open(wig_file, "r") do file
+        lines = readlines(file)
+        for line in lines
+            if startswith(line, "track")
+                track = split(split(line, " ")[2],"=")[2]
+                temp_collect[track] = Dict()
+            elseif startswith(line, "variableStep")
+                span = parse(Int, split(split(line, " ")[3],"=")[2]) - 1
+                chr = split(split(line, " ")[2],"=")[2]
+                temp_collect[track][chr] = Tuple{Int, Float64}[]
+            else
+                str_index, str_value = split(line, " ")
+                index = parse(Int, str_index)
+                value = parse(Float64, str_value)
+                for i in index:index+span
+                    push!(temp_collect[track][chr], (i, value))
+                end
+            end
+        end
+        for (track, collection) in temp_collect
+            coverage = Dict()
+            for (chr, points) in collection
+                coverage[chr] = zeros(Float64, points[end][1])
+                for (index, value) in points
+                    coverage[chr][index] = value
+                end
+            end
+            push!(coverages, coverage)
+        end
+    end
+    return coverages
+end
+
 function combine_gffs(gff_files::Array{String, 1}; out_file="out.gff3")
     writer = open(out_file, "w")
     for gff_in_file in gff_files
@@ -149,12 +189,88 @@ function skiplines(io::IO, k::Int)
     end
 end
 
+function ispaired(record::BAM.Record)::Bool
+    return BAM.isfilled(record) && (BAM.flag(record) & UInt16(0x001) != 0)
+end
+
+function isread1(record::BAM.Record)::Bool
+    return BAM.isfilled(record) && (BAM.flag(record) & UInt16(0x040) != 0)
+end
+
+function isread2(record::BAM.Record)::Bool
+    return BAM.isfilled(record) && (BAM.flag(record) & UInt16(0x080) != 0)
+end
+
+function strandint(record::BAM.Record; is_rev=false)
+    BAM.ispositivestrand(record) ? strand = 1 : strand = -1
+    is_rev ? (return strand * -1) : (return strand)
+end
+
+@inline function translated_data(data::SubArray{UInt8,1})
+    for i in 1:length(data)
+        (data[i] == 0x00) && (return data[1:i-1])
+    end
+end
+
+@inline function get_NM_tag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+      (0x4d == data[i]) & (0x43 == data[i+1]) && (return Int(data[i+2]))
+    end
+    return nothing
+end
+
+function has_XA_tag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+        (0x00 == data[i]) & (UInt8('X') == data[i+1]) & (UInt8('A') == data[i+2]) && (return true)
+    end
+    return false
+end
+
+@inline function get_XA_tag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+        (0x00 == data[i]) & (UInt8('X') == data[i+1]) & (UInt8('A') == data[i+2]) && 
+        (return translated_data(@view(data[i+4:end])))
+    end
+    return nothing
+end
+
+function has_XA_tag(record::BAM.Record)
+    return has_XA_tag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
+end
+
+function get_XA_tag(record::BAM.Record)
+    xa = get_XA_tag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
+    return isnothing(xa) ? nothing : String(xa)
+end
+
+function get_nm_tag(record::BAM.Record)
+    return get_NM_tag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
+end
+
+function get_interval(record::BAM.Record)
+    start, stop = BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)
+    start > stop && ((start, stop) = (stop, start))
+    return Interval(BAM.refname(record), start, stop)
+end
+
 function is_bitstring_fasta(file::String)
     (endswith(file, ".fasta") || endswith(file, ".fasta.gz")) || (return false)
     f = endswith(file, ".fasta.gz") ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
     first_line = readline(f)
     close(f)
     ((length(first_line) == 65) && all([c in ['0', '1'] for c in first_line[2:end]])) && (return true)
+    return false
+end
+
+function is_bitstring_bam(file::String)
+    reader = BAM.Reader(open(file))
+    tempname = ""
+    for record in reader
+        tempname = BAM.tempname(record)
+        break
+    end
+    close(reader)
+    ((length(tempname) == 64) && all([c in ['0', '1'] for c in tempname])) && (return true)
     return false
 end
 
