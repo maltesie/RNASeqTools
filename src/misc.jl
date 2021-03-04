@@ -1,3 +1,38 @@
+
+function join_replicates(coverage_notex::Vector{Dict{String,Vector{Float64}}}, coverage_tex::Vector{Dict{String,Vector{Float64}}}, chr::String)
+    max_tex = maximum([length(c[chr]) for c in coverage_tex])
+    max_notex = maximum([length(c[chr]) for c in coverage_notex])
+    l = max(max_tex, max_notex)
+    nb_reps = length(coverage_tex)
+    tex = zeros(Float64, (l,nb_reps))
+    no_tex = zeros(Float64, (l,nb_reps))
+    for i in 1:nb_reps
+        tex[1:length(coverage_tex[i][chr]),i] = coverage_tex[i][chr]
+        no_tex[1:length(coverage_notex[i][chr]),i] = coverage_notex[i][chr]
+    end
+    return vec(mean(tex, dims=2)), vec(mean(no_tex, dims=2))
+end
+
+function join_replicates(coverage_term::Vector{Dict{String,Vector{Float64}}}, chr::String)
+    nb_reps = length(coverage_term)
+    l = maximum([length(c[chr]) for c in coverage_term])
+    term = zeros(Float64, (l,nb_reps))
+    for i in 1:nb_reps
+        term[1:length(coverage_term[i][chr]),i] = coverage_term[i][chr]
+    end
+    return vec(mean(term, dims=2))
+end
+
+function get_chr_from_wig(wig_file::String)
+    chrs::Set{String} = Set()
+    open(wig_file, "r") do file
+        for line in eachline(file)
+            startswith(line, "variableStep") && push!(chrs, split(split(line, " ")[2],"=")[2])
+        end
+    end
+    return chrs
+end
+
 function read_wig(wig_file::String)
     coverages::Vector{Dict{String,Vector{Float64}}} = []
     temp_collect = Dict()
