@@ -241,48 +241,48 @@ function strandint(record::BAM.Record; is_rev=false)
     is_rev ? (return strand * -1) : (return strand)
 end
 
-@inline function translated_data(data::SubArray{UInt8,1})
+@inline function translateddata(data::SubArray{UInt8,1})
     for i in 1:length(data)
         (data[i] == 0x00) && (return data[1:i-1])
     end
 end
 
-@inline function get_NM_tag(data::SubArray{UInt8,1})
+@inline function nmtag(data::SubArray{UInt8,1})
     for i in 1:length(data)-2
       (0x4d == data[i]) & (0x43 == data[i+1]) && (return Int(data[i+2]))
     end
     return nothing
 end
 
-function has_XA_tag(data::SubArray{UInt8,1})
+function hasxatag(data::SubArray{UInt8,1})
     for i in 1:length(data)-2
         (0x00 == data[i]) & (UInt8('X') == data[i+1]) & (UInt8('A') == data[i+2]) && (return true)
     end
     return false
 end
 
-@inline function get_XA_tag(data::SubArray{UInt8,1})
+@inline function xatag(data::SubArray{UInt8,1})
     for i in 1:length(data)-2
         (0x00 == data[i]) & (UInt8('X') == data[i+1]) & (UInt8('A') == data[i+2]) && 
-        (return translated_data(@view(data[i+4:end])))
+        (return translateddata(@view(data[i+4:end])))
     end
     return nothing
 end
 
-function has_XA_tag(record::BAM.Record)
-    return has_XA_tag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
+function hasxatag(record::BAM.Record)
+    return hasxatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
 end
 
-function get_XA_tag(record::BAM.Record)
-    xa = get_XA_tag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
+function xatag(record::BAM.Record)
+    xa = xatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
     return isnothing(xa) ? nothing : String(xa)
 end
 
-function get_nm_tag(record::BAM.Record)
-    return get_NM_tag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
+function nmtag(record::BAM.Record)
+    return nmtag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
 end
 
-function get_interval(record::BAM.Record)
+function interval(record::BAM.Record)
     start, stop = BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)
     start > stop && ((start, stop) = (stop, start))
     return Interval(BAM.refname(record), start, stop)

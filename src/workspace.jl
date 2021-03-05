@@ -133,17 +133,20 @@ end
 
 #files = PairedSingleTypeFiles("/home/abc/Data/vibrio/rilseq/library_rilseq/reads", ".fastq.gz")
 #trim_fastp(files; umi=9)
-
-bam_file = "/home/abc/Data/vibrio/rilseq/micha_rilseq/se_bams/hfq_1_0.2_1.bam"
-alns = PairedAlignments(bam_file)
-for (i, record) in enumerate(reader)
+genome = Genome(VC_GENOME_FASTA)
+pairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/trimmed_VC3_1.fastq.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/trimmed_VC3_2.fastq.gz")
+bam_file = "/home/abc/Workspace/RILSeq/library_rilseq/test.bam"
+align_mem(pairedreads, genome, bam_file)
+@time alns = PairedAlignments(bam_file)
+for (i, (key, (a1, a2))) in enumerate(alns.dict)
     #println(BAM.alignlength(record) == BAM.rightposition(record) - BAM.position(record) + 1)
-    println(RNASeqTools.isread1(record) || RNASeqTools.isread2(record))
+    println(RNASeqTools.isread1(a1) || RNASeqTools.isread2(a2))
+    println(LongDNASeq(BAM.sequence(a1)) == pairedreads.dict[key][1])
     i == 5 && break
 end
 #println(BAM.header(reader))
-pairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_2.fasta.gz")
-reads = Reads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz")
+#pairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_2.fasta.gz")
+#reads = Reads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz")
 #for (i, (read1, read2)) in enumerate(pairedreads)
 #    println(read1)
 #    i == 5 && break

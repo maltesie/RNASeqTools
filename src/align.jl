@@ -94,6 +94,9 @@ function align_mem(reads::Reads, genome::Genome, out_file::String; z_score=100, 
     align_mem(tmp_reads, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
     rm(tmp_reads)
     rm(tmp_genome)
+    for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
+        rm(tmp_genome * ending)
+    end
 end
 
 function align_mem(reads::PairedReads, genome::Genome, out_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
@@ -106,6 +109,9 @@ function align_mem(reads::PairedReads, genome::Genome, out_file::String; z_score
     rm(tmp_reads1)
     rm(tmp_reads2)
     rm(tmp_genome)
+    for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
+        rm(tmp_genome * ending)
+    end
 end
 
 function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)

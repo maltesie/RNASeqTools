@@ -4,8 +4,13 @@ function write_file(filename::String, content::String)
     end
 end
 
+struct Alignment 
+    primary::Union{Interval, Nothing}
+    chimeric::Union{Interval, Nothing}
+    alt::Vector{Interval}
+
 struct Alignments <: AlignmentContainer
-    dict::Dict{UInt, BAM.Record}
+    dict::Dict{UInt, Alignment}
     name::Union{String,Nothing}
 end
 
@@ -22,13 +27,13 @@ function Base.iterate(alignments::Alignments, state::Int)
 end
 
 function Alignments(bam_file::String; stop_at=nothing, name=nothing)
-    @assert use_if_pe in [:read1, :read2]
-    alignments = read_bam(bam_file; stop_at=stop_at)
-    Alignments(alignments, name)
+    alignments1, alignments2 = read_bam(bam_file; stop_at=stop_at)
+    @assert isempty(alignments2)
+    Alignments(alignments1, name)
 end
 
 struct PairedAlignments <: AlignmentContainer
-    dict::Dict{UInt, Tuple{BAM.Record, BAM.Record}}
+    dict::Dict{UInt, Tuple{AbstractAlignment, AbstractAlignment}}
     name::Union{String, Nothing}
 end
 
@@ -45,15 +50,17 @@ function Base.iterate(alignments::PairedAlignments, state::Int)
 end
 
 function PairedAlignments(bam_file1::String, bam_file2::String; stop_at=nothing, name=nothing)
-    alignments1 = read_bam(bam_file1; stop_at=stop_at)
-    alignments2 = read_bam(bam_file2; stop_at=stop_at)
+    alignments1, alignments_e1 = read_bam(bam_file1; stop_at=stop_at)
+    alignments2, alignments_e2 = read_bam(bam_file2; stop_at=stop_at)
+    @assert isempty(alignments_e1) && isempty(alignments_e2)
     alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
     PairedAlignments(alignments, name)
 end
 
-function PairedAlignments(pebam_file::String; stop_at=nothing)
-    alignments = read_bam(pebam_file; stop_at=stop_at)
-    PairedAlignments(alignments, length(alignments))
+function PairedAlignments(pebam_file::String; stop_at=nothing, name=nothing)
+    alignments1, alignments2 = read_bam(pebam_file; stop_at=stop_at)
+    alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
+    PairedAlignments(alignments, name)
 end
 
 function read_bam(bam_file::String; stop_at=nothing)
@@ -66,6 +73,7 @@ function read_bam(bam_file::String; stop_at=nothing)
     while !eof(reader)
         read!(reader, record)
         id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(BAM.tempname(record))
+        
         isread2(record) ? push!(reads2, id=>copy(record)) : push!(reads1, id=>copy(record))
         c += 1
         isnothing(stop_at) || ((c >= stop_at) && break) 
@@ -107,7 +115,7 @@ function Base.iterate(genome::Genome, state::Int)
 end
 
 function Base.write(file::String, genome::Genome)
-    write_genomic_fasta(Dict(chr=>String(genome.seq[s]) for (chr, s) in genome.chrs), file; name=genome.name)
+    write_genomic_fasta(Dict(chr=>String(seq) for (chr, seq) in genome), file; name=genome.name)
 end
 
 function read_genomic_fasta(fasta_file::String)
@@ -134,9 +142,9 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
         for (i, (chr, seq)) in enumerate(genome)
             s = String(seq)
             l = length(s)
-            !isempty(name) ? println(file, ">$chr chromosome $i") : println(file, ">$chr $name chromosome $i")
-            for i in 0:Int(length(seq)/chars_per_row)
-                ((i+1)*chars_per_row > l) ? println(s[i*chars_per_row+1:end]) : println(s[i*chars_per_row+1:(i+1)*chars_per_row])
+            !isempty(name) ? println(file, ">$chr") : println(file, ">$chr $name")
+            for i in 0:length(seq)%chars_per_row
+                ((i+1)*chars_per_row > l) ? println(file, s[i*chars_per_row+1:end]) : println(file, s[i*chars_per_row+1:(i+1)*chars_per_row])
             end
         end
     end
