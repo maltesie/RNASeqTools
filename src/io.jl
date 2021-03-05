@@ -21,15 +21,15 @@ function Base.iterate(alignments::Alignments, state::Int)
     return (aln, state)
 end
 
-function Alignments(bam_file::String; mapped_only=false, uniques_only=false, stop_at=nothing, name=nothing, use_if_pe=:read1)
+function Alignments(bam_file::String; stop_at=nothing, name=nothing)
     @assert use_if_pe in [:read1, :read2]
-    alignments = read_bam(bam_file; uniques_only=uniques_only, stop_at=stop_at, use_if_pe=use_if_pe)
+    alignments = read_bam(bam_file; stop_at=stop_at)
     Alignments(alignments, name)
 end
 
 struct PairedAlignments <: AlignmentContainer
     dict::Dict{UInt, Tuple{BAM.Record, BAM.Record}}
-    name::Union{String,Nothing}
+    name::Union{String, Nothing}
 end
 
 Base.length(alignments::PairedAlignments) = Base.length(alignments.dict)
@@ -44,19 +44,19 @@ function Base.iterate(alignments::PairedAlignments, state::Int)
     return ((aln1, aln2), state)
 end
 
-function PairedAlignments(bam_file1::String, bam_file2::String; mapped_only=false, uniques_only=false, stop_at=nothing, name=nothing)
-    alignments1 = read_bam(bam_file1; uniques_only=uniques_only, stop_at=stop_at)
-    alignments2 = read_bam(bam_file2; uniques_only=uniques_only, stop_at=stop_at)
+function PairedAlignments(bam_file1::String, bam_file2::String; stop_at=nothing, name=nothing)
+    alignments1 = read_bam(bam_file1; stop_at=stop_at)
+    alignments2 = read_bam(bam_file2; stop_at=stop_at)
     alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
     PairedAlignments(alignments, name)
 end
 
-function PairedAlignments(pebam_file::String; mapped_only=false, uniques_only=false, stop_at=nothing)
-    alignments = read_bam(pebam_file; uniques_only=uniques_only, stop_at=stop_at, use_if_pe=:both)
+function PairedAlignments(pebam_file::String; stop_at=nothing)
+    alignments = read_bam(pebam_file; stop_at=stop_at)
     PairedAlignments(alignments, length(alignments))
 end
 
-function read_bam(bam_file::String; mapped_only=false, uniques_only=false, stop_at=nothing, use_if_pe=:both)
+function read_bam(bam_file::String; stop_at=nothing)
     record = BAM.Record()
     is_bitstring = is_bitstring_bam(bam_file)
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
@@ -65,8 +65,6 @@ function read_bam(bam_file::String; mapped_only=false, uniques_only=false, stop_
     c = 0
     while !eof(reader)
         read!(reader, record)
-        (mapped_only && !BAM.ismapped(record)) && continue
-        (uniques_only && has_XA_tag(record)) && continue
         id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(BAM.tempname(record))
         isread2(record) ? push!(reads2, id=>copy(record)) : push!(reads1, id=>copy(record))
         c += 1
@@ -79,8 +77,7 @@ end
 struct Genome <: SequenceContainer
     seq::LongDNASeq
     chrs::Dict{String, UnitRange{Int}}
-    name::String
-    file::Union{String, Nothing}
+    name::Union{String, Nothing}
 end
 
 function Genome(genome_fasta::String)
@@ -93,7 +90,7 @@ function Genome(genome_fasta::String)
         temp_start += length(chr_seq)
         total_seq *= chr_seq
     end
-    Genome(LongDNASeq(total_seq), chrs, name, genome_fasta)
+    Genome(LongDNASeq(total_seq), chrs, name)
 end
 
 function Base.iterate(genome::Genome)
@@ -111,11 +108,6 @@ end
 
 function Base.write(file::String, genome::Genome)
     write_genomic_fasta(Dict(chr=>String(genome.seq[s]) for (chr, s) in genome.chrs), file; name=genome.name)
-end
-
-function Base.write(genome::Genome)
-    @assert !isnothing(genome.file)
-    write_genomic_fasta(Dict(chr=>String(genome.seq[s]) for (chr, s) in genome.chrs), genome.file; name=genome.name)
 end
 
 function read_genomic_fasta(fasta_file::String)

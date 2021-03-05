@@ -331,3 +331,4 @@ function translation_dict(from_sequence::String, to_sequence::String)
     end
     return trans_dict
 end
+record = BAM.Record()

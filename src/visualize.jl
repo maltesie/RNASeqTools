@@ -26,18 +26,37 @@ function dashboard(reads::Reads)
 end
 
 function hist_length_distribution(reads::Reads)
+    lengths = [length(read) for read in reads]
+    histogram(lengths, legend=false, title=title)
 end
 
 function hist_length_distribution(reads::PairedReads, title="length of reads")
-    lengths = vcat([[length(read1) length(read2)] for (read1, read2) in values(reads)]...)
+    lengths = vcat([[length(read1) length(read2)] for (read1, read2) in reads]...)
     histogram(lengths, labels=["read1" "read2"], title=title)
 end
 
 function line_nucleotide_distribution(reads::Reads)
+    max_length = maximum([length(read) for read in reads])
+    count = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
+    nb_reads = length(reads)
+    for read in reads
+        (align==:left) ? 
+        (index = 1:length(read)) : 
+        (index = (max_length - length(read) + 1):max_length)
+        for (i, n) in zip(index, read)
+            count[n][i] += 1
+        end
+    end
+    for (key, c) in count
+        c /= length(reads)
+    end
+    dna_trans = Dict(DNA_A => "A", DNA_T=>"T", DNA_G=>"G", DNA_C=>"C", DNA_N=>"N")
+    label = reshape([dna_trans[key] for key in keys(count)], (1, length(dna_trans)))
+    plot(collect(values(count)), label=label, title=title)
 end
 
 function line_nucleotide_distribution(reads::PairedReads; align=:left, title1="nucleotides of read1", title2="nucleotides of read2")
-    max_length = maximum(vcat([[length(read1) length(read2)] for (read1, read2) in values(reads)]...))
+    max_length = maximum(vcat([[length(read1) length(read2)] for (read1, read2) in reads]...))
     count1 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     count2 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     nb_reads = length(reads)
@@ -51,8 +70,8 @@ function line_nucleotide_distribution(reads::PairedReads; align=:left, title1="n
         end
     end
     for ((key1, c1), (key2, c2)) in zip(count1, count2)
-        c1 ./= length(reads)
-        c2 ./= length(reads)
+        c1 /= length(reads)
+        c2 /= length(reads)
     end
     dna_trans = Dict(DNA_A => "A", DNA_T=>"T", DNA_G=>"G", DNA_C=>"C", DNA_N=>"N")
     label = reshape([dna_trans[key] for key in keys(count1)], (1, length(dna_trans)))

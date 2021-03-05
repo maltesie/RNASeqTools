@@ -97,15 +97,7 @@ function cut!(reads::PairedReads, seq::LongDNASeq; keep=:left_of_query, from=:le
 end
 
 function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1, check_indels=false)
-    length(s2) < length(s1) && (return false)
-    if !check_indels
-        for i in 1:length(s2)-length(s1)+1
-            (sum(@view(s2[i:i+length(s1)-1]) .!== s1) <= k) && (return true) 
-        end
-        return false
-    else
-        return approxsearch(s2, s1, k) != 0:-1
-    end
+    return approxsearch(s2, s1, k) != 0:-1
 end
 
 function Base.filter!(f, reads::Reads)

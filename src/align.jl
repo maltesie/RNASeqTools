@@ -86,20 +86,26 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm("tmp.view")
 end
 
-function align_mem(reads::Reads, out_file::String, genome_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
-    tmp_file = joinpath(dirname(out_file), "temp.fasta")
-    write(tmp_file, reads)
-    align_mem(tmp_file, out_file, genome_file; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
-    rm(tmp_file)
+function align_mem(reads::Reads, genome::Genome, out_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
+    tmp_reads = joinpath(dirname(out_file), "tmp_reads.fasta")
+    tmp_genome = joinpath(dirname(out_file), "tmp_genome.fa")
+    write(tmp_genome, genome)
+    write(tmp_reads, reads)
+    align_mem(tmp_reads, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
+    rm(tmp_reads)
+    rm(tmp_genome)
 end
 
-function align_mem(reads::PairedReads, out_file::String, genome_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
-    tmp_file1 = joinpath(dirname(out_file), "temp1.fasta")
-    tmp_file2 = joinpath(dirname(out_file), "temp2.fasta")
-    write(tmp_file1, tmp_file2, reads)
-    align_mem(tmp_file1, tmp_file2, out_file, genome_file; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
-    rm(tmp_file1)
-    rm(tmp_file2)
+function align_mem(reads::PairedReads, genome::Genome, out_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
+    tmp_reads1 = joinpath(dirname(out_file), "temp1.fasta")
+    tmp_reads2 = joinpath(dirname(out_file), "temp2.fasta")
+    tmp_genome = joinpath(dirname(out_file), "tmp_genome.fa")
+    write(tmp_reads1, tmp_reads2, reads)
+    write(tmp_genome, genome)
+    align_mem(tmp_reads1, tmp_reads2, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
+    rm(tmp_reads1)
+    rm(tmp_reads2)
+    rm(tmp_genome)
 end
 
 function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)
