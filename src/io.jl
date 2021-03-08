@@ -4,13 +4,57 @@ function write_file(filename::String, content::String)
     end
 end
 
-struct Alignment 
-    primary::Union{Interval, Nothing}
-    chimeric::Union{Interval, Nothing}
-    alt::Vector{Interval}
+struct AlignmentPart
+    refstart::Int
+    refstop::Int
+    readstart::Int
+    readstop::Int
+    isprimary::Bool
+    chr::String
+    tag::Union{String, Nothing}
+end
+
+function AlignmentPart(xa_part::String)
+    chr, pos, cigar, nm = split(xa_part, ",")
+    refstart = parse(Int, pos)
+    readstart, readstop, relrefstop = positions(cigar)
+    return AlignmentPart(refstart, refstart+relrefstop, readstart, readstop, false, chr, nothing)
+end
+
+struct ReadAlignment
+    parts::Vector{AlignmentPart}
+    alt::Vector{Vector{AlignmentPart}}
+end
+
+function ReadAlignment(record::BAM.Record)
+    BAM.ismapped(record) || return ReadAlignment([], [])
+    readstart, readstop, relrefstop = positions(BAM.cigar(record))
+    aln_part = AlignmentPart(BAM.leftposition(record), BAM.rightposition(record), readstart, readstop, BAM.isprimary(record), BAM.refname(record), nothing)
+    alts = hasxatag(record) ? [AlignmentPart(xa) for xa in split(String(xatag(record)))[1:end-1]] : AlignmentPart[]
+    return ReadAlignment([aln_part], alts)
+end 
+
+Base.iterate(readalignment::ReadAlignment) = Base.iterate(readalignment.parts)
+Base.iterate(readalignment::ReadAlignment, state::Int) = Base.iterate(readalignment.parts, state)
+
+
+function Base.push!(readalignment::ReadAlignment, record::BAM.Record)
+    BAM.ismapped(record) || return nothing
+    readstart, readstop, relrefstop = positions(BAM.cigar(record))
+    push!(readalignment.parts, AlignmentPart(BAM.leftposition(record), BAM.rightposition(record), readstart, readstop, BAM.isprimary(record), BAM.refname(record), nothing))
+    hasxatag(record) && push!(readalignment.alt, [AlignmentPart(xa) for xa in split(String(xatag(record)))[1:end-1]])
+end
+
+function primaryalignmentpart(readalignment::ReadAlignment)
+    for aln_part in readalignment
+        aln_part.isprimary && (return aln_part)
+    end
+end
+
+Base.isempty(readalignment::ReadAlignment) = Base.isempty(readalignment.parts)
 
 struct Alignments <: AlignmentContainer
-    dict::Dict{UInt, Alignment}
+    dict::Dict{String, ReadAlignment}
     name::Union{String,Nothing}
 end
 
@@ -18,11 +62,15 @@ Base.length(alignments::Alignments) = Base.length(alignments.dict)
 Base.keys(alignments::Alignments) = Base.keys(alignments.dict)
 Base.values(alignments::Alignments) = Base.values(alignments.dict)
 function Base.iterate(alignments::Alignments) 
-    ((key, aln), state) = Base.iterate(alignments.dict)
+    dictiteration = Base.iterate(alignments.dict)
+    isnothing(dictiteration) && (return nothing)
+    ((key, aln), state) = dictiteration
     return (aln, state)
 end
 function Base.iterate(alignments::Alignments, state::Int) 
-    ((key, aln), state) = Base.iterate(alignments.dict, state)
+    dictiteration = Base.iterate(alignments.dict, state)
+    isnothing(dictiteration) && (return nothing)
+    ((key, aln), state) = dictiteration
     return (aln, state)
 end
 
@@ -33,7 +81,7 @@ function Alignments(bam_file::String; stop_at=nothing, name=nothing)
 end
 
 struct PairedAlignments <: AlignmentContainer
-    dict::Dict{UInt, Tuple{AbstractAlignment, AbstractAlignment}}
+    dict::Dict{String, Tuple{ReadAlignment, ReadAlignment}}
     name::Union{String, Nothing}
 end
 
@@ -41,11 +89,15 @@ Base.length(alignments::PairedAlignments) = Base.length(alignments.dict)
 Base.keys(alignments::PairedAlignments) = Base.keys(alignments.dict)
 Base.values(alignments::PairedAlignments) = Base.values(alignments.dict)
 function Base.iterate(alignments::PairedAlignments) 
-    ((key, (aln1, aln2)), state) = Base.iterate(alignments.dict)
+    dictiteration = Base.iterate(alignments.dict)
+    isnothing(dictiteration) && (return nothing)
+    ((key, (aln1, aln2)), state) = dictiteration
     return ((aln1, aln2), state)
 end
 function Base.iterate(alignments::PairedAlignments, state::Int) 
-    ((key, (aln1, aln2)), state) = Base.iterate(alignments.dict, state)
+    dictiteration = Base.iterate(alignments.dict, state)
+    isnothing(dictiteration) && (return nothing)
+    ((key, (aln1, aln2)), state) = dictiteration
     return ((aln1, aln2), state)
 end
 
@@ -65,16 +117,15 @@ end
 
 function read_bam(bam_file::String; stop_at=nothing)
     record = BAM.Record()
-    is_bitstring = is_bitstring_bam(bam_file)
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
-    reads1 = Dict{UInt, BAM.Record}()
-    reads2 = Dict{UInt, BAM.Record}()
+    reads1 = Dict{String, ReadAlignment}()
+    reads2 = Dict{String, ReadAlignment}()
     c = 0
     while !eof(reader)
         read!(reader, record)
-        id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(BAM.tempname(record))
-        
-        isread2(record) ? push!(reads2, id=>copy(record)) : push!(reads1, id=>copy(record))
+        id = BAM.tempname(record)
+        current_read_dict = isread2(record) && ispaired(record) ? reads2 : reads1
+        id in keys(current_read_dict) ? push!(current_read_dict[id], copy(record)) : push!(current_read_dict, id=>ReadAlignment(copy(record)))
         c += 1
         isnothing(stop_at) || ((c >= stop_at) && break) 
     end
@@ -137,13 +188,13 @@ function read_genomic_fasta(fasta_file::String)
     return name, genome
 end
 
-function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; name="", chars_per_row=80)
+function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; name=nothing, chars_per_row=80)
     open(fasta_file, "w") do file
         for (i, (chr, seq)) in enumerate(genome)
             s = String(seq)
             l = length(s)
-            !isempty(name) ? println(file, ">$chr") : println(file, ">$chr $name")
-            for i in 0:length(seq)%chars_per_row
+            !isnothing(name) ? println(file, ">$chr") : println(file, ">$chr $name")
+            for i in 0:length(seq)÷chars_per_row
                 ((i+1)*chars_per_row > l) ? println(file, s[i*chars_per_row+1:end]) : println(file, s[i*chars_per_row+1:(i+1)*chars_per_row])
             end
         end
@@ -151,7 +202,7 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
 end
 
 struct PairedReads <: SequenceContainer
-    dict::Dict{UInt64, LongDNASeqPair}
+    dict::Dict{String, LongDNASeqPair}
     name::Union{String, Nothing}
 end
 
@@ -179,16 +230,15 @@ function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedReads
     f1 = endswith(fasta_file1, ".gz") ? GzipCompressorStream(open(fasta_file1, "w")) : open(fasta_file1, "w")
     f2 = endswith(fasta_file2, ".gz") ? GzipCompressorStream(open(fasta_file2, "w")) : open(fasta_file2, "w")
     for (key, (read1, read2)) in reads.dict
-        bs = bitstring(key)
-        write(f1, ">$bs\n$(String(read1))\n")
-        write(f2, ">$bs\n$(String(read2))\n")
+        write(f1, ">$key\n$(String(read1))\n")
+        write(f2, ">$key\n$(String(read2))\n")
     end
     close(f1)
     close(f2)
 end
 
 struct Reads <: SequenceContainer
-    dict::Dict{UInt64, LongDNASeq}
+    dict::Dict{String, LongDNASeq}
     name::Union{String, Nothing}
 end
 
@@ -207,7 +257,7 @@ end
 function Base.write(fasta_file::String, reads::Reads)
     f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")
     for (key, read) in reads.dict
-        write(f, ">$(bitstring(key))\n$(String(read))\n")
+        write(f, ">$key\n$(String(read))\n")
     end
     close(f)
 end
@@ -237,20 +287,21 @@ end
 
 function read_reads(file::String; nb_reads=nothing)
     @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
-    reads::Dict{UInt64, LongDNASeq} = Dict()
+    reads::Dict{String, LongDNASeq} = Dict()
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped = endswith(file, ".gz")
-    is_bitstring = is_bitstring_fasta(file)
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
+    reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
+    record = is_fastq ? FASTQ.Record() : FASTA.Record()
+    sequencer = is_fastq ? FASTQ.sequence : FASTA.sequence
     read_counter = 0
-    while !eof(f)
-        id = is_bitstring ? parse(UInt, readline(f)[2:end]; base=2) : hash(split(readline(f)[2:end])[1])
-        push!(reads, id => LongDNASeq(readline(f)))
-        is_fastq && (skiplines(f, 2))
+    while !eof(reader)
+        read!(reader, record)
+        push!(reads, identifier(record) => LongDNASeq(sequencer(record)))
         read_counter += 1
         isnothing(nb_reads) || (read_counter >= nb_reads && break)
     end
-    close(f)
+    close(reader)
     return reads
 end
 

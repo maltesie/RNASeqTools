@@ -10,31 +10,7 @@ VC_GENOME_GFF = "/home/abc/Data/vibrio/annotation/NC_002505_6.gff3"
 
 
 
-function test_mem_aligner()
-    analysis_folder = "/home/abc/Workspace/RILSeq/library_rilseq/"
-    genome = Genome(VC_GENOME_FASTA)
-    sequences = Dict{UInt, LongDNASeq}()
-    for (i, (chr, refseq)) in enumerate(genome)
-        merge!(sequences, Dict(UInt(i*100+j)=>refseq[index1:index1+40]*refseq[index2:index2+60] 
-            for (j,(index1,index2)) in enumerate([(rand(1:length(refseq)-40), rand(1:length(refseq)-60)) for k in 0:99])))
-    end
-    reads1 = Reads(sequences, "test", length(sequences))
-    bam_file1 = "/home/abc/Workspace/RILSeq/library_rilseq/test.bam"
-    align_mem(reads1, bam_file1, VC_GENOME_FASTA)
-    alignments1 = Alignments(bam_file1)
 
-    sequences2 = Dict{UInt, LongDNASeq}()
-    for (i, (chr, refseq)) in enumerate(genome)
-        merge!(sequences, Dict(UInt(i*100+j)=>refseq[index1:index1+100]
-            for (j,index1) in enumerate([rand(1:length(refseq)-100) for k in 0:99])))
-    end
-    reads2 = Reads(sequences, "test", length(sequences))
-    bam_file2 = "/home/abc/Workspace/RILSeq/library_rilseq/test2.bam"
-    align_mem(reads2, bam_file2, VC_GENOME_FASTA)
-end
-
-#reads = Reads("/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC1_1.fastq.gz"; stop_at=100)
-#test_mem_aligner()
 #reads = Reads("/home/abc/Workspace/RILSeq/library_rilseq/synthetic_reads.fasta.gz")
 
 #genome = Genome(VC_GENOME_FASTA)
@@ -60,17 +36,18 @@ function run_reads_split()
     #rev_comp!(partnerreads)
     #cut!(partnerreads, 60; from=:left, keep=:left)
     rybbreads = Reads(s->occursin(query, s), mypairedreads; use_when_tied=:read1)
-    bindingsitereads = Reads(s->occursin(query, s), mypairedreads; use_when_tied=:read2)
-    cut!(bindingsitereads, query; keep=:left_of_query)
-    cut!(bindingsitereads, 9; from=:right, keep=:left)
-    cut!(bindingsitereads, 14; from=:right, keep=:right)
-    cut!(rybbreads, query; keep=:left_of_query)
-    cut!(rybbreads, 9; from=:right, keep=:right)
-    cut!(mypairedreads, query; keep=:left_of_query)
-    cut!(mypairedreads, 9; from=:right, keep=:left)
+    #bindingsitereads = Reads(s->occursin(query, s), mypairedreads; use_when_tied=:read2)
+    #cut!(bindingsitereads, query; keep=:left_of_query)
+    #cut!(bindingsitereads, 9; from=:right, keep=:left)
+    #cut!(bindingsitereads, 14; from=:right, keep=:right)
+    #cut!(rybbreads, query; keep=:left_of_query)
+    #cut!(rybbreads, 9; from=:right, keep=:right)
+    #cut!(mypairedreads, query; keep=:left_of_query)
+    #cut!(mypairedreads, 9; from=:right, keep=:left)
     bam_file = "/home/abc/Workspace/RILSeq/library_rilseq/chimeras.bam"
     bam_index = "/home/abc/Workspace/RILSeq/library_rilseq/chimeras.bam.bai"
-    align_mem(mypairedreads, bam_file, VC_GENOME_FASTA)
+    genome = Genome(VC_GENOME_FASTA)
+    align_mem(mypairedreads, genome, bam_file)
     features = open(collect, GFF3.Reader, VC_GENOME_GFF)
     filter!(x -> GFF3.featuretype(x) == "Gene", features)
     reader = open(BAM.Reader, bam_file, index=bam_index)
@@ -80,7 +57,7 @@ function run_reads_split()
     found_ids = []
     for feature in features
         for record in eachoverlap(reader, feature)
-            id = parse(UInt, BAM.tempname(record); base=2)
+            id = BAM.tempname(record)
             push!(found_ids, id)
             seq = haskey(rybbreads.dict, id) ? rybbreads.dict[id] : LongDNASeq("N")
             bseq = haskey(bindingsitereads.dict, id) ? bindingsitereads.dict[id] : LongDNASeq("N")
@@ -133,17 +110,17 @@ end
 
 #files = PairedSingleTypeFiles("/home/abc/Data/vibrio/rilseq/library_rilseq/reads", ".fastq.gz")
 #trim_fastp(files; umi=9)
-genome = Genome(VC_GENOME_FASTA)
-pairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/trimmed_VC3_1.fastq.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/trimmed_VC3_2.fastq.gz")
-bam_file = "/home/abc/Workspace/RILSeq/library_rilseq/test.bam"
-align_mem(pairedreads, genome, bam_file)
-@time alns = PairedAlignments(bam_file)
-for (i, (key, (a1, a2))) in enumerate(alns.dict)
-    #println(BAM.alignlength(record) == BAM.rightposition(record) - BAM.position(record) + 1)
-    println(RNASeqTools.isread1(a1) || RNASeqTools.isread2(a2))
-    println(LongDNASeq(BAM.sequence(a1)) == pairedreads.dict[key][1])
-    i == 5 && break
-end
+#genome = Genome(VC_GENOME_FASTA)
+#pairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/trimmed_VC3_1.fastq.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/trimmed_VC3_2.fastq.gz")
+#bam_file = "/home/abc/Workspace/RILSeq/library_rilseq/test.bam"
+#align_mem(pairedreads, genome, bam_file)
+#@time alns = PairedAlignments(bam_file)
+#for (i, (key, (a1, a2))) in enumerate(alns.dict)
+#    #println(BAM.alignlength(record) == BAM.rightposition(record) - BAM.position(record) + 1)
+#    println(RNASeqTools.isread1(a1) || RNASeqTools.isread2(a2))
+#    println(LongDNASeq(BAM.sequence(a1)) == pairedreads.dict[key][1])
+#    i == 5 && break
+#end
 #println(BAM.header(reader))
 #pairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_2.fasta.gz")
 #reads = Reads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz")
@@ -151,3 +128,102 @@ end
 #    println(read1)
 #    i == 5 && break
 #end
+
+function te()
+    a = collect(1:20)
+    b = Int[]
+    c = Int[]
+    for i in a
+        current_vec = isodd(i) ? b : c
+        push!(current_vec, i)
+    end
+    println(b, "\n", c)
+end
+#te()
+
+function test_mem_aligner()
+    analysis_folder = "/home/abc/Workspace/RILSeq/library_rilseq/"
+    genome = Genome(VC_GENOME_FASTA)
+    #write("/home/abc/Data/test/genome.fa", genome)
+    sequences = Dict{String, LongDNASeq}()
+    for (i, (chr, refseq)) in enumerate(genome)
+        merge!(sequences, Dict("$(i*100+j)"=>refseq[index1:index1+30]*refseq[index2:index2+40]*refseq[index3:index3+50] 
+            for (j,(index1,index2,index3)) in enumerate([(rand(1:length(refseq)-30), rand(1:length(refseq)-40), rand(1:length(refseq)-50)) for k in 0:99])))
+    end
+    reads1 = Reads(sequences, "test")
+    #println(length(reads1), "\n", reads1)
+    reads1_file = "/home/abc/Data/test/chimeric_reads.fasta.gz"
+    write(reads1_file, reads1)
+    reads1 = Reads(reads1_file)
+    #println(length(reads1), "\n", reads1)
+    bam_file1 = "/home/abc/Workspace/RILSeq/library_rilseq/test.bam"
+    align_mem(reads1, genome, bam_file1)
+
+    sequences2 = Dict{String, LongDNASeq}()
+    for (i, (chr, refseq)) in enumerate(genome)
+        merge!(sequences, Dict("$(i*100+j)"=>refseq[index1:index1+100]
+            for (j,index1) in enumerate([rand(1:length(refseq)-100) for k in 0:99])))
+    end
+    reads2 = Reads(sequences, "test")
+    bam_file2 = "/home/abc/Workspace/RILSeq/library_rilseq/test2.bam"
+    #align_mem(reads2, genome, bam_file2)
+    #bam_file = "/home/abc/Data/vibrio/rilseq/micha_rilseq/pe_bams/hfq_1_0.2.bam"
+    #reader = BAM.Reader(open(bam_file1))
+    #c1 = 0
+    #c2 = 0
+    #for (i, record) in enumerate(reader)
+    #    BAM.isprimary(record) && (println(BAM.cigar(record)))
+    #    if haskey(record, "XA") 
+    #        println("XA ",record["XA"]::String)
+    #        println("SA ",record["SA"]::String)
+    #    end
+    #end#
+    #println(c1, " ", c2)
+    @time alignments = Alignments(bam_file1)
+    #println(length(collect(keys(alignments))))
+end
+
+#reads = Reads("/home/abc/Data/vibrio/rilseq/library_rilseq/trimmed/VC1_1.fastq.gz"; stop_at=100)
+#test_mem_aligner()
+
+#RNASeqTools.seqpositions("72S51M")
+
+function run_reads_split2()
+    mypairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_2.fasta.gz")
+    query = dna"TTTCTTTGATGTCCC"
+    #rybbreads = Reads(s->occursin(query, s), mypairedreads; use_when_tied=:read1)
+    bam_file = "/home/abc/Workspace/RILSeq/library_rilseq/chimeras.bam"
+    bam_index = "/home/abc/Workspace/RILSeq/library_rilseq/chimeras.bam.bai"
+    genome = Genome(VC_GENOME_FASTA)
+    align_mem(mypairedreads, genome, bam_file)
+    @time alignments = PairedAlignments(bam_file)
+    features = open(collect, GFF3.Reader, VC_GENOME_GFF)
+    filter!(x -> GFF3.featuretype(x) == "Gene", features)
+    count1 = 0
+    count2 = 0
+    betweens = Dict{LongDNASeq, Int}()
+    for (key, (alignment1, alignment2)) in alignments.dict
+        if !isempty(alignment1)
+            read = mypairedreads.dict[key][1] 
+            if occursin(query, read)
+                count1+=1
+                slice = findfirst(query, read)
+                println(RNASeqTools.primaryalignmentpart(alignment1).readstart, " ", RNASeqTools.primaryalignmentpart(alignment1).readstop, " ", slice[1], "\n", read)
+                between = read[RNASeqTools.primaryalignmentpart(alignment1).readstop:slice[1]]
+                between in keys(betweens) ? betweens[between] += 1 : push!(betweens, between=>1)
+            end
+        end
+        if !isempty(alignment2) 
+            read = mypairedreads.dict[key][2] 
+            if occursin(query, read)
+                count2+=1
+                slice = findfirst(query, read)
+                between = read[RNASeqTools.primaryalignmentpart(alignment2).readstop:slice[1]]
+                between in keys(betweens) ? betweens[between] += 1 : push!(betweens, between=>1)
+            end
+        end
+    end
+    println(betweens)
+end
+
+run_reads_split2()

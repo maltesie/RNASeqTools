@@ -217,6 +217,36 @@ function translate_position_mg1655_to_bw25113(pos::Int)::Union{Nothing, Int}
     end
 end
 
+function positions(cigar::AbstractString)
+    # path starts prior to the first aligned position pair
+    seqstart = 1
+    seqstop = 0
+    pending_seqstop = 0
+    relrefstop = 0
+    inseq = false
+    n = 0
+    for c in cigar
+        if isdigit(c)
+            n = n * 10 + convert(Int, c - '0')
+        else
+            op = BioAlignments.Operation(c)
+            if BioAlignments.isinsertop(op)
+                inseq || (seqstart += n)
+                pending_seqstop += n
+            elseif BioAlignments.isdeleteop(op)
+                relrefstop += n
+            elseif BioAlignments.ismatchop(op)
+                inseq = true
+                seqstop += n + pending_seqstop
+                relrefstop +=n
+                pending_seqstop = 0
+            end
+            n = 0
+        end
+    end
+    return seqstart, seqstop, relrefstop
+end
+
 function skiplines(io::IO, k::Int)
     line_count = 0
     while line_count < k
@@ -286,6 +316,13 @@ function interval(record::BAM.Record)
     start, stop = BAM.position(record)*strandint(record), BAM.rightposition(record)*strandint(record)
     start > stop && ((start, stop) = (stop, start))
     return Interval(BAM.refname(record), start, stop)
+end
+
+function intervals(xa_string::String)
+    intervals = Vector{Interval}()
+    for alignment in split(aux1, ";")
+        isempty(alignment) && continue
+    end
 end
 
 function is_bitstring_fasta(file::String)
