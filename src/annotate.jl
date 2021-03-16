@@ -101,3 +101,26 @@ function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, 
         end
     end
 end
+
+function annotate!(alns::Alignments, features::Features)
+    for alignment in alns
+        for feature in eachoverlap(features, alignment.ref)
+            push!(alignment.metadata, feature.metadata)
+        end
+    end
+end
+
+function annotate!(alns::PairedAlignments, features::Features)
+    for (alignment1, alignment2) in alns
+        for part in alignment1
+            for feature in eachoverlap(features.list, part.ref)
+                push!(part.ref.metadata, feature.metadata)
+            end
+        end
+        for part in alignment2
+            for feature in eachoverlap(features.list, part.ref)
+                push!(part.ref.metadata, feature.metadata)
+            end
+        end
+    end
+end

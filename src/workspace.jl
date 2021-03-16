@@ -9,8 +9,6 @@ VC_GENOME_FASTA = "/home/abc/Data/vibrio/genome/NC_002505_6.fa"
 VC_GENOME_GFF = "/home/abc/Data/vibrio/annotation/NC_002505_6.gff3"
 
 
-
-
 #reads = Reads("/home/abc/Workspace/RILSeq/library_rilseq/synthetic_reads.fasta.gz")
 
 #genome = Genome(VC_GENOME_FASTA)
@@ -180,6 +178,9 @@ function test_mem_aligner()
     #end#
     #println(c1, " ", c2)
     @time alignments = Alignments(bam_file1)
+    for entry in alignments
+        println(entry)
+    end
     #println(length(collect(keys(alignments))))
 end
 
@@ -198,7 +199,12 @@ function run_reads_split2()
     align_mem(mypairedreads, genome, bam_file)
     @time alignments = PairedAlignments(bam_file)
     features = open(collect, GFF3.Reader, VC_GENOME_GFF)
+    println(typeof(features))
     filter!(x -> GFF3.featuretype(x) == "Gene", features)
+    for feature in features
+        println(GFF3.attributes(feature, "Name"))
+        break
+    end
     count1 = 0
     count2 = 0
     betweens = Dict{LongDNASeq, Int}()
@@ -208,7 +214,7 @@ function run_reads_split2()
             if occursin(query, read)
                 count1+=1
                 slice = findfirst(query, read)
-                println(RNASeqTools.primaryalignmentpart(alignment1).readstart, " ", RNASeqTools.primaryalignmentpart(alignment1).readstop, " ", slice[1], "\n", read)
+                #println(RNASeqTools.primaryalignmentpart(alignment1).readstart, " ", RNASeqTools.primaryalignmentpart(alignment1).readstop, " ", slice[1], "\n", read)
                 between = read[RNASeqTools.primaryalignmentpart(alignment1).readstop:slice[1]]
                 between in keys(betweens) ? betweens[between] += 1 : push!(betweens, between=>1)
             end
@@ -226,4 +232,14 @@ function run_reads_split2()
     println(betweens)
 end
 
-run_reads_split2()
+#run_reads_split2()
+
+function test_annotation()
+    features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6.gff3")
+    alignments = PairedAlignments("/home/abc/Workspace/RILSeq/library_rilseq/chimeras.bam")
+    annotate!(alignments, features)
+
+    print(length(alignments))
+end
+
+test_annotation()

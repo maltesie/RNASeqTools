@@ -224,6 +224,7 @@ function positions(cigar::AbstractString)
     pending_seqstop = 0
     relrefstop = 0
     inseq = false
+    #println(cigar)
     n = 0
     for c in cigar
         if isdigit(c)
@@ -244,6 +245,7 @@ function positions(cigar::AbstractString)
             n = 0
         end
     end
+    #println(seqstart, " ", seqstop)
     return seqstart, seqstop, relrefstop
 end
 

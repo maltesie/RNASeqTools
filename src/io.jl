@@ -4,21 +4,52 @@ function write_file(filename::String, content::String)
     end
 end
 
+struct Annotation
+    type::Union{String, Nothing}
+    name::String
+end
+
+function Annotation(name::String)
+    return Annotation(nothing, name)
+end
+
+Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
+Base.isnothing(annotation::Annotation) = isnothing(annotation.type) && isnothing(annotation.name)
+
+struct Features <: AnnotationContainer
+    list::IntervalCollection
+    description::Union{String, Nothing}
+end
+
+function Features(gff_file::String; description=nothing, type="CDS", name_key="Name")
+    features = open(collect, GFF3.Reader, gff_file)
+    intervals = Vector{Interval{Annotation}}()
+    for feature in features
+        GFF3.featuretype(feature) != type && continue
+        (start, stop) = feature.strand != '-' ? (GFF3.seqstart(feature), GFF3.seqend(feature)) : (-GFF3.seqend(feature), -GFF3.seqstart(feature))
+        seqname = GFF3.seqid(feature)
+        annotation = Annotation(GFF3.featuretype(feature), join(GFF3.attributes(feature, name_key), ","))
+        push!(intervals, Interval(seqname, start, stop, GenomicFeatures.Strand('.'), annotation))
+    end
+    return Features(IntervalCollection(intervals, true), description)
+end
+
+Base.iterate(features::Features) = iterate(features.list)
+Base.iterate(features::Features, state) = iterate(features.list, state)
+
 struct AlignmentPart
-    refstart::Int
-    refstop::Int
-    readstart::Int
-    readstop::Int
+    ref::Interval{Vector{Annotation}}
+    seq::Interval{Nothing}
     isprimary::Bool
-    chr::String
-    tag::Union{String, Nothing}
 end
 
 function AlignmentPart(xa_part::String)
     chr, pos, cigar, nm = split(xa_part, ",")
     refstart = parse(Int, pos)
     readstart, readstop, relrefstop = positions(cigar)
-    return AlignmentPart(refstart, refstart+relrefstop, readstart, readstop, false, chr, nothing)
+    ref_interval = Interval(chr, refstart, refstart+relrefstop, Strand('.'), Vector{Annotation}())
+    seq_interval = Interval(readstart, readstop)
+    return AlignmentPart(ref_interval, seq_interval, false)
 end
 
 struct ReadAlignment
@@ -29,19 +60,24 @@ end
 function ReadAlignment(record::BAM.Record)
     BAM.ismapped(record) || return ReadAlignment([], [])
     readstart, readstop, relrefstop = positions(BAM.cigar(record))
-    aln_part = AlignmentPart(BAM.leftposition(record), BAM.rightposition(record), readstart, readstop, BAM.isprimary(record), BAM.refname(record), nothing)
+    ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), Strand('.'), Vector{Annotation}())
+    seq_interval = Interval("", readstart, readstop)
+    aln_part = AlignmentPart(ref_interval, seq_interval, BAM.isprimary(record))
     alts = hasxatag(record) ? [AlignmentPart(xa) for xa in split(String(xatag(record)))[1:end-1]] : AlignmentPart[]
     return ReadAlignment([aln_part], alts)
 end 
 
-Base.iterate(readalignment::ReadAlignment) = Base.iterate(readalignment.parts)
-Base.iterate(readalignment::ReadAlignment, state::Int) = Base.iterate(readalignment.parts, state)
+Base.iterate(readalignment::ReadAlignment) = iterate(readalignment.parts)
+Base.iterate(readalignment::ReadAlignment, state::Int) = iterate(readalignment.parts, state)
 
 
 function Base.push!(readalignment::ReadAlignment, record::BAM.Record)
     BAM.ismapped(record) || return nothing
     readstart, readstop, relrefstop = positions(BAM.cigar(record))
-    push!(readalignment.parts, AlignmentPart(BAM.leftposition(record), BAM.rightposition(record), readstart, readstop, BAM.isprimary(record), BAM.refname(record), nothing))
+    ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), Strand('.'), Vector{Annotation}())
+    seq_interval = Interval("read", readstart, readstop)
+    aln_part = AlignmentPart(ref_interval, seq_interval, BAM.isprimary(record))
+    push!(readalignment.parts, aln_part)
     hasxatag(record) && push!(readalignment.alt, [AlignmentPart(xa) for xa in split(String(xatag(record)))[1:end-1]])
 end
 
@@ -51,24 +87,24 @@ function primaryalignmentpart(readalignment::ReadAlignment)
     end
 end
 
-Base.isempty(readalignment::ReadAlignment) = Base.isempty(readalignment.parts)
+Base.isempty(readalignment::ReadAlignment) = isempty(readalignment.parts)
 
 struct Alignments <: AlignmentContainer
     dict::Dict{String, ReadAlignment}
     name::Union{String,Nothing}
 end
 
-Base.length(alignments::Alignments) = Base.length(alignments.dict)
-Base.keys(alignments::Alignments) = Base.keys(alignments.dict)
-Base.values(alignments::Alignments) = Base.values(alignments.dict)
+Base.length(alignments::Alignments) = length(alignments.dict)
+Base.keys(alignments::Alignments) = keys(alignments.dict)
+Base.values(alignments::Alignments) = values(alignments.dict)
 function Base.iterate(alignments::Alignments) 
-    dictiteration = Base.iterate(alignments.dict)
+    dictiteration = iterate(alignments.dict)
     isnothing(dictiteration) && (return nothing)
     ((key, aln), state) = dictiteration
     return (aln, state)
 end
 function Base.iterate(alignments::Alignments, state::Int) 
-    dictiteration = Base.iterate(alignments.dict, state)
+    dictiteration = iterate(alignments.dict, state)
     isnothing(dictiteration) && (return nothing)
     ((key, aln), state) = dictiteration
     return (aln, state)
@@ -85,17 +121,17 @@ struct PairedAlignments <: AlignmentContainer
     name::Union{String, Nothing}
 end
 
-Base.length(alignments::PairedAlignments) = Base.length(alignments.dict)
-Base.keys(alignments::PairedAlignments) = Base.keys(alignments.dict)
-Base.values(alignments::PairedAlignments) = Base.values(alignments.dict)
+Base.length(alignments::PairedAlignments) = length(alignments.dict)
+Base.keys(alignments::PairedAlignments) = keys(alignments.dict)
+Base.values(alignments::PairedAlignments) = values(alignments.dict)
 function Base.iterate(alignments::PairedAlignments) 
-    dictiteration = Base.iterate(alignments.dict)
+    dictiteration = iterate(alignments.dict)
     isnothing(dictiteration) && (return nothing)
     ((key, (aln1, aln2)), state) = dictiteration
     return ((aln1, aln2), state)
 end
 function Base.iterate(alignments::PairedAlignments, state::Int) 
-    dictiteration = Base.iterate(alignments.dict, state)
+    dictiteration = iterate(alignments.dict, state)
     isnothing(dictiteration) && (return nothing)
     ((key, (aln1, aln2)), state) = dictiteration
     return ((aln1, aln2), state)
@@ -123,6 +159,7 @@ function read_bam(bam_file::String; stop_at=nothing)
     c = 0
     while !eof(reader)
         read!(reader, record)
+        BAM.ismapped(record) || continue
         id = BAM.tempname(record)
         current_read_dict = isread2(record) && ispaired(record) ? reads2 : reads1
         id in keys(current_read_dict) ? push!(current_read_dict[id], copy(record)) : push!(current_read_dict, id=>ReadAlignment(copy(record)))
@@ -206,15 +243,15 @@ struct PairedReads <: SequenceContainer
     name::Union{String, Nothing}
 end
 
-Base.length(reads::PairedReads) = Base.length(reads.dict)
-Base.keys(reads::PairedReads) = Base.keys(reads.dict)
-Base.values(reads::PairedReads) = Base.values(reads.dict)
+Base.length(reads::PairedReads) = length(reads.dict)
+Base.keys(reads::PairedReads) = keys(reads.dict)
+Base.values(reads::PairedReads) = values(reads.dict)
 function Base.iterate(reads::PairedReads) 
-    ((key, (read1, read2)), state) = Base.iterate(reads.dict)
+    ((key, (read1, read2)), state) = iterate(reads.dict)
     return ((read1, read2), state)
 end
 function Base.iterate(reads::PairedReads, state::Int) 
-    ((key, (read1, read2)), state) = Base.iterate(reads.dict, state)
+    ((key, (read1, read2)), state) = iterate(reads.dict, state)
     return ((read1, read2), state)
 end
 
@@ -242,15 +279,15 @@ struct Reads <: SequenceContainer
     name::Union{String, Nothing}
 end
 
-Base.length(reads::Reads) = Base.length(reads.dict)
-Base.keys(reads::Reads) = Base.keys(reads.dict)
-Base.values(reads::Reads) = Base.values(reads.dict)
+Base.length(reads::Reads) = length(reads.dict)
+Base.keys(reads::Reads) = keys(reads.dict)
+Base.values(reads::Reads) = values(reads.dict)
 function Base.iterate(reads::Reads) 
-    ((key, read), state) = Base.iterate(reads.dict)
+    ((key, read), state) = iterate(reads.dict)
     return (read, state)
 end
 function Base.iterate(reads::Reads, state::Int) 
-    ((key, (read1, read2)), state) = Base.iterate(reads.dict, state)
+    ((key, (read1, read2)), state) = iterate(reads.dict, state)
     return (read, state)
 end
 
