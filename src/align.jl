@@ -86,16 +86,17 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm("tmp.view")
 end
 
-function align_mem(read_files::SingleTypeFiles, genome::Genome; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
-    tmp_genome = joinpath(dirname(files.list[1]), "tmp_genome.fa")
+function align_mem(read_files::SingleTypeFiles, genome::Genome; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
+    tmp_genome = joinpath(dirname(read_files.list[1]), "tmp_genome.fa")
     write(tmp_genome, genome)
     for file in read_files
         out_file = file[1:end-length(read_files.type)] * ".bam"
+        (isfile(out_file) && !overwrite_existing) && continue
         align_mem(file, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
-        rm(tmp_genome * ending)
+        isfile(tmp_genome * ending) && rm(tmp_genome * ending)
     end
 end
 

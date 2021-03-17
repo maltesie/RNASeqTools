@@ -102,10 +102,14 @@ function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, 
     end
 end
 
+strand_filter(a::Interval, b::Interval) = strand(a) == strand(b)
+
 function annotate!(alns::Alignments, features::Features)
     for alignment in alns
-        for feature in eachoverlap(features, alignment.ref)
-            push!(alignment.metadata, feature.metadata)
+        for part in alignment
+            for feature in eachoverlap(features.list, part.ref; filter=strand_filter)
+                (feature.metadata in part.ref.metadata) || push!(part.ref.metadata, feature.metadata)
+            end
         end
     end
 end
@@ -113,13 +117,13 @@ end
 function annotate!(alns::PairedAlignments, features::Features)
     for (alignment1, alignment2) in alns
         for part in alignment1
-            for feature in eachoverlap(features.list, part.ref)
-                push!(part.ref.metadata, feature.metadata)
+            for feature in eachoverlap(features.list, part.ref; filter=strand_filter)
+                (feature.metadata in part.ref.metadata) || push!(part.ref.metadata, feature.metadata)
             end
         end
         for part in alignment2
-            for feature in eachoverlap(features.list, part.ref)
-                push!(part.ref.metadata, feature.metadata)
+            for feature in eachoverlap(features.list, part.ref; filter=strand_filter)
+                (feature.metadata in part.ref.metadata) || push!(part.ref.metadata, feature.metadata)
             end
         end
     end

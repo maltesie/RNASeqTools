@@ -26,16 +26,16 @@ function Features(gff_file::String; description=nothing, type="CDS", name_key="N
     intervals = Vector{Interval{Annotation}}()
     for feature in features
         GFF3.featuretype(feature) != type && continue
-        (start, stop) = feature.strand != '-' ? (GFF3.seqstart(feature), GFF3.seqend(feature)) : (-GFF3.seqend(feature), -GFF3.seqstart(feature))
         seqname = GFF3.seqid(feature)
-        annotation = Annotation(GFF3.featuretype(feature), join(GFF3.attributes(feature, name_key), ","))
-        push!(intervals, Interval(seqname, start, stop, GenomicFeatures.Strand('.'), annotation))
+        annotation = Annotation(type, join(GFF3.attributes(feature, name_key), ","))
+        push!(intervals, Interval(seqname, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annotation))
     end
     return Features(IntervalCollection(intervals, true), description)
 end
 
 Base.iterate(features::Features) = iterate(features.list)
 Base.iterate(features::Features, state) = iterate(features.list, state)
+Base.length(features::Features) = length(features.list)
 
 struct AlignmentPart
     ref::Interval{Vector{Annotation}}
@@ -46,8 +46,10 @@ end
 function AlignmentPart(xa_part::String)
     chr, pos, cigar, nm = split(xa_part, ",")
     refstart = parse(Int, pos)
+    strand = refstart > 0 ? Strand('+') : Strand('-')
+    refstart *= sign(refstart)
     readstart, readstop, relrefstop = positions(cigar)
-    ref_interval = Interval(chr, refstart, refstart+relrefstop, Strand('.'), Vector{Annotation}())
+    ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, Vector{Annotation}())
     seq_interval = Interval(readstart, readstop)
     return AlignmentPart(ref_interval, seq_interval, false)
 end
@@ -60,8 +62,9 @@ end
 function ReadAlignment(record::BAM.Record)
     BAM.ismapped(record) || return ReadAlignment([], [])
     readstart, readstop, relrefstop = positions(BAM.cigar(record))
-    ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), Strand('.'), Vector{Annotation}())
-    seq_interval = Interval("", readstart, readstop)
+    strand = BAM.ispositivestrand(record) ? Strand('+') : Strand('-')
+    ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, Vector{Annotation}())
+    seq_interval = Interval("read", readstart, readstop)
     aln_part = AlignmentPart(ref_interval, seq_interval, BAM.isprimary(record))
     alts = hasxatag(record) ? [AlignmentPart(xa) for xa in split(String(xatag(record)))[1:end-1]] : AlignmentPart[]
     return ReadAlignment([aln_part], alts)
@@ -74,7 +77,8 @@ Base.iterate(readalignment::ReadAlignment, state::Int) = iterate(readalignment.p
 function Base.push!(readalignment::ReadAlignment, record::BAM.Record)
     BAM.ismapped(record) || return nothing
     readstart, readstop, relrefstop = positions(BAM.cigar(record))
-    ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), Strand('.'), Vector{Annotation}())
+    strand = BAM.ispositivestrand(record) ? Strand('+') : Strand('-')
+    ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, Vector{Annotation}())
     seq_interval = Interval("read", readstart, readstop)
     aln_part = AlignmentPart(ref_interval, seq_interval, BAM.isprimary(record))
     push!(readalignment.parts, aln_part)
@@ -162,7 +166,7 @@ function read_bam(bam_file::String; stop_at=nothing)
         BAM.ismapped(record) || continue
         id = BAM.tempname(record)
         current_read_dict = isread2(record) && ispaired(record) ? reads2 : reads1
-        id in keys(current_read_dict) ? push!(current_read_dict[id], copy(record)) : push!(current_read_dict, id=>ReadAlignment(copy(record)))
+        id in keys(current_read_dict) ? push!(current_read_dict[id], record) : push!(current_read_dict, id=>ReadAlignment(record))
         c += 1
         isnothing(stop_at) || ((c >= stop_at) && break) 
     end
@@ -189,6 +193,12 @@ function Genome(genome_fasta::String)
     Genome(LongDNASeq(total_seq), chrs, name)
 end
 
+Base.length(genome::Genome) = length(genome.seq)
+
+function chomosomecount(genome::Genome)
+    return length(genome.chrs)
+end
+
 function Base.iterate(genome::Genome)
     (chr, slice) = first(genome.chrs)
     ((chr, genome.seq[slice]), 1)
@@ -200,6 +210,10 @@ function Base.iterate(genome::Genome, state::Int)
     for (i, (chr, slice)) in enumerate(genome.chrs)
         (i == state) && (return ((chr, genome.seq[slice]), state))
     end
+end
+
+function Base.:*(genome1::Genome, genome2::Genome)
+    return Genome(genome1.seq*genome2.seq, merge(genome1.chrs, Dict(key=>(range .+ length(genome1)) for (key, range) in genome2.chrs)), genome1.name * "+" * genome2.name)
 end
 
 function Base.write(file::String, genome::Genome)
@@ -348,7 +362,7 @@ struct SingleTypeFiles <: FileCollection
 end
 
 function SingleTypeFiles(files::Vector{String})
-    endings = [fname[findlast(fname, "."):end] for fname in files]
+    endings = [fname[findlast('.', fname):end] for fname in files]
     @assert length(unique(endings)) == 1
     SingleTypeFiles(files, endings[1])
 end
@@ -360,6 +374,8 @@ end
 function SingleTypeFiles(folder::String, type::String, prefix::String)
     SingleTypeFiles([joinpath(folder, fname) for fname in readdir(folder) if (endswith(fname, type) && startswith(fname, prefix))], type)
 end
+
+Base.length(files::SingleTypeFiles) = length(files.list)
 
 function Base.iterate(files::SingleTypeFiles)
     isempty(files.list) && (return nothing)
@@ -401,6 +417,8 @@ function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffi
     @assert Set(names1) == Set(names2)
     PairedSingleTypeFiles([(joinpath(folder, name * suffix1 * type), joinpath(folder, name * suffix2 * type)) for name in names1], type, suffix1, suffix2)
 end
+
+Base.length(files::PairedSingleTypeFiles) = length(files.list)
 
 function Base.iterate(files::PairedSingleTypeFiles)
     isempty(files.list) && (return nothing)

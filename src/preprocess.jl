@@ -135,7 +135,7 @@ end
 function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}}; 
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, umi_loc=:read1, min_length=nothing, 
     cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=nothing, filter_complexity=nothing,
-    average_window_quality=nothing)
+    average_window_quality=nothing, overwrite_existing=false)
 
     for (in_file1, in_file2) in input_files
         @assert endswith(in_file1, ".fasta") || endswith(in_file1, ".fasta.gz") || endswith(in_file1, ".fastq") || endswith(in_file1, ".fastq.gz")
@@ -155,10 +155,11 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
     !isnothing(adapter) && push!(params, "--adapter_sequence=$adapter")
 
     for (in_file1, in_file2) in input_files
-        startswith(in_file1, prefix) && continue
+        startswith(basename(in_file1), prefix) && continue
         html_file = joinpath(dirname(in_file1), prefix * (endswith(in_file1, ".gz") ? basename(in_file1)[1:end-9] : basename(in_file1)[1:end-6]) * ".html")
         json_file = joinpath(dirname(in_file1), prefix * (endswith(in_file1, ".gz") ? basename(in_file1)[1:end-9] : basename(in_file1)[1:end-6]) * ".json")
         out_file1 = joinpath(dirname(in_file1), prefix * basename(in_file1))
+        (isfile(out_file1) && !overwrite_existing) && continue
         out_file2 = !isnothing(in_file2) ? joinpath(dirname(in_file2), prefix * basename(in_file2)) : nothing
         file_params = ["--in1=$in_file1", "--out1=$out_file1", "--html=$(html_file)", "--json=$(json_file)"]
         !isnothing(in_file2) && append!(file_params, ["--in2=$in_file2", "--out2=$out_file2"])
@@ -172,9 +173,9 @@ function trim_fastp(input_files::SingleTypeFiles;
     cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=30,
     average_window_quality=25)
 
-    trim_fastp([(file, nothing) for file in input_files]; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=:read1, min_length=min_length,
+    files = Vector{Tuple{String, Union{String, Nothing}}}([(file, nothing) for file in input_files])
+    trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=:read1, min_length=min_length,
         cut_front=cut_front, cut_tail=cut_tail, trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, average_window_quality=average_window_quality)
-
 end
 
 function trim_fastp(input_files::PairedSingleTypeFiles; 
