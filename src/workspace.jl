@@ -242,4 +242,21 @@ function test_annotation()
     print(length(alignments))
 end
 
-test_annotation()
+#test_annotation()
+
+function test_abc()
+    bam = "/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam"
+    phage_gff = "/home/abc/Data/vp882/annotation/GCF_000868005.1_ViralProj18851_genomic.gff"
+    genome_gff = "/home/abc/Data/vibrio/annotation/NC_002505_6.gff3"
+    vc_features = Features(genome_gff; type="Gene")
+    phage_features = Features(phage_gff; type="gene")
+    #@time alns = Alignments(bam, stop_at=5000000)
+    #@time annotate!(alns, phage_features)
+    #@time annotate!(alns, vc_features)
+    for feature in eachoverlap()
+    for (i,al) in enumerate(alns)
+        i % 200000 == 0 && println(al)
+    end
+end
+
+#test_abc()
