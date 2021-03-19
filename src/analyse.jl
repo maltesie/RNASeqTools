@@ -57,3 +57,65 @@ function nucleotide_count(reads::PairedReads; normalize=true)
     end
     return count1, count2
 end
+
+function diff(coverage::Vector{Float64})
+    d = zeros(Float64,length(coverage))
+    d[1] = coverage[1]
+    d[2:end] = coverage[2:end] - coverage[1:end-1]
+    return d
+end
+
+function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{String}, tex_rs::Vector{String}; 
+    min_step=10, min_ratio=1.3)
+    chrs = get_chr_from_wig(notex_fs[1])
+    result::Dict{String, DataFrame} = Dict(chr=>DataFrame(pos=Int[], val=Float64[]) for chr in chrs)
+    for i in 1:length(notex_fs) # für 0.1, dann 2.0
+        forward = read_wig(notex_fs[i]) # gibt vector mit replikaten zurück
+        reverse = read_wig(notex_rs[i])
+        forward_tex = read_wig(tex_fs[i])
+        reverse_tex = read_wig(tex_rs[i])
+        #write(open("/home/malte/Workspace/data/vibrio/reversetex_$(i).txt", "w"), join(["$j $d" for (j,d) in enumerate(reverse_tex[1]["NC_002505"])], '\n'))
+        for chr in chrs
+            (tex_f, notex_f) = join_replicates(forward, forward_tex, chr)
+            (tex_r, notex_r) = join_replicates(reverse, reverse_tex, chr)
+            d_forward = diff(tex_f)
+            d_reverse = diff(tex_r)
+            #write(open("/home/malte/Workspace/data/vibrio/dreverse_$(i)_$(chr).txt", "w"), join(["$j $d" for (j,d) in enumerate(d_reverse)], '\n'))
+            #write(open("/home/malte/Workspace/data/vibrio/dreverse_$(i)_$(chr).txt", "w"), join(["$j $d" for (j,d) in enumerate(d_reverse)], '\n'))
+            check_forward = circshift(((tex_f ./ notex_f) .>= min_ratio), 1) .& (d_forward .>= min_step)
+            check_reverse = circshift(((tex_r ./ notex_r) .>= min_ratio), 1) .& (d_reverse .>= min_step)
+            append!(result[chr], DataFrame(pos=findall(!iszero, check_forward), val=abs.(d_forward[check_forward])))
+            append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=abs.(d_reverse[check_reverse])))
+            #CSV.write("/home/malte/Workspace/data/vibrio/test_$(i)_$(chr).csv", result[chr])
+        end
+    end
+    for (chr, ts) in result
+        sort!(ts, :pos)
+    end
+    #CSV.write("/home/malte/Workspace/data/vibrio/test.csv", result["NC_002505"])
+    return result
+end
+
+function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_step=10)
+    chrs = get_chr_from_wig(coverage_fs[1])
+    result::Dict{String, DataFrame} = Dict(chr=>DataFrame(pos=Int[], val=Float64[]) for chr in chrs)
+    for i in 1:length(coverage_fs)
+        forward = read_wig(coverage_fs[i])
+        reverse = read_wig(coverage_rs[i])
+        for chr in chrs
+            f = join_replicates(forward, chr)
+            r = join_replicates(reverse, chr)
+            d_forward = diff(f)
+            d_reverse = diff(r)
+            check_forward = d_forward .<= -min_step
+            check_reverse = d_reverse .<= -min_step
+            append!(result[chr], DataFrame(pos=findall(!iszero, check_forward), val=abs.(d_forward[check_forward])))
+            append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=abs.(d_reverse[check_reverse])))
+        end
+    end
+    for (chr, ts) in result
+        sort!(ts, :pos)
+    end
+    #CSV.write("/home/malte/Workspace/data/vibrio/test.csv", result["NC_002505"])
+    return result
+end

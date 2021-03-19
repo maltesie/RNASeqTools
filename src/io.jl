@@ -94,7 +94,7 @@ end
 Base.isempty(readalignment::ReadAlignment) = isempty(readalignment.parts)
 
 struct Alignments <: AlignmentContainer
-    dict::Dict{String, ReadAlignment}
+    dict::Dict{UInt, ReadAlignment}
     name::Union{String,Nothing}
 end
 
@@ -121,7 +121,7 @@ function Alignments(bam_file::String; stop_at=nothing, name=nothing)
 end
 
 struct PairedAlignments <: AlignmentContainer
-    dict::Dict{String, Tuple{ReadAlignment, ReadAlignment}}
+    dict::Dict{UInt, Tuple{ReadAlignment, ReadAlignment}}
     name::Union{String, Nothing}
 end
 
@@ -158,13 +158,16 @@ end
 function read_bam(bam_file::String; stop_at=nothing)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
-    reads1 = Dict{String, ReadAlignment}()
-    reads2 = Dict{String, ReadAlignment}()
+    reads1 = Dict{UInt, ReadAlignment}()
+    reads2 = Dict{UInt, ReadAlignment}()
+    is_bitstring = is_bitstring_bam(bam_file)
     c = 0
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
-        id = BAM.tempname(record)
+        id = hash(record.data[1:BAM.seqname_length(record)])
+        #println(record.data)
+        #println(record.data[1:BAM.templength(record)])
         current_read_dict = isread2(record) && ispaired(record) ? reads2 : reads1
         id in keys(current_read_dict) ? push!(current_read_dict[id], record) : push!(current_read_dict, id=>ReadAlignment(record))
         c += 1
@@ -253,7 +256,7 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
 end
 
 struct PairedReads <: SequenceContainer
-    dict::Dict{String, LongDNASeqPair}
+    dict::Dict{UInt, LongDNASeqPair}
     name::Union{String, Nothing}
 end
 
@@ -281,15 +284,16 @@ function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedReads
     f1 = endswith(fasta_file1, ".gz") ? GzipCompressorStream(open(fasta_file1, "w")) : open(fasta_file1, "w")
     f2 = endswith(fasta_file2, ".gz") ? GzipCompressorStream(open(fasta_file2, "w")) : open(fasta_file2, "w")
     for (key, (read1, read2)) in reads.dict
-        write(f1, ">$key\n$(String(read1))\n")
-        write(f2, ">$key\n$(String(read2))\n")
+        str_key = bitstring(key)
+        write(f1, ">$str_key\n$(String(read1))\n")
+        write(f2, ">$str_key\n$(String(read2))\n")
     end
     close(f1)
     close(f2)
 end
 
 struct Reads <: SequenceContainer
-    dict::Dict{String, LongDNASeq}
+    dict::Dict{UInt, LongDNASeq}
     name::Union{String, Nothing}
 end
 
@@ -308,7 +312,7 @@ end
 function Base.write(fasta_file::String, reads::Reads)
     f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")
     for (key, read) in reads.dict
-        write(f, ">$key\n$(String(read))\n")
+        write(f, ">$(bitstring(key))\n$(String(read))\n")
     end
     close(f)
 end
@@ -338,7 +342,7 @@ end
 
 function read_reads(file::String; nb_reads=nothing)
     @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
-    reads::Dict{String, LongDNASeq} = Dict()
+    reads::Dict{UInt, LongDNASeq} = Dict()
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped = endswith(file, ".gz")
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
@@ -348,7 +352,7 @@ function read_reads(file::String; nb_reads=nothing)
     read_counter = 0
     while !eof(reader)
         read!(reader, record)
-        push!(reads, identifier(record) => LongDNASeq(sequencer(record)))
+        push!(reads, hash(record.data[record.identifier]) => LongDNASeq(record.data[record.sequence]))
         read_counter += 1
         isnothing(nb_reads) || (read_counter >= nb_reads && break)
     end

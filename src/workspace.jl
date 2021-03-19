@@ -234,16 +234,6 @@ end
 
 #run_reads_split2()
 
-function test_annotation()
-    features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6.gff3")
-    alignments = PairedAlignments("/home/abc/Workspace/RILSeq/library_rilseq/chimeras.bam")
-    annotate!(alignments, features)
-
-    print(length(alignments))
-end
-
-#test_annotation()
-
 function test_abc()
     bam = "/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam"
     phage_gff = "/home/abc/Data/vp882/annotation/GCF_000868005.1_ViralProj18851_genomic.gff"
@@ -253,10 +243,53 @@ function test_abc()
     #@time alns = Alignments(bam, stop_at=5000000)
     #@time annotate!(alns, phage_features)
     #@time annotate!(alns, vc_features)
-    for feature in eachoverlap()
+    
     for (i,al) in enumerate(alns)
         i % 200000 == 0 && println(al)
     end
 end
 
 #test_abc()
+
+strand_filter(a::Interval, b::Interval) = strand(a) == strand(b)
+
+function annotate2!(alns::Alignments, features::Features)
+    for alignment in alns
+        for part in alignment
+            for feature in features
+                overlapping()
+                (feature.metadata in part.ref.metadata) || push!(part.ref.metadata, feature.metadata)
+            end
+        end
+    end
+end
+
+using GenomicFeatures, BigWig
+
+function test_annotation()
+    #features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6.gff3")
+    #@time reads = Reads("/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.fastq"; stop_at=1000000)
+    #@time alignments = Alignments("/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam"; stop_at=1000000)
+    #@time annotate2!(alignments, features)
+    #print(length(alignments))
+    #features = open(collect, GFF3.Reader, "/home/abc/Data/vibrio/annotation/NC_002505_6.gff3")
+
+    # Keep mRNA features.
+    #filter!(x -> GFF3.featuretype(x) == "Gene", features)
+
+    # Open a BAM file and iterate over records overlapping mRNA transcripts.
+    #reader = open(BAM.Reader, "/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam", index = "/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam.bai")
+    #@time for feature in features
+    #    for record in eachoverlap(reader, feature)
+    #        # `record` overlaps `feature`.
+    #        # ...
+    #    end
+    #end
+    #close(reader)
+    ints = IntervalCollection([Interval("test", 1, 10, '-'), Interval("test", 5, 15, '-'), Interval("test", 15, 20, '-')])
+    cov = coverage(ints)
+    println(cov)
+    writer = BigWig.Writer("/home/abc/Workspace/test.bigwig")
+end
+
+test_annotation()
