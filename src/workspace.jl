@@ -189,6 +189,57 @@ end
 
 #RNASeqTools.seqpositions("72S51M")
 
+function test_abc()
+    bam = "/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam"
+    phage_gff = "/home/abc/Data/vp882/annotation/GCF_000868005.1_ViralProj18851_genomic.gff"
+    genome_gff = "/home/abc/Data/vibrio/annotation/NC_002505_6.gff3"
+    vc_features = Features(genome_gff; type="Gene")
+    phage_features = Features(phage_gff; type="gene")
+    #@time alns = Alignments(bam, stop_at=5000000)
+    #@time annotate!(alns, phage_features)
+    #@time annotate!(alns, vc_features)
+    
+    for (i,al) in enumerate(alns)
+        i % 200000 == 0 && println(al)
+    end
+end
+
+#test_abc()
+
+function test_annotation()
+    features1 = Features("/home/abc/Data/vibrio/annotation/NC_002505_6.gff3")
+    features2 = Features("/home/abc/Data/vp882/annotation/GCF_000868005.1_ViralProj18851_genomic.gff")
+    #@time reads = Reads("/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.fastq"; stop_at=1000000)
+    @time alignments = Alignments("/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam"; stop_at=5000000)
+    @time annotate!(alignments, features1)
+    @time annotate!(alignments, features2)
+    #print(length(alignments))
+    #features = open(collect, GFF3.Reader, "/home/abc/Data/vibrio/annotation/NC_002505_6.gff3")
+    for (i,alignment) in enumerate(alignments)
+        println(alignment)
+        i == 2 && break
+    end
+
+    # Keep mRNA features.
+    #filter!(x -> GFF3.featuretype(x) == "Gene", features)
+
+    # Open a BAM file and iterate over records overlapping mRNA transcripts.
+    #reader = open(BAM.Reader, "/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam", index = "/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam.bai")
+    #@time for feature in features
+    #    for record in eachoverlap(reader, feature)
+    #        # `record` overlaps `feature`.
+    #        # ...
+    #    end
+    #end
+    #close(reader)
+    #ints = IntervalCollection([Interval("test", 1, 10, '-'), Interval("test", 5, 15, '-'), Interval("test", 15, 20, '-')])
+    #cov = coverage(ints)
+    #println(cov)
+    #writer = BigWig.Writer("/home/abc/Workspace/test.bigwig")
+end
+
+#test_annotation()
+
 function run_reads_split2()
     mypairedreads = PairedReads("/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_1.fasta.gz", "/home/abc/Data/vibrio/rilseq/library_rilseq/reads/rybb_VC3_2.fasta.gz")
     query = dna"TTTCTTTGATGTCCC"
@@ -234,62 +285,50 @@ end
 
 #run_reads_split2()
 
-function test_abc()
-    bam = "/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam"
-    phage_gff = "/home/abc/Data/vp882/annotation/GCF_000868005.1_ViralProj18851_genomic.gff"
-    genome_gff = "/home/abc/Data/vibrio/annotation/NC_002505_6.gff3"
-    vc_features = Features(genome_gff; type="Gene")
-    phage_features = Features(phage_gff; type="gene")
-    #@time alns = Alignments(bam, stop_at=5000000)
-    #@time annotate!(alns, phage_features)
-    #@time annotate!(alns, vc_features)
-    
-    for (i,al) in enumerate(alns)
-        i % 200000 == 0 && println(al)
+function invert_reads1()
+    trimmed_files = PairedSingleTypeFiles("/home/abc/Data/vibrio/library_rilseq/", ".fastq.gz"; prefix="trimmed")
+    for (file1, file2) in trimmed_files
+        reads = Reads(file2)
+        #rev_comp!(reads)
+        out = file2[1:end-4] * "a.gz"
+        write(out, reads)
     end
 end
 
-#test_abc()
+#invert_reads1()
 
-strand_filter(a::Interval, b::Interval) = strand(a) == strand(b)
+function align_library_rilseq()
+    trimmed_files = PairedSingleTypeFiles("/home/abc/Data/vibrio/library_rilseq/", ".fasta.gz"; prefix="trimmed")
+    genome = Genome("/home/abc/Data/vibrio/genome/NC_002505_6.fa")
+    rybb_chr = Genome(LongDNASeq("TTTCTTTGATGTCCCCATTTTGTGGAGCCCATCAACCCCGCCATTTCGGTTCAAGGTTGATGGGTTTTTT"), "rybb")
+    combined_genome = genome * rybb_chr
+    align_mem(trimmed_files, combined_genome)
+end
 
-function annotate2!(alns::Alignments, features::Features)
-    for alignment in alns
-        for part in alignment
-            for feature in features
-                overlapping()
-                (feature.metadata in part.ref.metadata) || push!(part.ref.metadata, feature.metadata)
-            end
+#align_library_rilseq()
+
+function library_rilseq()
+    features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6.gff3"; type="Gene")
+    push!(features, Interval("rybb", 1, 70, Strand('+'), RNASeqTools.Annotation("rybb1", "rybb2"))) 
+    push!(features, Interval("rybb", 1, 70, Strand('-'), RNASeqTools.Annotation("rybb1", "rybb2")))
+    @time alignments = PairedAlignments("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam"; stop_at=100000)
+    @time annotate!(alignments, features)    
+    for (i,(alignment1, alignment2)) in enumerate(alignments)
+        if RNASeqTools.hasannotation(alignment1, "rybb2") || RNASeqTools.hasannotation(alignment2, "rybb2")
+            show(alignment1)
+            show(alignment2)
+            println("")
         end
     end
 end
 
-using GenomicFeatures, BigWig
+#align_library_rilseq()
+library_rilseq()
 
-function test_annotation()
-    #features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6.gff3")
-    #@time reads = Reads("/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.fastq"; stop_at=1000000)
-    #@time alignments = Alignments("/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam"; stop_at=1000000)
-    #@time annotate2!(alignments, features)
-    #print(length(alignments))
-    #features = open(collect, GFF3.Reader, "/home/abc/Data/vibrio/annotation/NC_002505_6.gff3")
-
-    # Keep mRNA features.
-    #filter!(x -> GFF3.featuretype(x) == "Gene", features)
-
-    # Open a BAM file and iterate over records overlapping mRNA transcripts.
-    #reader = open(BAM.Reader, "/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam", index = "/home/abc/Data/vibrio/phage_inside/trimmed_MS-10_S37_R1_001.bam.bai")
-    #@time for feature in features
-    #    for record in eachoverlap(reader, feature)
-    #        # `record` overlaps `feature`.
-    #        # ...
-    #    end
-    #end
-    #close(reader)
-    ints = IntervalCollection([Interval("test", 1, 10, '-'), Interval("test", 5, 15, '-'), Interval("test", 15, 20, '-')])
-    cov = coverage(ints)
-    println(cov)
-    writer = BigWig.Writer("/home/abc/Workspace/test.bigwig")
+function test_reads()
+    reads = Reads("/home/abc/Data/vibrio/library_rilseq/rybb_VC3_1.fasta.gz")
+    @time for read in reads
+    end
 end
 
-test_annotation()
+#test_reads()

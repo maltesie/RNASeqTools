@@ -22,8 +22,8 @@ strand_filter(a::Interval, b::Interval) = strand(a) == strand(b)
 function annotate!(alns::Alignments, features::Features)
     for alignment in alns
         for part in alignment
-            for feature in eachoverlap(features.list, part.ref; filter=strand_filter)
-                (feature.metadata in part.ref.metadata) || push!(part.ref.metadata, feature.metadata)
+            for feature_interval in eachoverlap(features.list, part.ref, filter=strand_filter)
+                push!(part.ref.metadata, feature_interval.metadata)
             end
         end
     end
@@ -33,12 +33,12 @@ function annotate!(alns::PairedAlignments, features::Features)
     for (alignment1, alignment2) in alns
         for part in alignment1
             for feature in eachoverlap(features.list, part.ref; filter=strand_filter)
-                (feature.metadata in part.ref.metadata) || push!(part.ref.metadata, feature.metadata)
+                push!(part.ref.metadata, feature.metadata)
             end
         end
         for part in alignment2
             for feature in eachoverlap(features.list, part.ref; filter=strand_filter)
-                (feature.metadata in part.ref.metadata) || push!(part.ref.metadata, feature.metadata)
+                push!(part.ref.metadata, feature.metadata)
             end
         end
     end

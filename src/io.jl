@@ -5,12 +5,8 @@ function write_file(filename::String, content::String)
 end
 
 struct Annotation
-    type::Union{String, Nothing}
+    type::String
     name::String
-end
-
-function Annotation(name::String)
-    return Annotation(nothing, name)
 end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
@@ -31,6 +27,13 @@ function Features(gff_file::String; description=nothing, type="CDS", name_key="N
         push!(intervals, Interval(seqname, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annotation))
     end
     return Features(IntervalCollection(intervals, true), description)
+end
+
+Base.push!(features::Features, interval::Interval) = push!(features.list, interval)
+function append!(features1::Features, features2::Features) 
+    for feature in features2
+        push!(features1, feature)
+    end
 end
 
 Base.iterate(features::Features) = iterate(features.list)
@@ -59,7 +62,7 @@ struct ReadAlignment
     alt::Vector{Vector{AlignmentPart}}
 end
 
-function ReadAlignment(record::BAM.Record)
+function ReadAlignment(record::BAM.Record; invertstrand=false)
     BAM.ismapped(record) || return ReadAlignment([], [])
     readstart, readstop, relrefstop = positions(BAM.cigar(record))
     strand = BAM.ispositivestrand(record) ? Strand('+') : Strand('-')
@@ -72,7 +75,14 @@ end
 
 Base.iterate(readalignment::ReadAlignment) = iterate(readalignment.parts)
 Base.iterate(readalignment::ReadAlignment, state::Int) = iterate(readalignment.parts, state)
-
+function Base.show(readaln::ReadAlignment)
+    println("Alignment with $(length(readaln.parts)) part(s):")
+    for part in readaln.parts
+        print("   $(part.ref.strand): [$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) - ($(part.seq.first), $(part.seq.last)) on read - ")
+        annotation_string = join([anno.type*":"*anno.name for anno in part.ref.metadata], ";")
+        isempty(annotation_string) ? println("not annotated.") : println("annotations: $annotation_string")
+    end
+end
 
 function Base.push!(readalignment::ReadAlignment, record::BAM.Record)
     BAM.ismapped(record) || return nothing
@@ -89,6 +99,15 @@ function primaryalignmentpart(readalignment::ReadAlignment)
     for aln_part in readalignment
         aln_part.isprimary && (return aln_part)
     end
+end
+
+function hasannotation(readaln::ReadAlignment, annotation_name::String)
+    for part in readaln
+        for annot in part.ref.metadata
+            annot.name == annotation_name && (return true)
+        end
+    end
+    return false
 end
 
 Base.isempty(readalignment::ReadAlignment) = isempty(readalignment.parts)
@@ -157,7 +176,7 @@ end
 
 function read_bam(bam_file::String; stop_at=nothing)
     record = BAM.Record()
-    reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
+    reader = BAM.Reader(open(bam_file))
     reads1 = Dict{UInt, ReadAlignment}()
     reads2 = Dict{UInt, ReadAlignment}()
     is_bitstring = is_bitstring_bam(bam_file)
@@ -165,7 +184,7 @@ function read_bam(bam_file::String; stop_at=nothing)
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
-        id = hash(record.data[1:BAM.seqname_length(record)])
+        id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(record.data[1:BAM.seqname_length(record)])
         #println(record.data)
         #println(record.data[1:BAM.templength(record)])
         current_read_dict = isread2(record) && ispaired(record) ? reads2 : reads1
@@ -181,6 +200,22 @@ struct Genome <: SequenceContainer
     seq::LongDNASeq
     chrs::Dict{String, UnitRange{Int}}
     name::Union{String, Nothing}
+end
+
+function Genome(sequences::Vector{LongDNASeq}, names::Vector{String}; description=nothing)
+    seq = LongDNASeq()
+    chrs = Dict{String, UnitRange{Int}}()
+    sequence_position = 1
+    for (sequence, name) in zip(sequences, names)
+        seq *= sequence
+        push!(chrs, name=>sequence_position:sequence_position+length(sequence)-1)
+        sequence_position += length(sequence)
+    end
+    return Genome(seq, chrs, description)
+end
+
+function Genome(sequence::LongDNASeq, name::String)
+    return Genome([sequence], [name])
 end
 
 function Genome(genome_fasta::String)
@@ -216,7 +251,8 @@ function Base.iterate(genome::Genome, state::Int)
 end
 
 function Base.:*(genome1::Genome, genome2::Genome)
-    return Genome(genome1.seq*genome2.seq, merge(genome1.chrs, Dict(key=>(range .+ length(genome1)) for (key, range) in genome2.chrs)), genome1.name * "+" * genome2.name)
+    new_description = isnothing(genome1.name) ? genome2 : (isnothing(genome2.name) ? genome1.name : genome1.name * "+" * genome2.name)
+    return Genome(genome1.seq*genome2.seq, merge(genome1.chrs, Dict(key=>(range .+ length(genome1)) for (key, range) in genome2.chrs)), new_description)
 end
 
 function Base.write(file::String, genome::Genome)
@@ -264,11 +300,13 @@ Base.length(reads::PairedReads) = length(reads.dict)
 Base.keys(reads::PairedReads) = keys(reads.dict)
 Base.values(reads::PairedReads) = values(reads.dict)
 function Base.iterate(reads::PairedReads) 
-    ((key, (read1, read2)), state) = iterate(reads.dict)
+    it = iterate(reads.dict)
+    isnothing(it) ? (return nothing) : ((key, (read1, read2)), state) = it
     return ((read1, read2), state)
 end
 function Base.iterate(reads::PairedReads, state::Int) 
-    ((key, (read1, read2)), state) = iterate(reads.dict, state)
+    it = iterate(reads.dict, state)
+    isnothing(it) ? (return nothing) : ((key, (read1, read2)), state) = it
     return ((read1, read2), state)
 end
 
@@ -301,11 +339,13 @@ Base.length(reads::Reads) = length(reads.dict)
 Base.keys(reads::Reads) = keys(reads.dict)
 Base.values(reads::Reads) = values(reads.dict)
 function Base.iterate(reads::Reads) 
-    ((key, read), state) = iterate(reads.dict)
+    it = iterate(reads.dict)
+    isnothing(it) ? (return nothing) : ((key, read), state) = it
     return (read, state)
 end
 function Base.iterate(reads::Reads, state::Int) 
-    ((key, (read1, read2)), state) = iterate(reads.dict, state)
+    it = iterate(reads.dict, state)
+    isnothing(it) ? (return nothing) : ((key, read), state) = it
     return (read, state)
 end
 
@@ -345,6 +385,7 @@ function read_reads(file::String; nb_reads=nothing)
     reads::Dict{UInt, LongDNASeq} = Dict()
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped = endswith(file, ".gz")
+    is_bitstring = is_bitstring_fasta(file)
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
     reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
     record = is_fastq ? FASTQ.Record() : FASTA.Record()
@@ -352,7 +393,8 @@ function read_reads(file::String; nb_reads=nothing)
     read_counter = 0
     while !eof(reader)
         read!(reader, record)
-        push!(reads, hash(record.data[record.identifier]) => LongDNASeq(record.data[record.sequence]))
+        id = is_bitstring ? parse(UInt, identifier(record); base=2) : hash(record.data[record.identifier])
+        push!(reads, id => LongDNASeq(record.data[record.sequence]))
         read_counter += 1
         isnothing(nb_reads) || (read_counter >= nb_reads && break)
     end
