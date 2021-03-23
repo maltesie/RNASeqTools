@@ -11,22 +11,28 @@ end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
 Base.isnothing(annotation::Annotation) = isnothing(annotation.type) && isnothing(annotation.name)
+name(interval::Interval{Annotation}) = interval.metadata.name
+type(interval::Interval{Annotation}) = interval.metadata.type
 
 struct Features <: AnnotationContainer
     list::IntervalCollection
     description::Union{String, Nothing}
 end
 
-function Features(gff_file::String; description=nothing, type="CDS", name_key="Name")
+function Features(gff_file::String, type::Vector{String}, name_key::String; description=nothing)
     features = open(collect, GFF3.Reader, gff_file)
     intervals = Vector{Interval{Annotation}}()
     for feature in features
-        GFF3.featuretype(feature) != type && continue
+        GFF3.featuretype(feature) in type || continue
         seqname = GFF3.seqid(feature)
-        annotation = Annotation(type, join(GFF3.attributes(feature, name_key), ","))
+        annotation = Annotation(GFF3.featuretype(feature), join(GFF3.attributes(feature, name_key), ","))
         push!(intervals, Interval(seqname, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annotation))
     end
     return Features(IntervalCollection(intervals, true), description)
+end
+
+function Features(gff_file::String, type::String, name_key::String; description=nothing)
+    return Features(gff_file, [type], name_key; description=description)
 end
 
 Base.push!(features::Features, interval::Interval) = push!(features.list, interval)
