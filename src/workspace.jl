@@ -307,20 +307,7 @@ end
 
 #align_library_rilseq()
 
-function library_rilseq()
-    features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6.gff3"; type="Gene")
-    push!(features, Interval("rybb", 1, 70, Strand('+'), RNASeqTools.Annotation("rybb1", "rybb2"))) 
-    push!(features, Interval("rybb", 1, 70, Strand('-'), RNASeqTools.Annotation("rybb1", "rybb2")))
-    @time alignments = PairedAlignments("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam"; stop_at=100000)
-    @time annotate!(alignments, features)    
-    for (i,(alignment1, alignment2)) in enumerate(alignments)
-        if RNASeqTools.hasannotation(alignment1, "rybb2") || RNASeqTools.hasannotation(alignment2, "rybb2")
-            show(alignment1)
-            show(alignment2)
-            println("")
-        end
-    end
-end
+
 
 #align_library_rilseq()
 #library_rilseq()
@@ -410,4 +397,29 @@ function combine_annotations()
     end
     close(writer)
 end
-combine_annotations()
+#combine_annotations()
+function hasotherannotation(readaln::RNASeqTools.ReadAlignment, query::String)
+    for part in readaln
+        for annot in part.ref.metadata
+            annot.name != query && (return true)
+        end
+    end
+    return false
+end
+
+function library_rilseq()
+    features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6_utrs.gff3", ["mRNA", "5UTR", "3UTR"], "Name")
+    push!(features, Interval("rybb", 1, 70, Strand('+'), RNASeqTools.Annotation("rybb1", "rybb2"))) 
+    push!(features, Interval("rybb", 1, 70, Strand('-'), RNASeqTools.Annotation("rybb1", "rybb2")))
+    @time alignments = PairedAlignments("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam"; stop_at=2000000)
+    @time annotate!(alignments, features)    
+    for (i,(alignment1, alignment2)) in enumerate(alignments)
+        if (hasannotation(alignment1, "rybb2") && hasotherannotation(alignment2, "rybb2")) || (hasannotation(alignment2, "rybb2") && hasotherannotation(alignment1, "rybb2"))
+            show(alignment1)
+            show(alignment2)
+            println("")
+        end
+    end
+end
+
+library_rilseq()
