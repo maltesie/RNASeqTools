@@ -403,17 +403,69 @@ function library_rilseq()
     features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6_utrs.gff3", ["mRNA", "5UTR", "3UTR", "tRNA", "rRNA"], "Name")
     push!(features, Interval("rybb", 1, 70, Strand('+'), RNASeqTools.Annotation("rybb1", "rybb2"))) 
     push!(features, Interval("rybb", 1, 70, Strand('-'), RNASeqTools.Annotation("rybb1", "rybb2")))
-    @time alignments = PairedAlignments("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam"; stop_at=2000000)
-    @time annotate!(alignments, features)    
-    for (i,(alignment1, alignment2)) in enumerate(alignments)
+    alignments = PairedAlignments("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam")
+    reads = PairedReads("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.fasta.gz", "/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_2.fasta.gz")
+    annotate!(alignments, features)  
+    c = 0  
+    results = Dict{String, Set{LongDNASeq}}()
+    counts = Dict{LongDNASeq, Int}()
+    @time for (key,(alignment1, alignment2)) in alignments.dict
         if hasannotation(alignment1, "rybb2") || hasannotation(alignment2, "rybb2")
-            if ischimeric(alignment1, alignment2)
-                show(alignment1)
-                show(alignment2)
-                println("")
+            read1, read2 = reads.dict[key]
+            if ischimeric(alignment1)
+                rybbalnpart = alignmentpart(alignment1, "rybb2")
+                isnothing(rybbalnpart) && continue
+                otheralignmentp = otheralignmentpart(alignment1, "rybb2")
+                hasannotation(otheralignmentp) || continue
+                referenceinterval(rybbalnpart).first != 1 && continue
+                ints = sort([alignment1[1].seq.first, alignment1[1].seq.last, alignment1[2].seq.first, alignment1[2].seq.last])
+                int = (ints[2]+1, ints[3]-1)
+                cut!(read1, int)
+                annot = annotation(otheralignmentp, "mRNA")
+                name = isnothing(annot) ? annotations(otheralignmentp)[1].name : annot.name
+                name in keys(results) ? push!(results[name], read1) : push!(results, name=>Set([read1]))
+                read1 in keys(counts) ? counts[read1] += 1 : push!(counts, read1=>1)
+                c+=1
+            elseif ischimeric(alignment2)
+                rybbalnpart = alignmentpart(alignment2, "rybb2")
+                isnothing(rybbalnpart) && continue
+                otheralignmentp = otheralignmentpart(alignment2, "rybb2")
+                hasannotation(otheralignmentp) || continue
+                referenceinterval(rybbalnpart).first != 1 && continue
+                ints = sort([alignment2[1].seq.first, alignment2[1].seq.last, alignment2[2].seq.first, alignment2[2].seq.last])
+                int = (ints[2]+1, ints[3]-1)
+                cut!(read2, int)
+                annot = annotation(otheralignmentp, "mRNA")
+                name = isnothing(annot) ? annotations(otheralignmentp)[1].name : annot.name
+                name in keys(results) ? push!(results[name], read2) : push!(results, name=>Set([read2]))
+                read2 in keys(counts) ? counts[read2] += 1 : push!(counts, read2=>1)
+                c+=1
+            elseif ischimeric(alignment1, alignment2)
+                
             end
         end
     end
+    println(c)
+    results_string = ""
+    for (n, set) in results
+        seqs = join(["$s:$(counts[s])" for s in set], ",")
+        results_string *= "$n,$seqs\n"
+    end
+    RNASeqTools.write_file("/home/abc/Workspace/RILSeq/library_rilseq/out.csv", results_string)
 end
 
 library_rilseq()
+
+function test_alignment_part()
+    alignments = PairedAlignments("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam"; stop_at=20)
+    for (alignment1, alignment2) in alignments
+        a = alignmentpart(alignment1, "rybb2")
+        o = otheralignmentpart(alignment1, "rybb2")
+        annotation = annotations()
+        println()
+        println()
+        println("")
+    end
+end
+
+#test_alignment_part()

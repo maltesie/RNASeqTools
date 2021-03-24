@@ -10,7 +10,7 @@ export align_mem, align_backtrack, align_local
 export trim_fastp, split_libs 
 export Genome, Reads, PairedReads, Alignments, PairedAlignments, SingleTypeFiles, PairedSingleTypeFiles, Features
 export cut!, rev_comp!, approxoccursin, annotate!
-export name, hasannotation, ischimeric
+export name, hasannotation, ischimeric, referenceinterval, readinterval, annotation, annotations, alignmentpart, otheralignmentpart
 export similarity
 export dashboard, hist_length_distribution, hist_similarity, line_nucleotide_distribution
 

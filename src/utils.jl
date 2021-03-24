@@ -13,20 +13,25 @@ function rev_comp!(reads::PairedReads; treat=:both)
 end
 
 function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
-    0 <= pos <= length(read) || (return nothing)
+    0 <= pos <= length(read) || resize!(read, 0)
     
     if (from == :left) && (keep == :left)
-        copy!(read, @view(read[1:pos]))
+        resize!(read, pos)
 
     elseif (from == :left) && (keep == :right)
-        copy!(read, @view(read[pos+1:end]))
+        reverse!(resize!(reverse!(read), length(read)-pos, true))
     
     elseif (from == :right) && (keep == :left)
-        copy!(read, @view(read[1:length(read)-pos]))
+        resize!(read, length(read)-pos)
     
     elseif (from == :right) && (keep == :right)
-        copy!(read, @view(read[length(read)-pos+1:end]))
+        reverse!(resize!(reverse!(read), pos, true))
     end
+end
+
+function cut!(read::LongDNASeq, int::Tuple{Int, Int})
+    (0 <= first(int) < last(int) <= length(read)) || resize!(read, 0)
+    reverse!(resize!(reverse!(resize!(read, last(int), true)), length(read)-first(int)+1, true))
 end
 
 function cut!(reads::Reads, pos::Int; keep=:left, from=:left)

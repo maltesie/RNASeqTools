@@ -63,13 +63,38 @@ function AlignmentPart(xa_part::String)
     return AlignmentPart(ref_interval, seq_interval, false)
 end
 
-function annotations(alnpart::AlignmentPart)
-    return alnpart.ref.metadata
+annotations(alnpart::AlignmentPart) = alnpart.ref.metadata
+referenceinterval(alnpart::AlignmentPart) = alnpart.ref
+readinterval(alnpart::AlignmentPart) = alnpart.seq
+
+hasannotation(alnpart::AlignmentPart) = !isempty(annotations(alnpart))
+function hasannotation(alnpart::AlignmentPart, annotation_name::String)
+    for annot in annotations(alnpart)
+        annot.name == annotation_name && (return true)
+    end
+    return false
+end
+
+function annotation(alnpart::AlignmentPart, type::String)
+    for annotation in annotations(alnpart)
+        annotation.type == type && return annotation
+    end
+    return nothing
 end
 
 struct ReadAlignment
     parts::Vector{AlignmentPart}
     alt::Vector{Vector{AlignmentPart}}
+end
+
+function _popleft!(alnparts::Vector{AlignmentPart})
+    leftest = alnparts[1]
+    index = 1
+    for (i,part) in enumerate(alnparts[2:end])
+        part.first < leftest.first && (leftest = part; index = i+1)
+    end
+    delete!(alnparts, index)
+    return leftest
 end
 
 function ReadAlignment(record::BAM.Record; invertstrand=false)
@@ -80,12 +105,19 @@ function ReadAlignment(record::BAM.Record; invertstrand=false)
     seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
     aln_part = AlignmentPart(ref_interval, seq_interval, BAM.isprimary(record))
     alts = hasxatag(record) ? [AlignmentPart(xa) for xa in split(String(xatag(record)))[1:end-1]] : AlignmentPart[]
+    if !isempty(alts)
+        push!(alts, aln_part)
+        aln_part = _popleft!(alts)
+    end
     return ReadAlignment([aln_part], alts)
 end 
 
+parts(readalignment::ReadAlignment) = readalignment.parts
 count(readalignment::ReadAlignment) = length(readalignment.parts)
 Base.iterate(readalignment::ReadAlignment) = iterate(readalignment.parts)
 Base.iterate(readalignment::ReadAlignment, state::Int) = iterate(readalignment.parts, state)
+Base.getindex(readaln::ReadAlignment, i::Int64) = readaln.parts[i]
+
 function Base.show(readaln::ReadAlignment)
     println("Alignment with $(length(readaln.parts)) part(s):")
     for part in readaln.parts
@@ -102,8 +134,13 @@ function Base.push!(readalignment::ReadAlignment, record::BAM.Record)
     ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, Vector{Annotation}())
     seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
     aln_part = AlignmentPart(ref_interval, seq_interval, BAM.isprimary(record))
+    alts = hasxatag(record) ? [AlignmentPart(xa) for xa in split(String(xatag(record)))[1:end-1]] : AlignmentPart[]
+    if !isempty(alts)
+        push!(alts, aln_part)
+        aln_part = _popleft!(alts)
+    end
     push!(readalignment.parts, aln_part)
-    hasxatag(record) && push!(readalignment.alt, [AlignmentPart(xa) for xa in split(String(xatag(record)))[1:end-1]])
+    push!(readalignment.alt, alts)
 end
 
 function primaryalignmentpart(readalignment::ReadAlignment)
@@ -112,11 +149,24 @@ function primaryalignmentpart(readalignment::ReadAlignment)
     end
 end
 
+function alignmentpart(readalignment::ReadAlignment, annotation_name::String)
+    for part in readalignment
+        hasannotation(part, annotation_name) && (return part)
+    end
+    return nothing
+end
+
+function otheralignmentpart(readalignment::ReadAlignment, annotation_name::String)
+    for part in readalignment
+        !hasannotation(part, annotation_name) && (return part)
+    end
+    return nothing
+end
+
+hasannotation(readaln::ReadAlignment) = !all([isempty(annotations(alnpart)) for alnpart in readaln])
 function hasannotation(readaln::ReadAlignment, annotation_name::String)
     for part in readaln
-        for annot in part.ref.metadata
-            annot.name == annotation_name && (return true)
-        end
+        hasannotation(part, annotation_name) && (return true)
     end
     return false
 end
