@@ -224,12 +224,14 @@ function positions(cigar::AbstractString)
     pending_seqstop = 0
     relrefstop = 0
     inseq = false
+    seqlen = 0
     #println(cigar)
     n = 0
     for c in cigar
         if isdigit(c)
             n = n * 10 + convert(Int, c - '0')
         else
+            seqlen += n
             op = BioAlignments.Operation(c)
             if BioAlignments.isinsertop(op)
                 inseq || (seqstart += n)
@@ -246,7 +248,7 @@ function positions(cigar::AbstractString)
         end
     end
     #println(seqstart, " ", seqstop)
-    return seqstart, seqstop, relrefstop
+    return seqstart, seqstop, relrefstop, seqlen
 end
 
 function skiplines(io::IO, k::Int)

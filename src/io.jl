@@ -57,10 +57,14 @@ function AlignmentPart(xa_part::String)
     refstart = parse(Int, pos)
     strand = refstart > 0 ? Strand('+') : Strand('-')
     refstart *= sign(refstart)
-    readstart, readstop, relrefstop = positions(cigar)
+    readstart, readstop, relrefstop, readlen = positions(cigar)
     ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, Vector{Annotation}())
-    seq_interval = Interval(readstart, readstop)
+    seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
     return AlignmentPart(ref_interval, seq_interval, false)
+end
+
+function annotations(alnpart::AlignmentPart)
+    return alnpart.ref.metadata
 end
 
 struct ReadAlignment
@@ -70,15 +74,16 @@ end
 
 function ReadAlignment(record::BAM.Record; invertstrand=false)
     BAM.ismapped(record) || return ReadAlignment([], [])
-    readstart, readstop, relrefstop = positions(BAM.cigar(record))
+    readstart, readstop, relrefstop, readlen = positions(BAM.cigar(record))
     strand = BAM.ispositivestrand(record) ? Strand('+') : Strand('-')
     ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, Vector{Annotation}())
-    seq_interval = Interval("read", readstart, readstop)
+    seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
     aln_part = AlignmentPart(ref_interval, seq_interval, BAM.isprimary(record))
     alts = hasxatag(record) ? [AlignmentPart(xa) for xa in split(String(xatag(record)))[1:end-1]] : AlignmentPart[]
     return ReadAlignment([aln_part], alts)
 end 
 
+count(readalignment::ReadAlignment) = length(readalignment.parts)
 Base.iterate(readalignment::ReadAlignment) = iterate(readalignment.parts)
 Base.iterate(readalignment::ReadAlignment, state::Int) = iterate(readalignment.parts, state)
 function Base.show(readaln::ReadAlignment)
@@ -92,10 +97,10 @@ end
 
 function Base.push!(readalignment::ReadAlignment, record::BAM.Record)
     BAM.ismapped(record) || return nothing
-    readstart, readstop, relrefstop = positions(BAM.cigar(record))
+    readstart, readstop, relrefstop, readlen = positions(BAM.cigar(record))
     strand = BAM.ispositivestrand(record) ? Strand('+') : Strand('-')
     ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, Vector{Annotation}())
-    seq_interval = Interval("read", readstart, readstop)
+    seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
     aln_part = AlignmentPart(ref_interval, seq_interval, BAM.isprimary(record))
     push!(readalignment.parts, aln_part)
     hasxatag(record) && push!(readalignment.alt, [AlignmentPart(xa) for xa in split(String(xatag(record)))[1:end-1]])
@@ -114,6 +119,28 @@ function hasannotation(readaln::ReadAlignment, annotation_name::String)
         end
     end
     return false
+end
+
+function ischimeric(readaln::ReadAlignment)
+    count(readaln) > 1 || (return false)
+    for part in readaln, otherpart in readaln
+        part === otherpart && continue
+        for annotation in annotations(part)
+            annotation in annotations(otherpart) && (return false)
+        end
+    end
+    return true
+end
+
+function ischimeric(readaln1::ReadAlignment, readaln2::ReadAlignment)
+    (ischimeric(readaln1) || ischimeric(readaln2)) && (return true)
+    for part in readaln1, otherpart in readaln2
+        part === otherpart && continue
+        for annotation in annotations(part)
+            annotation in annotations(otherpart) && (return false)
+        end
+    end
+    return true
 end
 
 Base.isempty(readalignment::ReadAlignment) = isempty(readalignment.parts)
