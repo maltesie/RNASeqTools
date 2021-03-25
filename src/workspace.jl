@@ -115,4 +115,4 @@ function check_rilseq()
     println(c, " von ", c2)
 end
 
-#check_rilseq()
+check_rilseq()

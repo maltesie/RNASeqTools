@@ -93,9 +93,11 @@ function ReadAlignment(record::BAM.Record; invertstrand=false)
     if !isnothing(xa)
         leftest = 0
         leftestpos = BAM.leftposition(record)
+        nms = nmtag(record)
         xastrings = split(xa, ";")[1:end-1]
         for (i,xapart) in enumerate(xastrings)
             chr, pos, cigar, nm = split(xapart, ",")
+            parse(Int, nm) > nms && continue
             intpos = abs(parse(Int, pos))
             intpos < leftestpos && (leftest = i; leftestpos=intpos)
         end
