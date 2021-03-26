@@ -44,7 +44,7 @@ function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_
 end
 
 struct Coverage <: AnnotationContainer
-    list::IntervalCollection{Float64}
+    list::IntervalCollection{Float32}
     chroms::Vector{Tuple{String, Int}}
     description::Union{Nothing, String}
 end
@@ -54,12 +54,12 @@ function Coverage(bigwig_file::String, direction::Symbol; description=nothing)
     reader = open(BigWig.Reader, bigwig_file)
     stran = direction==:forward ? Strand('+') : Strand('-')
     chrlist = BigWig.chromlist(reader)
-    intervals = Interval[]
+    intervals = Vector{Interval{Float32}}()
     for record in reader
-        push!(intervals, Interval(BigWig.chromid(record), BigWig.chromstart(record), BigWig.chromend(record), stran, BigWig.value(record)))
+        push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), stran, BigWig.value(record)))
     end
     close(reader)
-    return Coverage(IntervalCollection(intervals, false), chrlist, description)
+    return Coverage(IntervalCollection(intervals, true), chrlist, description)
 end
 
 function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String; description=nothing)
@@ -68,7 +68,7 @@ function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String; desc
     reader_r = open(BigWig.Reader, bigwig_reverse_file)
     chrlist_f = BigWig.chromlist(reader_f)
     chrlist_r = BigWig.chromlist(reader_r)
-    intervals = Interval[]
+    intervals = Vector{Interval{Float32}}()
     for record in reader_f
         push!(intervals, Interval(BigWig.chromid(record), BigWig.chromstart(record), BigWig.chromend(record), STRAND_POS, BigWig.value(record)))
     end
@@ -83,9 +83,9 @@ end
 Base.iterate(coverage::Coverage) = iterate(coverage.list)
 Base.iterate(coverage::Coverage, state) =iterate(coverage.list, state)
 
-function values(coverage::Coverage, interval::Interval)
+function Base.values(coverage::Coverage, interval::Interval)
     len = interval.last - interval.first + 1
-    vals = zeros(Float64, len)
+    vals = zeros(Float32, len)
     offset = interval.first-1
     start = interval.first
     stop = interval.last
@@ -95,14 +95,14 @@ function values(coverage::Coverage, interval::Interval)
     return vals
 end
 
-function values(coverage::Coverage)
-    vals_f = Dict{String,Vector{Float64}}()
-    vals_r = Dict{String,Vector{Float64}}()
-    for (chr, len) in coverage.chrlist
+function Base.values(coverage::Coverage)
+    vals_f = Dict{String,Vector{Float32}}()
+    vals_r = Dict{String,Vector{Float32}}()
+    for (chr, len) in coverage.chroms
         interval_f = Interval(chr, 1, len, STRAND_POS)
-        push!(vals_f, values(coverage, interval_f))
+        push!(vals_f, chr=>values(coverage, interval_f))
         interval_r = Interval(chr, 1, len, STRAND_NEG)
-        push!(vals_r, values(coverage, interval_r))
+        push!(vals_r, chr=>values(coverage, interval_r))
     end
     return vals_f, vals_r
 end
@@ -124,5 +124,5 @@ function merge(coverages::Vector{Coverage})
             push!(new_intervals, interval)
         end
     end
-    return Coverage(IntervalCollection(new_intervals, true), coverages[1].chrlist, join([c.description for c in coverages if !isnothing c.description], ";"))
+    return Coverage(IntervalCollection(new_intervals, true), coverages[1].chrlist, join([c.description for c in coverages if !isnothing(c.description)], ";"))
 end

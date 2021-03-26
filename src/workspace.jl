@@ -123,8 +123,12 @@ function check_coverage()
     writer = BigWig.Writer(output, [("chr1", 12345), ("chr2", 9100)])
     write(writer, ("chr1", 501, 600, 1.0))
     write(writer, ("chr2", 301, 450, 3.0))
-    write(writer, ("chr2", 305, 420, 3.0))
     close(writer)
 end
 
-check_coverage()
+function check_coverage2()
+    coverage = Coverage("/home/abc/Workspace/data.bw", :reverse)
+    println(values(coverage, Interval("chr1", 450, 550, Strand('+'))))
+end
+
+check_coverage2()
