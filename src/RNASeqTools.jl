@@ -17,12 +17,13 @@ export dashboard, hist_length_distribution, hist_similarity, line_nucleotide_dis
 include("types.jl")
 include("misc.jl")
 
-include("io.jl")
+include("files.jl")
 include("preprocess.jl")
-include("align.jl")
-include("utils.jl")
-include("annotate.jl")
-include("analyse.jl")
-include("visualize.jl")
+include("sequence.jl")
+include("annotation.jl")
+include("alignment.jl")
+include("coverage.jl")
+include("analysis.jl")
+include("visualization.jl")
 
 end

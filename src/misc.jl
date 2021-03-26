@@ -1,3 +1,21 @@
+function annotate_utrs!(annotations::Dict{String, DataFrame}, tss::Dict{String, DataFrame}, terms::Dict{String, DataFrame}; 
+    max_distance=150, add_distance=150, guess_distance=150)
+    for (chr, annotation) in annotations
+        annotation[!, :fiveUTR] = annotation[!, :start] .- guess_distance
+        annotation[!, :fiveType] = fill("guess", nrow(annotation))
+        annotation[!, :threeUTR] = annotation[!, :stop] .+ guess_distance
+        annotation[!, :threeType] = fill("guess", nrow(annotation))
+        for row in eachrow(annotation)
+            five_hits = tss[chr][row[:start]-max_distance .<= tss[chr][!,:pos] .<= row[:start], :]
+            three_hits = terms[chr][row[:stop] .<= terms[chr][!,:pos] .<= row[:stop]+max_distance, :]
+            isempty(five_hits) && (five_hits = tss[chr][row[:start]-max_distance-add_distance .<= tss[chr][!,:pos] .<= row[:start]-max_distance, :])
+            isempty(three_hits) && (three_hits = terms[chr][row[:stop]+max_distance .<= terms[chr][!,:pos] .<= row[:stop]+max_distance+add_distance, :])
+            isempty(five_hits) || (row[:fiveUTR]=five_hits[argmax(five_hits[!, :val]), :pos]; row[:fiveType]="max")
+            isempty(three_hits) || (row[:threeUTR]=three_hits[argmax(three_hits[!, :val]), :pos]; row[:threeType]="max")
+            #(row[:stop]==-372) && (println(three_hits))
+        end
+    end
+end
 
 function join_replicates(coverage_notex::Vector{Dict{String,Vector{Float64}}}, coverage_tex::Vector{Dict{String,Vector{Float64}}}, chr::String)
     max_tex = maximum([length(c[chr]) for c in coverage_tex])
@@ -372,4 +390,3 @@ function translation_dict(from_sequence::String, to_sequence::String)
     end
     return trans_dict
 end
-record = BAM.Record()
