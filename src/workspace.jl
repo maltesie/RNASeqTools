@@ -128,6 +128,13 @@ end
 
 function check_coverage2()
     coverage = Coverage("/home/abc/Workspace/data.bw", :reverse)
+    coverage2 = Coverage("/home/abc/Workspace/data.bw", :reverse)
+    coverage3 = RNASeqTools.merge([coverage, coverage2])
+    println(values(coverage3, Interval("chr1", 450, 550, Strand('+'))))
+end
+
+function check_features()
+    coverage = Coverage("/home/abc/Workspace/data.bw", :reverse)
     println(values(coverage, Interval("chr1", 450, 550, Strand('+'))))
 end
 

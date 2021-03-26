@@ -65,57 +65,42 @@ function diff(coverage::Vector{Float64})
     return d
 end
 
-function tss(notex_f::Coverage, notex_r::Coverage, tex_f::Coverage, tex_r::Coverage; min_step=10, min_ratio=1.3)
-    @assert notex_f.chroms == notex_r.chroms == tex_f.chroms == tex_r.chroms
-    chrs = get_chr_from_wig(notex_fs[1])
-    result::Dict{String, DataFrame} = Dict(chr=>DataFrame(pos=Int[], val=Float64[]) for chr in chrs)
-    for i in 1:length(notex_fs) # für 0.1, dann 2.0
-        forward = read_wig(notex_fs[i]) # gibt vector mit replikaten zurück
-        reverse = read_wig(notex_rs[i])
-        forward_tex = read_wig(tex_fs[i])
-        reverse_tex = read_wig(tex_rs[i])
-        #write(open("/home/malte/Workspace/data/vibrio/reversetex_$(i).txt", "w"), join(["$j $d" for (j,d) in enumerate(reverse_tex[1]["NC_002505"])], '\n'))
-        for chr in chrs
-            (tex_f, notex_f) = join_replicates(forward, forward_tex, chr)
-            (tex_r, notex_r) = join_replicates(reverse, reverse_tex, chr)
-            d_forward = diff(tex_f)
-            d_reverse = diff(tex_r)
-            #write(open("/home/malte/Workspace/data/vibrio/dreverse_$(i)_$(chr).txt", "w"), join(["$j $d" for (j,d) in enumerate(d_reverse)], '\n'))
-            #write(open("/home/malte/Workspace/data/vibrio/dreverse_$(i)_$(chr).txt", "w"), join(["$j $d" for (j,d) in enumerate(d_reverse)], '\n'))
-            check_forward = circshift(((tex_f ./ notex_f) .>= min_ratio), 1) .& (d_forward .>= min_step)
-            check_reverse = circshift(((tex_r ./ notex_r) .>= min_ratio), 1) .& (d_reverse .>= min_step)
-            append!(result[chr], DataFrame(pos=findall(!iszero, check_forward), val=abs.(d_forward[check_forward])))
-            append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=abs.(d_reverse[check_reverse])))
-            #CSV.write("/home/malte/Workspace/data/vibrio/test_$(i)_$(chr).csv", result[chr])
+function tss(notex::Coverage, tex::Coverage; min_step=10, min_ratio=1.3)
+    @assert notex.chroms == tex.chroms
+    chrs = [chr[1] for chr in notex.chroms]
+    notex_f, notex_r = values(notex)
+    tex_f, tex_r = values(tex)
+    intervals = Vector{Interval{Annotation}}()
+    for chr in chrs
+        d_forward = diff(tex_f[chr])
+        d_reverse = diff(tex_r[chr])
+        check_forward = circshift(((tex_f[chr] ./ notex_f[chr]) .>= min_ratio), 1) .& (d_forward .>= min_step)
+        check_reverse = circshift(((tex_r[chr] ./ notex_r[chr]) .>= min_ratio), 1) .& (d_reverse .>= min_step)
+        for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
+            push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
+        end
+        for (pos, val)  in zip(findall(!iszero, check_reverse), abs.(d_reverse[check_reverse]))
+            push!(intervals, Interval(chr, pos, pos, STRAND_NEG, val))
         end
     end
-    for (chr, ts) in result
-        sort!(ts, :pos)
-    end
-    #CSV.write("/home/malte/Workspace/data/vibrio/test.csv", result["NC_002505"])
-    return result
+    return Coverage(IntervalCollection(intervals, true), tex.chroms, "tss")
 end
 
-function terms(coverage_fs::Vector{String}, coverage_rs::Vector{String}; min_step=10)
-    chrs = get_chr_from_wig(coverage_fs[1])
-    result::Dict{String, DataFrame} = Dict(chr=>DataFrame(pos=Int[], val=Float64[]) for chr in chrs)
-    for i in 1:length(coverage_fs)
-        forward = read_wig(coverage_fs[i])
-        reverse = read_wig(coverage_rs[i])
-        for chr in chrs
-            f = join_replicates(forward, chr)
-            r = join_replicates(reverse, chr)
-            d_forward = diff(f)
-            d_reverse = diff(r)
-            check_forward = d_forward .<= -min_step
-            check_reverse = d_reverse .<= -min_step
-            append!(result[chr], DataFrame(pos=findall(!iszero, check_forward), val=abs.(d_forward[check_forward])))
-            append!(result[chr], DataFrame(pos=findall(!iszero, check_reverse) .* -1, val=abs.(d_reverse[check_reverse])))
+function terms(coverage::Coverage; min_step=10)
+    f, r = values(coverage)
+    intervals = Vector{Interval{Annotation}}()
+    chrs = [chr[1] for chr in coverage.chroms]
+    for chr in chrs
+        d_forward = diff(f[chr])
+        d_reverse = diff(r[chr])
+        check_forward = d_forward .<= -min_step
+        check_reverse = d_reverse .<= -min_step
+        for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
+            push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
+        end
+        for (pos, val)  in zip(findall(!iszero, check_reverse), abs.(d_reverse[check_reverse]))
+            push!(intervals, Interval(chr, pos, pos, STRAND_NEG, val))
         end
     end
-    for (chr, ts) in result
-        sort!(ts, :pos)
-    end
-    #CSV.write("/home/malte/Workspace/data/vibrio/test.csv", result["NC_002505"])
-    return result
+    return Coverage(IntervalCollection(intervals, true), coverage.chroms, "terms")
 end

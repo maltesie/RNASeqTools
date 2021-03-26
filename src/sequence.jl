@@ -94,6 +94,15 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
     end
 end
 
+function is_bitstring_fasta(file::String)
+    (endswith(file, ".fasta") || endswith(file, ".fasta.gz")) || (return false)
+    f = endswith(file, ".fasta.gz") ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
+    first_line = readline(f)
+    close(f)
+    ((length(first_line) == 65) && all([c in ['0', '1'] for c in first_line[2:end]])) && (return true)
+    return false
+end
+
 struct PairedReads <: SequenceContainer
     dict::Dict{UInt, LongDNASeqPair}
     name::Union{String, Nothing}

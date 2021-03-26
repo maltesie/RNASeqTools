@@ -1,3 +1,19 @@
+function bam_chromosome_lengths(reader::BAM.Reader)
+    chr_lengths = Int[]
+    for meta in findall(BAM.header(reader), "SQ")
+        push!(chr_lengths, parse(Int, meta["LN"]))
+    end
+    return chr_lengths
+end
+
+function bam_chromosome_names(reader::BAM.Reader)
+    chr_names = String[]
+    for meta in findall(BAM.header(reader), "SQ")
+        push!(chr_names, meta["SN"])
+    end
+    return chr_names
+end
+
 function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=false)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
@@ -115,14 +131,12 @@ function merge!(coverage1::Coverage, coverage2::Coverage)
 end
 
 function merge(coverages::Vector{Coverage})
-    @assert all(coverages[1].chrlist == c.chrlist for c in coverages[2:end])
-    new_intervals = Interval[]
-    factor = 1/length(coverages)
+    @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
+    new_intervals = Vector{Interval{Float32}}()
     for coverage in coverages
         for interval in coverage
-            interval.
             push!(new_intervals, interval)
         end
     end
-    return Coverage(IntervalCollection(new_intervals, true), coverages[1].chrlist, join([c.description for c in coverages if !isnothing(c.description)], ";"))
+    return Coverage(IntervalCollection(new_intervals, true), coverages[1].chroms, join([c.description for c in coverages if !isnothing(c.description)], ";"))
 end

@@ -153,6 +153,37 @@ struct AlignmentPart
     isprimary::Bool
 end
 
+function positions(cigar::AbstractString)
+    seqstart = 1
+    seqstop = 0
+    pending_seqstop = 0
+    relrefstop = 0
+    inseq = false
+    seqlen = 0
+    n = 0
+    for c in cigar
+        if isdigit(c)
+            n = n * 10 + convert(Int, c - '0')
+        else
+            seqlen += n
+            op = BioAlignments.Operation(c)
+            if BioAlignments.isinsertop(op)
+                inseq || (seqstart += n)
+                pending_seqstop += n
+            elseif BioAlignments.isdeleteop(op)
+                relrefstop += n
+            elseif BioAlignments.ismatchop(op)
+                inseq = true
+                seqstop += n + pending_seqstop
+                relrefstop +=n
+                pending_seqstop = 0
+            end
+            n = 0
+        end
+    end
+    return seqstart, seqstop, relrefstop, seqlen
+end
+
 function AlignmentPart(xapart::Union{String, SubString{String}})
     chr, pos, cigar, nm = split(xapart, ",")
     refstart = parse(Int, pos)
@@ -182,6 +213,47 @@ function findfirst(alnpart::AlignmentPart, type::String)
         annotation.type == type && return annotation
     end
     return nothing
+end
+
+@inline function translateddata(data::SubArray{UInt8,1})
+    for i in 1:length(data)
+        (data[i] == 0x00) && (return data[1:i-1])
+    end
+end
+
+@inline function nmtag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+      (0x4d == data[i]) & (0x43 == data[i+1]) && (return Int(data[i+2]))
+    end
+    return nothing
+end
+
+function hasxatag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+        (0x00 == data[i]) & (UInt8('X') == data[i+1]) & (UInt8('A') == data[i+2]) && (return true)
+    end
+    return false
+end
+
+@inline function xatag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+        (0x00 == data[i]) & (UInt8('X') == data[i+1]) & (UInt8('A') == data[i+2]) && 
+        (return translateddata(@view(data[i+4:end])))
+    end
+    return nothing
+end
+
+function hasxatag(record::BAM.Record)
+    return hasxatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
+end
+
+function xatag(record::BAM.Record)
+    xa = xatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
+    return isnothing(xa) ? nothing : String(xa)
+end
+
+function nmtag(record::BAM.Record)
+    return nmtag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
 end
 
 struct ReadAlignment
@@ -339,6 +411,30 @@ function PairedAlignments(pebam_file::String; stop_at=nothing, name=nothing)
     alignments1, alignments2 = read_bam(pebam_file; stop_at=stop_at)
     alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
     PairedAlignments(alignments, name)
+end
+
+function ispaired(record::BAM.Record)::Bool
+    return BAM.isfilled(record) && (BAM.flag(record) & UInt16(0x001) != 0)
+end
+
+function isread1(record::BAM.Record)::Bool
+    return BAM.isfilled(record) && (BAM.flag(record) & UInt16(0x040) != 0)
+end
+
+function isread2(record::BAM.Record)::Bool
+    return BAM.isfilled(record) && (BAM.flag(record) & UInt16(0x080) != 0)
+end
+
+function is_bitstring_bam(file::String)
+    reader = BAM.Reader(open(file))
+    tempname = ""
+    for record in reader
+        tempname = BAM.tempname(record)
+        break
+    end
+    close(reader)
+    ((length(tempname) == 64) && all([c in ['0', '1'] for c in tempname])) && (return true)
+    return false
 end
 
 function read_bam(bam_file::String; stop_at=nothing)
