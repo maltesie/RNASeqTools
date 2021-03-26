@@ -65,8 +65,8 @@ function diff(coverage::Vector{Float64})
     return d
 end
 
-function tss(notex_fs::Vector{String}, notex_rs::Vector{String}, tex_fs::Vector{String}, tex_rs::Vector{String}; 
-    min_step=10, min_ratio=1.3)
+function tss(notex_f::Coverage, notex_r::Coverage, tex_f::Coverage, tex_r::Coverage; min_step=10, min_ratio=1.3)
+    @assert notex_f.chroms == notex_r.chroms == tex_f.chroms == tex_r.chroms
     chrs = get_chr_from_wig(notex_fs[1])
     result::Dict{String, DataFrame} = Dict(chr=>DataFrame(pos=Int[], val=Float64[]) for chr in chrs)
     for i in 1:length(notex_fs) # für 0.1, dann 2.0

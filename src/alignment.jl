@@ -177,7 +177,7 @@ function hasannotation(alnpart::AlignmentPart, annotation_name::String)
     return false
 end
 
-function annotation(alnpart::AlignmentPart, type::String)
+function findfirst(alnpart::AlignmentPart, type::String)
     for annotation in annotations(alnpart)
         annotation.type == type && return annotation
     end
@@ -228,26 +228,6 @@ function Base.show(readaln::ReadAlignment)
     end
 end
 
-function primaryalignmentpart(readalignment::ReadAlignment)
-    for aln_part in readalignment
-        aln_part.isprimary && (return aln_part)
-    end
-end
-
-function alignmentpart(readalignment::ReadAlignment, annotation_name::String)
-    for part in readalignment
-        hasannotation(part, annotation_name) && (return part)
-    end
-    return nothing
-end
-
-function otheralignmentpart(readalignment::ReadAlignment, annotation_name::String)
-    for part in readalignment
-        !hasannotation(part, annotation_name) && (return part)
-    end
-    return nothing
-end
-
 hasannotation(readaln::ReadAlignment) = !all([isempty(annotations(alnpart)) for alnpart in readaln])
 isfullyannotated(readaln::ReadAlignment) = !any([isempty(annotations(alnpart)) for alnpart in readaln])
 function hasannotation(readaln::ReadAlignment, annotation_name::String)
@@ -257,9 +237,11 @@ function hasannotation(readaln::ReadAlignment, annotation_name::String)
     return false
 end
 
-function overlapdistance(i1::Interval, i2::Interval)
+function overlapdistance(i1::Interval, i2::Interval)::Float64
+    strand(i1) != strand(i2) && return -Inf
     return min(rightposition(i1) - leftposition(i2), rightposition(i2) - leftposition(i1))
 end
+distance(i1::Interval, i2::Interval)::Float64 = -min(0, overlapdistance(i1,i2))
 
 function annotationoverlap(part1::AlignmentPart, part2::AlignmentPart)
     c = 0
@@ -269,13 +251,13 @@ function annotationoverlap(part1::AlignmentPart, part2::AlignmentPart)
     return c
 end
 
-function countconcordant(readaln1::ReadAlignment, readaln2::ReadAlignment; min_distance=100)
+function countconcordant(readaln1::ReadAlignment, readaln2::ReadAlignment; max_distance=100)
     c = 0
     for part in readaln1, otherpart in readaln2
         if hasannotation(part) && hasannotation(otherpart)
             annotationoverlap(part, otherpart) > 0 && (c+=1)
         else
-            overlapdistance(refinterval(part), refinterval(otherpart)) > -min_distance && (c+=1)
+            distance(refinterval(part), refinterval(otherpart)) > max_distance && (c+=1)
         end
     end
     return c
@@ -285,14 +267,14 @@ function ischimeric(readaln::ReadAlignment)
     return count(readaln) > 1 ? true : false
 end
 
-function ischimeric(readaln1::ReadAlignment, readaln2::ReadAlignment; min_distance=100)
+function ischimeric(readaln1::ReadAlignment, readaln2::ReadAlignment; max_distance=100)
     (ischimeric(readaln1) || ischimeric(readaln2)) && (return true)
-    return (count(readaln1) + count(readaln2) - countconcordant(readaln1, readaln2; min_distance=min_distance)) >= 2
+    return (count(readaln1) + count(readaln2) - countconcordant(readaln1, readaln2; max_distance=max_distance)) >= 2
 end
 
-function istriplet(readaln1::ReadAlignment, readaln2::ReadAlignment; min_distance=100)
+function istriplet(readaln1::ReadAlignment, readaln2::ReadAlignment; max_distance=100)
     2 < (count(readaln1) + count(readaln2)) < 5 || (return false)
-    return (count(readaln1) + count(readaln2) - countconcordant(readaln1, readaln2; min_distance=min_distance)) == 3
+    return (count(readaln1) + count(readaln2) - countconcordant(readaln1, readaln2; max_distance=max_distance)) == 3
 end
 
 Base.isempty(readalignment::ReadAlignment) = isempty(readalignment.parts)

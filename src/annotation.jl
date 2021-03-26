@@ -9,7 +9,7 @@ name(interval::Interval{Annotation}) = interval.metadata.name
 type(interval::Interval{Annotation}) = interval.metadata.type
 
 struct Features <: AnnotationContainer
-    list::IntervalCollection
+    list::IntervalCollection{Annotation}
     description::Union{String, Nothing}
 end
 
@@ -39,3 +39,13 @@ end
 Base.iterate(features::Features) = iterate(features.list)
 Base.iterate(features::Features, state) = iterate(features.list, state)
 Base.length(features::Features) = length(features.list)
+
+function Base.write(file::String, features::Features)
+    writer = GFF3.Writer(open(file, "w"))
+    for feature in features
+        line = "$(feature.seqname)\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\tName=$(name(feature))"
+        record = GFF3.Record(line)
+        write(writer, record)
+    end
+    close(writer)
+end

@@ -115,4 +115,16 @@ function check_rilseq()
     println(c, " von ", c2)
 end
 
-check_rilseq()
+#check_rilseq()
+using BigWig
+
+function check_coverage()
+    output = open("/home/abc/Workspace/data.bw", "w")
+    writer = BigWig.Writer(output, [("chr1", 12345), ("chr2", 9100)])
+    write(writer, ("chr1", 501, 600, 1.0))
+    write(writer, ("chr2", 301, 450, 3.0))
+    write(writer, ("chr2", 305, 420, 3.0))
+    close(writer)
+end
+
+check_coverage()

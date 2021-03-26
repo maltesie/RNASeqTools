@@ -1,6 +1,6 @@
 module RNASeqTools
 
-using XAM, FASTX, CSV, XLSX, CodecZlib, GFF3
+using XAM, FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig
 using BioAlignments, BioSequences, GenomicFeatures
 using DataFrames
 using Plots, Measures
