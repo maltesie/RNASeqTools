@@ -5,11 +5,11 @@ using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 using Plots, Measures
 using Dash, DashHtmlComponents, DashCoreComponents, DashTable
 
-export align_mem, align_backtrack, align_local, local_alignment
+export align_mem, local_alignment
 export trim_fastp, split_libs 
 export Genome, Reads, PairedReads, Alignments, PairedAlignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage
 export cut!, rev_comp!, approxoccursin, annotate!
-export name, hasannotation, ischimeric, istriplet, refinterval, readinterval, annotation, annotations, values
+export name, hasannotation, ischimeric, istriplet, refinterval, readinterval, annotation, values
 export similarity
 export dashboard, hist_length_distribution, hist_similarity, line_nucleotide_distribution
 
