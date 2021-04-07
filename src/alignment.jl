@@ -438,8 +438,7 @@ function read_bam(bam_file::String; stop_at=nothing)
 end
 
 strand_filter(a::Interval, b::Interval) = strand(a) == strand(b)
-length(i::Interval{AlignmentAnnotation}) = rightposition(i) - leftposition(i) + 1
-length(i::Interval{Annotation}) = rightposition(i) - leftposition(i) + 1
+Base.length(i::Interval) = rightposition(i) - leftposition(i) + 1
 
 function annotate!(alns::Alignments, features::Features)
     for alignedread in alns
