@@ -137,5 +137,3 @@ function check_features()
     coverage = Coverage("/home/abc/Workspace/data.bw", :reverse)
     println(values(coverage, Interval("chr1", 450, 550, Strand('+'))))
 end
-
-check_coverage2()

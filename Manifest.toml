@@ -877,6 +877,12 @@ git-tree-sha1 = "7c88f73b759ae16a4a1af8bda7a9563471a7baf5"
 uuid = "f3b207a7-027a-5e70-b257-86293d7955fd"
 version = "0.14.19"
 
+[[StructArrays]]
+deps = ["Adapt", "DataAPI", "Tables"]
+git-tree-sha1 = "26ea43b4be7e919a2390c3c0f824e7eb4fc19a0a"
+uuid = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
+version = "0.5.0"
+
 [[StructTypes]]
 deps = ["Dates", "UUIDs"]
 git-tree-sha1 = "d7f4287dbc1e590265f50ceda1b40ed2bb31bbbb"

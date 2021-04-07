@@ -147,8 +147,8 @@ function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNA
     return res
 end
 
-struct AlignmentPart
-    ref::Interval{Vector{Annotation}}
+struct Alignment
+    ref::Interval{AlignmentAnnotation}
     seq::Interval{Nothing}
     isprimary::Bool
 end
@@ -184,36 +184,24 @@ function positions(cigar::AbstractString)
     return seqstart, seqstop, relrefstop, seqlen
 end
 
-function AlignmentPart(xapart::Union{String, SubString{String}})
+function Alignment(xapart::Union{String, SubString{String}})
     chr, pos, cigar, nm = split(xapart, ",")
     refstart = parse(Int, pos)
     strand = refstart > 0 ? Strand('+') : Strand('-')
     refstart *= sign(refstart)
     readstart, readstop, relrefstop, readlen = positions(cigar)
-    ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, Vector{Annotation}())
+    ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, AlignmentAnnotation())
     seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
-    return AlignmentPart(ref_interval, seq_interval, false)
+    return Alignment(ref_interval, seq_interval, false)
 end
 
-annotations(alnpart::AlignmentPart) = alnpart.ref.metadata
-annotationnames(alnpart::AlignmentPart) = Set(annotation.name for annotation in annotations(alnpart))
-refinterval(alnpart::AlignmentPart) = alnpart.ref
-readinterval(alnpart::AlignmentPart) = alnpart.seq
-
-hasannotation(alnpart::AlignmentPart) = !isempty(annotations(alnpart))
-function hasannotation(alnpart::AlignmentPart, annotation_name::String)
-    for annot in annotations(alnpart)
-        annot.name == annotation_name && (return true)
-    end
-    return false
-end
-
-function findfirst(alnpart::AlignmentPart, type::String)
-    for annotation in annotations(alnpart)
-        annotation.type == type && return annotation
-    end
-    return nothing
-end
+annotation(aln::Alignment) = aln.ref.metadata
+annotationname(aln::Alignment) = annotation(aln).name
+annotationtype(aln::Alignment) = annotation(aln).type
+annotationoverlap(aln::Alignment) = annotation(aln).overlap
+refinterval(aln::Alignment) = aln.ref
+readinterval(aln::Alignment) = aln.seq
+hasannotation(aln::Alignment) = !isempty(annotation(aln))
 
 @inline function translateddata(data::SubArray{UInt8,1})
     for i in 1:length(data)
@@ -256,12 +244,12 @@ function nmtag(record::BAM.Record)
     return nmtag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
 end
 
-struct ReadAlignment
-    parts::Vector{AlignmentPart}
+struct AlignedRead
+    alns::StructArray{Alignment}
 end
 
-function ReadAlignment(record::BAM.Record; invertstrand=false)
-    BAM.ismapped(record) || return ReadAlignment([])
+function AlignedRead(record::BAM.Record; invertstrand=false)
+    BAM.ismapped(record) || return AlignedRead([])
     xa = xatag(record)
     if !isnothing(xa)
         leftest = 0
@@ -274,37 +262,39 @@ function ReadAlignment(record::BAM.Record; invertstrand=false)
             intpos = abs(parse(Int, pos))
             intpos < leftestpos && (leftest = i; leftestpos=intpos)
         end
-        leftest != 0 && (return ReadAlignment([AlignmentPart(xastrings[leftest])]))
+        leftest != 0 && (return AlignedRead([Alignment(xastrings[leftest])]))
     end
     readstart, readstop, relrefstop, readlen = positions(BAM.cigar(record))
     strand = BAM.ispositivestrand(record) ? Strand('+') : Strand('-')
-    ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, Vector{Annotation}())
+    ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, AlignmentAnnotation())
     seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
-    aln_part = AlignmentPart(ref_interval, seq_interval, BAM.isprimary(record))
-    return ReadAlignment([aln_part])
+    aln_part = Alignment(ref_interval, seq_interval, BAM.isprimary(record))
+    return AlignedRead([aln_part])
 end
 
-parts(readalignment::ReadAlignment) = readalignment.parts
-count(readalignment::ReadAlignment) = length(readalignment.parts)
-merge!(readaln1::ReadAlignment, readaln2::ReadAlignment) = append!(readaln1.parts, readaln2.parts)
-Base.iterate(readalignment::ReadAlignment) = iterate(readalignment.parts)
-Base.iterate(readalignment::ReadAlignment, state::Int) = iterate(readalignment.parts, state)
-Base.getindex(readaln::ReadAlignment, i::Int64) = readaln.parts[i]
+alignments(alnreads::AlignedRead) = alnreads.alns
+count(alnreads::AlignedRead) = length(alnreads.alns)
+merge!(alnread1::AlignedRead, alnread2::AlignedRead) = append!(alnread1.alns, alnread2.alns)
+hasannotation(alnread::AlignedRead) = any([!isempty(annotation(alnpart)) for alnpart in alnread])
+isfullyannotated(alnread::AlignedRead) = all([!isempty(annotation(alnpart)) for alnpart in alnread])
 
-function Base.show(readaln::ReadAlignment)
-    println("Alignment with $(length(readaln.parts)) part(s):")
-    for part in readaln.parts
+Base.isempty(alnreads::AlignedRead) = isempty(alnreads.alns)
+Base.iterate(alnreads::AlignedRead) = iterate(alnreads.alns)
+Base.iterate(alnreads::AlignedRead, state::Int) = iterate(alnreads.alns, state)
+Base.getindex(alnreads::AlignedRead, i::Int64) = alnreads.alns[i]
+
+function Base.show(alnread::AlignedRead)
+    println("Alignment with $(length(alnread.alns)) part(s):")
+    for part in alnread.alns
         print("   $(part.ref.strand): [$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) - ($(part.seq.first), $(part.seq.last)) on read - ")
         annotation_string = join([anno.type*":"*anno.name for anno in part.ref.metadata], ";")
         isempty(annotation_string) ? println("not annotated.") : println("annotations: $annotation_string")
     end
 end
 
-hasannotation(readaln::ReadAlignment) = !all([isempty(annotations(alnpart)) for alnpart in readaln])
-isfullyannotated(readaln::ReadAlignment) = !any([isempty(annotations(alnpart)) for alnpart in readaln])
-function hasannotation(readaln::ReadAlignment, annotation_name::String)
-    for part in readaln
-        hasannotation(part, annotation_name) && (return true)
+function hasannotation(alnread::AlignedRead, annotation_name::String)
+    for part in alnread
+        annotationname(part) == annotation_name && (return true)
     end
     return false
 end
@@ -315,19 +305,11 @@ function overlapdistance(i1::Interval, i2::Interval)::Float64
 end
 distance(i1::Interval, i2::Interval)::Float64 = -min(0, overlapdistance(i1,i2))
 
-function annotationoverlap(part1::AlignmentPart, part2::AlignmentPart)
+function countconcordant(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100)
     c = 0
-    for a1 in annotations(part1), a2 in annotations(part2)
-        a1.name == a2.name && (c+=1)
-    end
-    return c
-end
-
-function countconcordant(readaln1::ReadAlignment, readaln2::ReadAlignment; max_distance=100)
-    c = 0
-    for part in readaln1, otherpart in readaln2
+    for part in alnread1, otherpart in alnread2
         if hasannotation(part) && hasannotation(otherpart)
-            annotationoverlap(part, otherpart) > 0 && (c+=1)
+            annotationname(part) == annotationname(otherpart) && (c+=1)
         else
             distance(refinterval(part), refinterval(otherpart)) > max_distance && (c+=1)
         end
@@ -335,24 +317,22 @@ function countconcordant(readaln1::ReadAlignment, readaln2::ReadAlignment; max_d
     return c
 end
 
-function ischimeric(readaln::ReadAlignment)
-    return count(readaln) > 1 ? true : false
+function ischimeric(alnread::AlignedRead)
+    return count(alnread) > 1 ? true : false
 end
 
-function ischimeric(readaln1::ReadAlignment, readaln2::ReadAlignment; max_distance=100)
-    (ischimeric(readaln1) || ischimeric(readaln2)) && (return true)
-    return (count(readaln1) + count(readaln2) - countconcordant(readaln1, readaln2; max_distance=max_distance)) >= 2
+function ischimeric(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100)
+    (ischimeric(alnread1) || ischimeric(alnread2)) && (return true)
+    return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; max_distance=max_distance)) >= 2
 end
 
-function istriplet(readaln1::ReadAlignment, readaln2::ReadAlignment; max_distance=100)
-    2 < (count(readaln1) + count(readaln2)) < 5 || (return false)
-    return (count(readaln1) + count(readaln2) - countconcordant(readaln1, readaln2; max_distance=max_distance)) == 3
+function istriplet(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100)
+    2 < (count(alnread1) + count(alnread2)) < 5 || (return false)
+    return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; max_distance=max_distance)) == 3
 end
-
-Base.isempty(readalignment::ReadAlignment) = isempty(readalignment.parts)
 
 struct Alignments <: AlignmentContainer
-    dict::Dict{UInt, ReadAlignment}
+    dict::Dict{UInt, AlignedRead}
     name::Union{String,Nothing}
 end
 
@@ -379,7 +359,7 @@ function Alignments(bam_file::String; stop_at=nothing, name=nothing)
 end
 
 struct PairedAlignments <: AlignmentContainer
-    dict::Dict{UInt, Tuple{ReadAlignment, ReadAlignment}}
+    dict::Dict{UInt, Tuple{AlignedRead, AlignedRead}}
     name::Union{String, Nothing}
 end
 
@@ -440,18 +420,16 @@ end
 function read_bam(bam_file::String; stop_at=nothing)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
-    reads1 = Dict{UInt, ReadAlignment}()
-    reads2 = Dict{UInt, ReadAlignment}()
+    reads1 = Dict{UInt, AlignedRead}()
+    reads2 = Dict{UInt, AlignedRead}()
     is_bitstring = is_bitstring_bam(bam_file)
     c = 0
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
         id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(record.data[1:BAM.seqname_length(record)])
-        #println(record.data)
-        #println(record.data[1:BAM.templength(record)])
         current_read_dict = isread2(record) && ispaired(record) ? reads2 : reads1
-        id in keys(current_read_dict) ? merge!(current_read_dict[id], ReadAlignment(record)) : push!(current_read_dict, id=>ReadAlignment(record))
+        id in keys(current_read_dict) ? merge!(current_read_dict[id], AlignedRead(record)) : push!(current_read_dict, id=>AlignedRead(record))
         c += 1
         isnothing(stop_at) || ((c >= stop_at) && break) 
     end
@@ -460,12 +438,19 @@ function read_bam(bam_file::String; stop_at=nothing)
 end
 
 strand_filter(a::Interval, b::Interval) = strand(a) == strand(b)
+length(i::Interval{AlignmentAnnotation}) = rightposition(i) - leftposition(i) + 1
+length(i::Interval{Annotation}) = rightposition(i) - leftposition(i) + 1
 
 function annotate!(alns::Alignments, features::Features)
-    for alignment in alns
-        for part in alignment
-            for feature_interval in eachoverlap(features.list, part.ref, filter=strand_filter)
-                push!(part.ref.metadata, feature_interval.metadata)
+    for alignedread in alns
+        for alignment in alignedread
+            for feature_interval in eachoverlap(features.list, refinterval(alignment), filter=strand_filter)
+                olp = overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))
+                if annotationoverlap(refinterval(alignment)) > olp
+                    alignment.ref.metadata.name = feature_interval.metadata.name
+                    alignment.ref.metadata.type = feature_interval.metadata.type
+                    alignment.ref.metadata.overlap = olp
+                end
             end
         end
     end
@@ -473,14 +458,16 @@ end
 
 function annotate!(alns::PairedAlignments, features::Features)
     for (alignment1, alignment2) in alns
-        for part in alignment1
-            for feature in eachoverlap(features.list, part.ref; filter=strand_filter)
-                push!(part.ref.metadata, feature.metadata)
-            end
-        end
-        for part in alignment2
-            for feature in eachoverlap(features.list, part.ref; filter=strand_filter)
-                push!(part.ref.metadata, feature.metadata)
+        for alignedread in [alignment1, alignment2]
+            for alignment in alignedread
+                for feature_interval in eachoverlap(features.list, refinterval(alignment), filter=strand_filter)
+                    olp = overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))
+                    if annotationoverlap(refinterval(alignment)) > olp
+                        alignment.ref.metadata.name = feature_interval.metadata.name
+                        alignment.ref.metadata.type = feature_interval.metadata.type
+                        alignment.ref.metadata.overlap = olp
+                    end
+                end
             end
         end
     end

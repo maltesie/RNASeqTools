@@ -3,10 +3,23 @@ struct Annotation
     name::String
 end
 
+function Annotation()
+    Annotation("", "")
+end
+
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
-Base.isnothing(annotation::Annotation) = isnothing(annotation.type) && isnothing(annotation.name)
-name(interval::Interval{Annotation}) = interval.metadata.name
-type(interval::Interval{Annotation}) = interval.metadata.type
+
+struct AlignmentAnnotation
+    type::String
+    name::String
+    overlap::UInt8
+end
+
+function AlignmentAnnotation()
+    AlignmentAnnotation("", "", 0)
+end
+
+Base.isempty(annotation::AlignmentAnnotation) = isempty(annotation.type) && isempty(annotation.name) && (annotation.overlap==0)
 
 struct Features <: AnnotationContainer
     list::IntervalCollection{Annotation}
