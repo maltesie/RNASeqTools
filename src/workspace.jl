@@ -150,34 +150,41 @@ function prepare_caulo()
     align_mem(trimmed_files, genome)
 end
 
-prepare_caulo()
+#prepare_caulo()
+using Combinatorics
 
 function check_rilseq_caulo()
     features = Features("/home/abc/Data/caulo/annotation/NC_011916.gff", "gene", "Name")
-    @time alignments = PairedAlignments("/home/abc/Data/caulo/rilseq/")
+    @time alignments = PairedAlignments("/home/abc/Data/caulo/rilseq/trimmed_CC3_1.bam")
     #reads = PairedReads("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.fasta.gz", "/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_2.fasta.gz")
     @time annotate!(alignments, features)  
     c = 0  
-    c2 = 0
-    results = Dict{String, Set{LongDNASeq}}()
-    counts = Dict{LongDNASeq, Int}()
+
+    counts = Dict{String, Int}()
     @time for (key,(alignment1, alignment2)) in alignments.dict
         !ischimeric(alignment1, alignment2) && continue
-        c2 += 1
-        #show(alignment1)
-        #show(alignment2)
-        #println("")
-        #hasannotation(alignment2, "23Sc") && println("hey")
-        if istriplet(alignment1, alignment2)
-            #read1, read2 = reads.dict[key]
-            #println(read1)
-            #show(alignment1)
-            #show(alignment2)
-            #println(read2)
-            #println("")
-            c+=1
+        c += 1
+        if hasannotation(alignment1) && hasannotation(alignment2)
+            names = Set{String}()
+            rna = false
+            for aln1 in alignment1
+                startswith(annotationname(aln1), "CCNA_R") && (rna=true) 
+                push!(names, annotationname(aln1))
+            end
+            for aln2 in alignment2
+                startswith(annotationname(aln2), "CCNA_R") && (rna=true) 
+                push!(names, annotationname(aln2))
+            end
+            !rna && continue
+            for (p1, p2) in combinations(names, 2)
+                key = "$p1-$p2"
+                key in keys(counts) ? counts[key] += 1 : counts[key] = 1
+            end
         end
-        #c > 1 && break
     end
+    outstring = join(["$key,$value" for (key,value) in counts], "\n")
+    write("/home/abc/Data/caulo/chimeras.csv", outstring)
     println(c, " von ", c2)
 end
+
+check_rilseq_caulo()
