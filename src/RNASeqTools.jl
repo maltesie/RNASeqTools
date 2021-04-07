@@ -1,7 +1,7 @@
 module RNASeqTools
 
 using XAM, FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig
-using BioAlignments, BioSequences, GenomicFeatures
+using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 using Plots, Measures
 using Dash, DashHtmlComponents, DashCoreComponents, DashTable
 

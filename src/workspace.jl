@@ -142,3 +142,42 @@ function check_features()
     println(values(coverage, Interval("chr1", 450, 550, Strand('+'))))
 end
 
+function prepare_caulo()
+    files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fastq.gz")
+    trim_fastp(files; umi=9)
+    trimmed_files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fastq.gz"; prefix="trimmed")
+    genome = Genome("/home/abc/Data/caulo/genome/GCF_000022005.1_ASM2200v1_genomic.fna")
+    align_mem(trimmed_files, genome)
+end
+
+prepare_caulo()
+
+function check_rilseq_caulo()
+    features = Features("/home/abc/Data/caulo/annotation/NC_011916.gff", "gene", "Name")
+    @time alignments = PairedAlignments("/home/abc/Data/caulo/rilseq/")
+    #reads = PairedReads("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.fasta.gz", "/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_2.fasta.gz")
+    @time annotate!(alignments, features)  
+    c = 0  
+    c2 = 0
+    results = Dict{String, Set{LongDNASeq}}()
+    counts = Dict{LongDNASeq, Int}()
+    @time for (key,(alignment1, alignment2)) in alignments.dict
+        !ischimeric(alignment1, alignment2) && continue
+        c2 += 1
+        #show(alignment1)
+        #show(alignment2)
+        #println("")
+        #hasannotation(alignment2, "23Sc") && println("hey")
+        if istriplet(alignment1, alignment2)
+            #read1, read2 = reads.dict[key]
+            #println(read1)
+            #show(alignment1)
+            #show(alignment2)
+            #println(read2)
+            #println("")
+            c+=1
+        end
+        #c > 1 && break
+    end
+    println(c, " von ", c2)
+end

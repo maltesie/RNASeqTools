@@ -1,89 +1,43 @@
-function align_backtrack(in_file::String, out_file::String, genome_file::String; 
-    max_miss=2, bwa_bin="bwa", sam_bin="samtools")
-
-    cmd = pipeline(`$bwa_bin index -a is $genome_file`)
-    run(cmd)
-    cmd = pipeline(`$bwa_bin aln -n $max_miss -t 6 -R 500 $genome_file $in_file`, stdout="tmp.sai")
-    run(cmd)
-    cmd = pipeline(`$bwa_bin samse $genome_file tmp.sai $in_file`, stdout="tmp.bwa")
-    run(cmd)
-    cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
-    run(cmd)
-    cmd = pipeline(`$sam_bin sort tmp.view -o $out_file`)
-    run(cmd)
-    cmd = pipeline(`$sam_bin index $out_file`)
-    run(cmd)
-
-    rm("tmp.sai")
-    rm("tmp.bwa")
-    rm("tmp.view")
-end
-
-function align_backtrack(in_file1::String, in_file2::String, out_file::String, genome_file::String; 
-    max_miss=2, bwa_bin="bwa", sam_bin="samtools")
-        
-    cmd = pipeline(`./bin/bwa index -a is $genome_file`, stdout=nothing)
-    run(cmd)
-    cmd = pipeline(`./bin/bwa aln -n $max_miss -t 6 -R 500 $genome_file $in_file1`, stdout="tmp1.sai")
-    run(cmd)
-    cmd = pipeline(`./bin/bwa aln -n $max_miss -t 6 -R 500 $genome_file $in_file2`, stdout="tmp2.sai")
-    run(cmd)
-    cmd = pipeline(`./bin/bwa sampe -a 1500 -P $genome_file tmp1.sai tmp2.sai $in_file1 $in_file2`, stdout="tmp.bwa")
-    run(cmd)
-    cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
-    run(cmd)
-    cmd = pipeline(`$sam_bin sort tmp.view -o $out_file`)
-    run(cmd)
-    cmd = pipeline(`$sam_bin index $out_file`)
-    run(cmd)
-
-    rm("tmp1.sai")
-    rm("tmp2.sai")
-    rm("tmp.bwa")
-    rm("tmp.view")
-end
-
-function align_backtrack(reads::Reads, out_file::String, genome_file::String; max_miss=2, bwa_bin="bwa", sam_bin="samtools")
-    tmp_file = joinpath(dirname(out_file), "temp.fasta")
-    write(tmp_file, reads)
-    align_backtrack(tmp_file, out_file, genome_file; max_miss=max_miss, bwa_bin=bwa_bin, sam_bin=sam_bin)
-    rm(tmp_file)
-end
-
 function align_mem(in_file::String, out_file::String, genome_file::String; 
     z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
 
+    tmp_bwa = joinpath(dirname(in_file), "tmp.bwa")
+    tmp_view = joinpath(dirname(in_file), "tmp.view")
+
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
-    cmd = pipeline(`$bwa_bin mem -d $z_score -v 1 -t 6 $genome_file $in_file`, stdout="tmp.bwa")
+    cmd = pipeline(`$bwa_bin mem -d $z_score -v 1 -t 6 $genome_file $in_file`, stdout=tmp_bwa)
     run(cmd)
-    cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
+    cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout=tmp_view)
     run(cmd)
     cmd = pipeline(`$sam_bin sort tmp.view -o $out_file`)
     run(cmd)
     cmd = pipeline(`$sam_bin index $out_file`)
     run(cmd)
 
-    rm("tmp.bwa")
-    rm("tmp.view")
+    rm(tmp_bwa)
+    rm(tmp_view)
 end
 
 function align_mem(in_file1::String, in_file2::String, out_file::String, genome_file::String; 
     z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
 
+    tmp_bwa = joinpath(dirname(in_file1), "tmp.bwa")
+    tmp_view = joinpath(dirname(in_file1), "tmp.view")
+
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
-    cmd = pipeline(`$bwa_bin mem -d $z_score -v 1 -t 6 $genome_file $in_file1 $in_file2`, stdout="tmp.bwa")
+    cmd = pipeline(`$bwa_bin mem -d $z_score -v 1 -t 6 $genome_file $in_file1 $in_file2`, stdout=tmp_bwa)
     run(cmd)
-    cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout="tmp.view")
+    cmd = pipeline(`$sam_bin view -u tmp.bwa`, stdout=tmp_view)
     run(cmd)
     cmd = pipeline(`$sam_bin sort tmp.view -o $out_file`)
     run(cmd)
     cmd = pipeline(`$sam_bin index $out_file`)
     run(cmd)
 
-    rm("tmp.bwa")
-    rm("tmp.view")
+    rm(tmp_bwa)
+    rm(tmp_view)
 end
 
 function align_mem(read_files::SingleTypeFiles, genome::Genome; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
@@ -200,6 +154,10 @@ annotationname(aln::Alignment) = annotation(aln).name
 annotationtype(aln::Alignment) = annotation(aln).type
 annotationoverlap(aln::Alignment) = annotation(aln).overlap
 refinterval(aln::Alignment) = aln.ref
+refname(aln::Alignment) = aln.ref.seqname
+BioGenerics.leftposition(aln::Alignment) = aln.ref.first
+BioGenerics.rightposition(aln::Alignment) = aln.ref.last
+GenomicFeatures.strand(aln::Alignment) = aln.ref.strand
 readinterval(aln::Alignment) = aln.seq
 hasannotation(aln::Alignment) = !isempty(annotation(aln))
 
@@ -445,9 +403,8 @@ function annotate!(alns::Alignments, features::Features)
             for feature_interval in eachoverlap(features.list, refinterval(alignment), filter=strand_filter)
                 olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
                 if annotationoverlap(alignment) < olp
-                    alignment.ref.metadata.name = feature_interval.metadata.name
-                    alignment.ref.metadata.type = feature_interval.metadata.type
-                    alignment.ref.metadata.overlap = olp
+                    alignment = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
+                                            AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.name)
                 end
             end
         end
@@ -461,9 +418,8 @@ function annotate!(alns::PairedAlignments, features::Features)
                 for feature_interval in eachoverlap(features.list, refinterval(alignment), filter=strand_filter)
                     olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
                     if annotationoverlap(alignment) < olp
-                        alignment.ref.metadata.name = feature_interval.metadata.name
-                        alignment.ref.metadata.type = feature_interval.metadata.type
-                        alignment.ref.metadata.overlap = olp
+                        alignment = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
+                                            AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
                     end
                 end
             end
