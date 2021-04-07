@@ -93,7 +93,7 @@ function check_rilseq()
     push!(features, Interval("rybb", 1, 70, Strand('-'), RNASeqTools.Annotation("rybb1", "rybb2")))
     @time alignments = PairedAlignments("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam")
     #reads = PairedReads("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.fasta.gz", "/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_2.fasta.gz")
-    annotate!(alignments, features)  
+    @time annotate!(alignments, features)  
     c = 0  
     c2 = 0
     results = Dict{String, Set{LongDNASeq}}()
@@ -101,6 +101,9 @@ function check_rilseq()
     @time for (key,(alignment1, alignment2)) in alignments.dict
         !ischimeric(alignment1, alignment2) && continue
         c2 += 1
+        #show(alignment1)
+        #show(alignment2)
+        #println("")
         #hasannotation(alignment2, "23Sc") && println("hey")
         if istriplet(alignment1, alignment2)
             #read1, read2 = reads.dict[key]
@@ -111,6 +114,7 @@ function check_rilseq()
             #println("")
             c+=1
         end
+        #c > 1 && break
     end
     println(c, " von ", c2)
 end
@@ -137,3 +141,4 @@ function check_features()
     coverage = Coverage("/home/abc/Workspace/data.bw", :reverse)
     println(values(coverage, Interval("chr1", 450, 550, Strand('+'))))
 end
+

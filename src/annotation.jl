@@ -9,7 +9,7 @@ end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
 
-struct AlignmentAnnotation
+mutable struct AlignmentAnnotation
     type::String
     name::String
     overlap::UInt8
