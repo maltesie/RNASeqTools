@@ -1,4 +1,4 @@
-struct Annotation
+struct Annotation <: AnnotationStyle
     type::String
     name::String
 end
@@ -9,7 +9,7 @@ end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
 
-struct AlignmentAnnotation
+struct AlignmentAnnotation <: AnnotationStyle
     type::String
     name::String
     overlap::UInt8
@@ -19,6 +19,9 @@ function AlignmentAnnotation()
     AlignmentAnnotation("", "", 0)
 end
 
+type(feature::Interval{T}) where T <: AnnotationStyle = feature.metadata.type
+name(feature::Interval{T}) where T <: AnnotationStyle = feature.metadata.name
+refname(feature::Interval{T}) where T <: AnnotationStyle = feature.seqname
 Base.isempty(annotation::AlignmentAnnotation) = isempty(annotation.type) && isempty(annotation.name) && (annotation.overlap==0)
 
 struct Features <: AnnotationContainer
@@ -50,7 +53,7 @@ function merge!(features1::Features, features2::Features)
 end
 
 Base.iterate(features::Features) = iterate(features.list)
-Base.iterate(features::Features, state) = iterate(features.list, state)
+Base.iterate(features::Features, state::Tuple{Int64,IntervalBTree{Int64,Interval{Annotation},64},IntervalBTreeIteratorState{Int64,Interval{Annotation},64}}) = iterate(features.list, state)
 Base.length(features::Features) = length(features.list)
 
 function Base.write(file::String, features::Features)
@@ -61,4 +64,24 @@ function Base.write(file::String, features::Features)
         write(writer, record)
     end
     close(writer)
+end
+
+function addutrs!(features::Features, typ::String)
+    new_features = Vector{Interval{Annotation}}()
+    for feature in features
+        type(feature) != typ && continue
+        start, stop = leftposition(feature), rightposition(feature)
+        if strand(feature) == STRAND_POS
+            global fiveutr = Interval(refname(feature), start-150, start-1, STRAND_POS, Annotation("5UTR", name(feature)))
+            global threeutr = Interval(refname(feature), stop+1, stop+150, STRAND_POS, Annotation("3UTR", name(feature)))
+        else
+            global fiveutr = Interval(refname(feature), stop+1, stop+150, STRAND_NEG, Annotation("5UTR", name(feature)))
+            global threeutr = Interval(refname(feature), start-150, start-1, STRAND_NEG, Annotation("3UTR", name(feature)))
+        end
+        push!(new_features, fiveutr)
+        push!(new_features, threeutr)
+    end
+    for feature in new_features
+        push!(features, feature)
+    end
 end

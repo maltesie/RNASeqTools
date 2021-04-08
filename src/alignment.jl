@@ -233,8 +233,8 @@ end
 alignments(alnread::AlignedRead) = alnread.alns
 count(alnread::AlignedRead) = length(alnread.alns)
 merge!(alnread1::AlignedRead, alnread2::AlignedRead) = append!(alnread1.alns, alnread2.alns)
-hasannotation(alnread::AlignedRead) = any([hasannotation(alnpart) for alnpart in alnread])
-isfullyannotated(alnread::AlignedRead) = all([hasannotation(alnpart) for alnpart in alnread])
+hasannotation(alnread::AlignedRead) = any(hasannotation(alnpart) for alnpart in alnread)
+isfullyannotated(alnread::AlignedRead) = all(hasannotation(alnpart) for alnpart in alnread)
 
 Base.isempty(alnread::AlignedRead) = isempty(alnread.alns)
 Base.iterate(alnread::AlignedRead) = iterate(alnread.alns)
@@ -399,12 +399,12 @@ strand_filter(a::Interval, b::Interval) = strand(a) == strand(b)
 
 function annotate!(alns::Alignments, features::Features)
     for alignedread in alns
-        for alignment in alignedread
+        for (i,alignment) in enumerate(alignedread)
             for feature_interval in eachoverlap(features.list, refinterval(alignment), filter=strand_filter)
                 olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
                 if annotationoverlap(alignment) < olp
-                    alignment = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
-                                            AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.name)
+                    alignedread.alns[i] = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
+                                            AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
                 end
             end
         end
@@ -413,12 +413,13 @@ end
 
 function annotate!(alns::PairedAlignments, features::Features)
     for (alignment1, alignment2) in alns
-        for alignedread in [alignment1, alignment2]
-            for alignment in alignedread
+        both_alns = [alignment1, alignment2]
+        for (i,alignedread) in enumerate(both_alns)
+            for (j,alignment) in enumerate(alignedread)
                 for feature_interval in eachoverlap(features.list, refinterval(alignment), filter=strand_filter)
                     olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
                     if annotationoverlap(alignment) < olp
-                        alignment = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
+                        both_alns[i].alns[j] = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
                                             AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
                     end
                 end

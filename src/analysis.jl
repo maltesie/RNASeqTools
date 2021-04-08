@@ -70,7 +70,7 @@ function tss(notex::Coverage, tex::Coverage; min_step=10, min_ratio=1.3)
     chrs = [chr[1] for chr in notex.chroms]
     notex_f, notex_r = values(notex)
     tex_f, tex_r = values(tex)
-    intervals = Vector{Interval{Annotation}}()
+    intervals = Vector{Interval{Float64}}()
     for chr in chrs
         d_forward = diff(tex_f[chr])
         d_reverse = diff(tex_r[chr])
@@ -88,7 +88,7 @@ end
 
 function terms(coverage::Coverage; min_step=10)
     f, r = values(coverage)
-    intervals = Vector{Interval{Annotation}}()
+    intervals = Vector{Interval{Float64}}()
     chrs = [chr[1] for chr in coverage.chroms]
     for chr in chrs
         d_forward = diff(f[chr])

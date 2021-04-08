@@ -87,39 +87,7 @@ function combine_annotations()
 end
 #combine_annotations()
 
-function check_rilseq()
-    features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6_utrs.gff3", ["mRNA", "5UTR", "3UTR", "tRNA", "rRNA"], "Name")
-    push!(features, Interval("rybb", 1, 70, Strand('+'), RNASeqTools.Annotation("rybb1", "rybb2"))) 
-    push!(features, Interval("rybb", 1, 70, Strand('-'), RNASeqTools.Annotation("rybb1", "rybb2")))
-    @time alignments = PairedAlignments("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam")
-    #reads = PairedReads("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.fasta.gz", "/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_2.fasta.gz")
-    @time annotate!(alignments, features)  
-    c = 0  
-    c2 = 0
-    results = Dict{String, Set{LongDNASeq}}()
-    counts = Dict{LongDNASeq, Int}()
-    @time for (key,(alignment1, alignment2)) in alignments.dict
-        !ischimeric(alignment1, alignment2) && continue
-        c2 += 1
-        #show(alignment1)
-        #show(alignment2)
-        #println("")
-        #hasannotation(alignment2, "23Sc") && println("hey")
-        if istriplet(alignment1, alignment2)
-            #read1, read2 = reads.dict[key]
-            #println(read1)
-            #show(alignment1)
-            #show(alignment2)
-            #println(read2)
-            #println("")
-            c+=1
-        end
-        #c > 1 && break
-    end
-    println(c, " von ", c2)
-end
 
-#check_rilseq()
 using BigWig
 
 function check_coverage()
@@ -151,13 +119,46 @@ function prepare_caulo()
 end
 
 #prepare_caulo()
-using Combinatorics
+
+function check_rilseq()
+    features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6_utrs.gff3", ["mRNA", "5UTR", "3UTR", "tRNA", "rRNA"], "Name")
+    push!(features, Interval("rybb", 1, 70, Strand('+'), RNASeqTools.Annotation("rybb1", "rybb2"))) 
+    push!(features, Interval("rybb", 1, 70, Strand('-'), RNASeqTools.Annotation("rybb1", "rybb2")))
+    @time alignments = PairedAlignments("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam")
+    #reads = PairedReads("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.fasta.gz", "/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_2.fasta.gz")
+    @time annotate!(alignments, features)  
+    c = 0  
+    c2 = 0
+    results = Dict{String, Set{LongDNASeq}}()
+    counts = Dict{LongDNASeq, Int}()
+    @time for (key,(alignment1, alignment2)) in alignments.dict
+        !ischimeric(alignment1, alignment2) && continue
+        c2 += 1
+        #show(alignment1)
+        #show(alignment2)
+        #println("")
+        #println(hasannotation(alignment2))
+        if istriplet(alignment1, alignment2)
+            #read1, read2 = reads.dict[key]
+            #println(read1)
+            #show(alignment1)
+            #show(alignment2)
+            #println(read2)
+            #println("")
+            c+=1
+        end
+        #c > 1 && break
+    end
+    println(c, " von ", c2)
+end
+
+#check_rilseq()
 
 function check_rilseq_caulo()
     features = Features("/home/abc/Data/caulo/annotation/NC_011916.gff", "gene", "Name")
-    @time alignments = PairedAlignments("/home/abc/Data/caulo/rilseq/trimmed_CC3_1.bam")
-    #reads = PairedReads("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.fasta.gz", "/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_2.fasta.gz")
-    @time annotate!(alignments, features)  
+    @time alignments = PairedAlignments("/home/abc/Data/caulo/rilseq/trimmed_CC1_1.bam")
+    @time annotate!(alignments, features) 
+    addutrs!(features, "gene") 
     c = 0  
 
     counts = Dict{String, Int}()
@@ -175,16 +176,16 @@ function check_rilseq_caulo()
                 startswith(annotationname(aln2), "CCNA_R") && (rna=true) 
                 push!(names, annotationname(aln2))
             end
-            !rna && continue
-            for (p1, p2) in combinations(names, 2)
-                key = "$p1-$p2"
-                key in keys(counts) ? counts[key] += 1 : counts[key] = 1
-            end
+            #!rna && continue
+
+            key = join(names, "-")
+            key in keys(counts) ? counts[key] += 1 : counts[key] = 1
+
         end
     end
     outstring = join(["$key,$value" for (key,value) in counts], "\n")
-    write("/home/abc/Data/caulo/chimeras.csv", outstring)
-    println(c, " von ", c2)
+    write("/home/abc/Data/caulo/chimeras2.csv", outstring)
+    println(c)
 end
 
 check_rilseq_caulo()
