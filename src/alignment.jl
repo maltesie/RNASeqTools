@@ -263,18 +263,18 @@ function overlapdistance(i1::Interval, i2::Interval)::Float64
 end
 distance(i1::Interval, i2::Interval)::Float64 = -min(-0.0, overlapdistance(i1,i2))
 
-function countconcordant(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, only_distance=false)
+function countconcordant(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, check_annotation=true)
     c = 0
     for part in alnread1, otherpart in alnread2
-        if !only_distance
-            if hasannotation(part) && hasannotation(otherpart)
-                annotationname(part) == annotationname(otherpart) && (c+=1)
-            else
-                distance(refinterval(part), refinterval(otherpart)) < max_distance && (c+=1)
+        if check_annotation 
+            if hasannotation(part) && hasannotation(otherpart) 
+                if (annotationname(part) == annotationname(otherpart))
+                    c+=1
+                    continue
+                end
             end
-        else
-            distance(refinterval(part), refinterval(otherpart)) < max_distance && (c+=1)
         end
+        distance(refinterval(part), refinterval(otherpart)) < max_distance && (c+=1)
     end
     return c
 end
@@ -283,14 +283,14 @@ function ischimeric(alnread::AlignedRead)
     return count(alnread) > 1 ? true : false
 end
 
-function ischimeric(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, only_distance=false)
+function ischimeric(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, check_annotation=true)
     (ischimeric(alnread1) || ischimeric(alnread2)) && (return true)
-    return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; max_distance=max_distance, only_distance=only_distance)) >= 2
+    return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; max_distance=max_distance, check_annotation=check_annotation)) >= 2
 end
 
-function istriplet(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, only_distance=false)
+function istriplet(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, check_annotation=true)
     2 < (count(alnread1) + count(alnread2)) < 5 || (return false)
-    return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; max_distance=max_distance, only_distance=only_distance)) == 3
+    return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; max_distance=max_distance, check_annotation=check_annotation)) == 3
 end
 
 struct Alignments <: AlignmentContainer

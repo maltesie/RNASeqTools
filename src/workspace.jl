@@ -201,14 +201,23 @@ end
 
 function check_rilseq_vibrio()
     features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6_rnaseq.gff3", ["mRNA", "5UTR", "3UTR", "sRNA", "IGR"], "Name")
+    push!(features, Interval("rybb", 1, 70, Strand('+'), RNASeqTools.Annotation("sRNA", "rybb"))) 
+    push!(features, Interval("rybb", 1, 70, Strand('-'), RNASeqTools.Annotation("sRNA", "rybb")))
     c = 0 
     counts = Dict{String, Int}()
-    for bam in ["/home/abc/Data/vibrio/micha_rilseq/demultiplexed/trimmed_hfq_1_0.2_1.bam", "/home/abc/Data/vibrio/micha_rilseq/demultiplexed/trimmed_hfq_2_0.2_1.bam"]
+    for bam in ["/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam"]
     
-        @time alignments = PairedAlignments(bam; rev_comp=:read1)
+        @time alignments = PairedAlignments(bam)
         @time annotate!(alignments, features; prioritize_type="sRNA") 
         @time for (key,(alignment1, alignment2)) in alignments.dict
-            !ischimeric(alignment1, alignment2; max_distance=200, only_distance=true) && continue
+            !ischimeric(alignment1, alignment2; max_distance=200) && continue
+            for p1 in alignment1, p2 in alignment2
+                if "tuf" == annotationname(p1) || "tuf" == annotationname(p2)
+                    show(alignment1)
+                    show(alignment2)
+                    break
+                end
+            end
             c += 1
             if hasannotation(alignment1) && hasannotation(alignment2)
                 names = Set{String}()
@@ -232,7 +241,7 @@ function check_rilseq_vibrio()
         GC.gc()
     end
     outstring = join(["$key,$value" for (key,value) in counts], "\n")
-    write("/home/abc/Data/vibrio/micha_rilseq/chimeras_hfq_combined.csv", outstring)
+    write("/home/abc/Data/vibrio/library_rilseq/chimeras_library.csv", outstring)
     println(c)
 end
 
