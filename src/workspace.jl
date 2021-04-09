@@ -111,11 +111,13 @@ function check_features()
 end
 
 function prepare_caulo()
-    files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fastq.gz")
-    trim_fastp(files; umi=9)
-    trimmed_files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fastq.gz"; prefix="trimmed")
+    #files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fastq.gz")
+    #trim_fastp(files; umi=9)
+    #trimmed_files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fastq.gz"; prefix="rimmed")
+    #rev_comp(trimmed_files; treat=:read1)
+    reversed_files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fasta.gz"; prefix="trimmed")
     genome = Genome("/home/abc/Data/caulo/genome/GCF_000022005.1_ASM2200v1_genomic.fna")
-    align_mem(trimmed_files, genome)
+    align_mem(reversed_files, genome)
 end
 
 #prepare_caulo()
@@ -157,8 +159,8 @@ end
 function check_rilseq_caulo()
     features = Features("/home/abc/Data/caulo/annotation/NC_011916.gff", "gene", "Name")
     addutrs!(features, "gene") 
-    @time alignments = PairedAlignments("/home/abc/Data/caulo/rilseq/trimmed_CC4_1.bam")
-    @time annotate!(alignments, features) 
+    @time alignments = PairedAlignments("/home/abc/Data/caulo/rilseq/trimmed_CC3_1.bam")
+    @time annotate!(alignments, features; prioritize_type="gene") 
     c = 0 
     counts = Dict{String, Int}()
     @time for (key,(alignment1, alignment2)) in alignments.dict
@@ -190,17 +192,19 @@ end
 #check_rilseq_caulo()
 
 function prepare_vibrio()
-    files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fastq.gz")
-    trim_fastp(files; umi=9)
-    trimmed_files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fastq.gz"; prefix="trimmed")
-    genome = Genome("/home/abc/Data/caulo/genome/GCF_000022005.1_ASM2200v1_genomic.fna")
+    files = PairedSingleTypeFiles("/home/abc/Data/vibrio/micha_rilseq/demultiplexed/", ".fastq.gz")
+    trim_fastp(files)
+    trimmed_files = PairedSingleTypeFiles("/home/abc/Data/vibrio/micha_rilseq/demultiplexed/", ".fastq.gz"; prefix="trimmed")
+    genome = Genome("/home/abc/Data/vibrio/genome/NC_002505_6.fa")
     align_mem(trimmed_files, genome)
 end
 
+#prepare_vibrio()
+
 function check_rilseq_vibrio()
-    features = Features("/home/abc/Data/vibrio/annotation/NC_011916.gff", ["mRNA", "5UTR", "3UTR", "sRNA"], "Name")
-    @time alignments = PairedAlignments("/home/abc/Data/vibrio/micha_rilseq/")
-    @time annotate!(alignments, features) 
+    features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6_utrs.gff3", ["mRNA", "5UTR", "3UTR", "sRNA"], "Name")
+    @time alignments = PairedAlignments("/home/abc/Data/vibrio/micha_rilseq/demultiplexed/trimmed_hfq_2_0.2_1.bam")
+    @time annotate!(alignments, features; prioritize_type="sRNA") 
     c = 0 
     counts = Dict{String, Int}()
     @time for (key,(alignment1, alignment2)) in alignments.dict
@@ -225,8 +229,23 @@ function check_rilseq_vibrio()
         end
     end
     outstring = join(["$key,$value" for (key,value) in counts], "\n")
-    write("/home/abc/Data/caulo/chimeras3.csv", outstring)
+    write("/home/abc/Data/vibrio/micha_rilseq/chimeras_hfq_2.csv", outstring)
     println(c)
 end
 
-check_rilseq_vibrio()
+#check_rilseq_vibrio()
+
+function adjust_annotation()
+    features = Features("/home/abc/Data/caulo/annotation/NC_011916.gff", "gene", "Name")
+    new_features = Interval[]
+    for feature in features
+        startswith(annotationname(feature), "CCNA_R") ?
+        push!(new_features, Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), Annotation("sRNA", annotationname(feature)))) :
+        push!(new_features, Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), Annotation("mRNA", annotationname(feature))))
+    end
+    my_features = Features(IntervalCollection(new_features))
+    addutrs!(my_features, "mRNA")
+    write(my_features, "/home/abc/Data/caulo/annotation/NC_011916_utrs.gff")
+end
+
+adjust_annotation()

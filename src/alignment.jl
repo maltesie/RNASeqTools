@@ -103,7 +103,7 @@ end
 
 struct MyAlignment
     ref::Interval{AlignmentAnnotation}
-    seq::Interval{Nothing}
+    seq::UnitRange{Int}
     isprimary::Bool
 end
 
@@ -145,7 +145,7 @@ function MyAlignment(xapart::Union{String, SubString{String}})
     refstart *= sign(refstart)
     readstart, readstop, relrefstop, readlen = positions(cigar)
     ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, AlignmentAnnotation())
-    seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
+    seq_interval = strand === STRAND_POS ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
     return MyAlignment(ref_interval, seq_interval, false)
 end
 
@@ -225,7 +225,7 @@ function AlignedRead(record::BAM.Record; invertstrand=false)
     readstart, readstop, relrefstop, readlen = positions(BAM.cigar(record))
     strand = BAM.ispositivestrand(record) ? Strand('+') : Strand('-')
     ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, AlignmentAnnotation())
-    seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
+    seq_interval = strand === STRAND_POS ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
     aln_part = MyAlignment(ref_interval, seq_interval, BAM.isprimary(record))
     return AlignedRead([aln_part])
 end
@@ -291,7 +291,6 @@ end
 
 struct Alignments <: AlignmentContainer
     dict::Dict{UInt, AlignedRead}
-    name::Union{String,Nothing}
 end
 
 Base.length(alignments::Alignments) = length(alignments.dict)
@@ -310,15 +309,14 @@ function Base.iterate(alignments::Alignments, state::Int)
     return (aln, state)
 end
 
-function Alignments(bam_file::String; stop_at=nothing, name=nothing)
+function Alignments(bam_file::String; stop_at=nothing)
     alignments1, alignments2 = read_bam(bam_file; stop_at=stop_at)
     @assert isempty(alignments2)
-    Alignments(alignments1, name)
+    Alignments(alignments1)
 end
 
 struct PairedAlignments <: AlignmentContainer
     dict::Dict{UInt, Tuple{AlignedRead, AlignedRead}}
-    name::Union{String, Nothing}
 end
 
 Base.length(alignments::PairedAlignments) = length(alignments.dict)
@@ -337,18 +335,18 @@ function Base.iterate(alignments::PairedAlignments, state::Int)
     return ((aln1, aln2), state)
 end
 
-function PairedAlignments(bam_file1::String, bam_file2::String; stop_at=nothing, name=nothing)
+function PairedAlignments(bam_file1::String, bam_file2::String; stop_at=nothing)
     alignments1, alignments_e1 = read_bam(bam_file1; stop_at=stop_at)
     alignments2, alignments_e2 = read_bam(bam_file2; stop_at=stop_at)
     @assert isempty(alignments_e1) && isempty(alignments_e2)
     alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
-    PairedAlignments(alignments, name)
+    PairedAlignments(alignments)
 end
 
-function PairedAlignments(pebam_file::String; stop_at=nothing, name=nothing)
+function PairedAlignments(pebam_file::String; stop_at=nothing)
     alignments1, alignments2 = read_bam(pebam_file; stop_at=stop_at)
     alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
-    PairedAlignments(alignments, name)
+    PairedAlignments(alignments)
 end
 
 function ispaired(record::BAM.Record)::Bool

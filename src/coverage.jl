@@ -62,10 +62,9 @@ end
 struct Coverage <: AnnotationContainer
     list::IntervalCollection{Float32}
     chroms::Vector{Tuple{String, Int}}
-    description::Union{Nothing, String}
 end
 
-function Coverage(bigwig_file::String, direction::Symbol; description=nothing)
+function Coverage(bigwig_file::String, direction::Symbol)
     @assert direction in [:forward, :reverse]
     reader = open(BigWig.Reader, bigwig_file)
     stran = direction==:forward ? Strand('+') : Strand('-')
@@ -75,10 +74,10 @@ function Coverage(bigwig_file::String, direction::Symbol; description=nothing)
         push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), stran, BigWig.value(record)))
     end
     close(reader)
-    return Coverage(IntervalCollection(intervals, true), chrlist, description)
+    return Coverage(IntervalCollection(intervals, true), chrlist)
 end
 
-function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String; description=nothing)
+function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String)
     @assert direction in [:forward, :reverse]
     reader_f = open(BigWig.Reader, bigwig_forward_file)
     reader_r = open(BigWig.Reader, bigwig_reverse_file)
@@ -93,7 +92,7 @@ function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String; desc
     end
     close(reader_f)
     close(reader_r)
-    return Coverage(IntervalCollection(intervals, true), chrlist, description)
+    return Coverage(IntervalCollection(intervals, true), chrlist)
 end
 
 Base.iterate(coverage::Coverage) = iterate(coverage.list)
@@ -138,5 +137,5 @@ function merge(coverages::Vector{Coverage})
             push!(new_intervals, interval)
         end
     end
-    return Coverage(IntervalCollection(new_intervals, true), coverages[1].chroms, join([c.description for c in coverages if !isnothing(c.description)], ";"))
+    return Coverage(IntervalCollection(new_intervals, true), coverages[1].chroms)
 end
