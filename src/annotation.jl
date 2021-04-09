@@ -56,6 +56,16 @@ Base.iterate(features::Features) = iterate(features.list)
 Base.iterate(features::Features, state::Tuple{Int64,IntervalBTree{Int64,Interval{Annotation},64},IntervalBTreeIteratorState{Int64,Interval{Annotation},64}}) = iterate(features.list, state)
 Base.length(features::Features) = length(features.list)
 
+strand_filter(a::Interval, b::Interval)::Bool = strand(a) == strand(b)
+function GenomicFeatures.eachoverlap(features::Features, feature::Interval{T}) where {T<:AnnotationStyle}
+    my_feature = feature isa AlignmentAnnotation ? Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), Annotation()) : feature
+    haskey(features.list.trees, refname(my_feature)) ?
+    (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
+                GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refname(feature)], my_feature)) :
+    (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
+                GenomicFeatures.ICTreeIntersection{Annotation}(), GenomicFeatures.ICTree{Annotation}(), my_feature))
+end
+
 function Base.write(file::String, features::Features)
     writer = GFF3.Writer(open(file, "w"))
     for feature in features
@@ -66,10 +76,21 @@ function Base.write(file::String, features::Features)
     close(writer)
 end
 
-function addutrs!(features::Features, typ::String; utr_length=150, min_utr_length=25)
+function addutrs!(features::Features; cds_typ="mRNA", utr_length=150, min_utr_length=25)
     new_features = Vector{Interval{Annotation}}()
-    base_features_pos = [feature for feature in features if (annotationtype(feature)==typ) && (feature.strand == STRAND_POS)]
-    base_features_neg = [feature for feature in features if (annotationtype(feature)==typ) && (feature.strand == STRAND_NEG)]
+    base_features_pos = [feature for feature in features if (annotationtype(feature)==cds_typ) && (feature.strand == STRAND_POS)]
+    base_features_neg = [feature for feature in features if (annotationtype(feature)==cds_typ) && (feature.strand == STRAND_NEG)]
+    
+    first_feature, last_feature = base_features_pos[1], base_features_pos[end]
+    stop, start = leftposition(first_feature), rightposition(last_feature)
+    push!(new_features, Interval(refname(last_feature), start+1, start+utr_length, STRAND_POS, Annotation("3UTR", annotationname(last_feature))))
+    push!(new_features, Interval(refname(first_feature), max(1, stop-utr_length), stop-1, STRAND_POS, Annotation("5UTR", annotationname(first_feature))))
+    
+    first_feature, last_feature = base_features_neg[1], base_features_neg[end]
+    stop, start = leftposition(first_feature), rightposition(last_feature)
+    push!(new_features, Interval(refname(last_feature), start+1, start+utr_length, STRAND_NEG, Annotation("5UTR", annotationname(last_feature))))
+    push!(new_features, Interval(refname(first_feature), max(1, stop-utr_length), stop-1, STRAND_NEG, Annotation("3UTR", annotationname(first_feature))))
+    
     nb_features_pos = length(base_features_pos)
     nb_features_neg = length(base_features_neg)
     for i in 1:nb_features_pos-1
@@ -81,10 +102,9 @@ function addutrs!(features::Features, typ::String; utr_length=150, min_utr_lengt
         elseif  stop - start > 2 * utr_length + 1 
             push!(new_features, Interval(refname(next_feature), stop-utr_length, stop-1, STRAND_POS, Annotation("5UTR", annotationname(next_feature))))
             push!(new_features, Interval(refname(feature), start+1, start+utr_length, STRAND_POS, Annotation("3UTR", annotationname(feature))))
-            push!(new_features, Interval(refname(feature), start+utr_length+1, stop-utr_length-1, STRAND_POS, Annotation("IGR", annotationname(feature)*":"*annotationname(next_feature))))
         elseif stop - start > 2 * min_utr_length
             new_utr_length = floor(Int, (stop-start)/2)
-            push!(new_features, Interval(refname(next_feature), stop-new_utr_length, stop-1, STRAND_POS, Annotation("5UTR", annotationname(feature))))
+            push!(new_features, Interval(refname(next_feature), stop-new_utr_length, stop-1, STRAND_POS, Annotation("5UTR", annotationname(next_feature))))
             push!(new_features, Interval(refname(feature), start+1, start+new_utr_length, STRAND_POS, Annotation("3UTR", annotationname(feature))))
         end
     end
@@ -96,13 +116,41 @@ function addutrs!(features::Features, typ::String; utr_length=150, min_utr_lengt
             push!(new_features, Interval(refname(next_feature), max(1, stop-utr_length), stop-1, STRAND_NEG, Annotation("3UTR", annotationname(next_feature))))
         elseif  stop - start > 2 * utr_length + 1
             push!(new_features, Interval(refname(next_feature), stop-utr_length, stop-1, STRAND_NEG, Annotation("3UTR", annotationname(next_feature))))
-            push!(new_features, Interval(refname(feature), start+1, start+utr_length, STRAND_NEG, Annotation("3UTR", annotationname(feature))))
-            push!(new_features, Interval(refname(feature), start+1, start+utr_length, STRAND_NEG, Annotation("IGR", annotationname(feature)*":"*annotationname(next_feature))))
+            push!(new_features, Interval(refname(feature), start+1, start+utr_length, STRAND_NEG, Annotation("5UTR", annotationname(feature))))
         elseif stop - start > 2 * min_utr_length
             new_utr_length = floor(Int, (stop-start)/2)
-            push!(new_features, Interval(refname(next_feature), stop-new_utr_length, stop-1, STRAND_NEG, Annotation("5UTR", annotationname(next_feature))))
-            push!(new_features, Interval(refname(feature), start+1, start+new_utr_length, STRAND_NEG, Annotation("3UTR", annotationname(feature))))
+            push!(new_features, Interval(refname(next_feature), stop-new_utr_length, stop-1, STRAND_NEG, Annotation("3UTR", annotationname(next_feature))))
+            push!(new_features, Interval(refname(feature), start+1, start+new_utr_length, STRAND_NEG, Annotation("5UTR", annotationname(feature))))
         end
+    end
+    for feature in new_features
+        push!(features, feature)
+    end
+end
+
+function addigrs!(features::Features; fiveutr_type="5UTR", threeutr_type="3UTR")
+    new_features = Vector{Interval{Annotation}}()
+    base_features_pos = [feature for feature in features if (annotationtype(feature) in [fiveutr_type, threeutr_type]) && (feature.strand == STRAND_POS)]
+    base_features_neg = [feature for feature in features if (annotationtype(feature) in [fiveutr_type, threeutr_type]) && (feature.strand == STRAND_NEG)]
+    nb_features_pos = length(base_features_pos)
+    nb_features_neg = length(base_features_neg)
+    for i in 1:nb_features_pos-1
+        feature, next_feature = base_features_pos[i], base_features_pos[i+1]
+        annotationtype(feature) == threeutr_type && annotationtype(next_feature) == fiveutr_type && refname(feature) == refname(next_feature) || continue
+        stop, start = leftposition(next_feature), rightposition(feature)
+        (start + 1) < stop || continue
+        igr = Interval(refname(feature), start+1, stop-1, STRAND_POS, Annotation("IGR", annotationname(feature)*":"*annotationname(next_feature)))
+        length(collect(eachoverlap(features, igr))) == 0 || continue
+        push!(new_features, igr)
+    end
+    for i in 1:nb_features_neg-1
+        feature, next_feature = base_features_neg[i], base_features_neg[i+1]
+        annotationtype(feature) == fiveutr_type && annotationtype(next_feature) == threeutr_type && refname(feature) == refname(next_feature) || continue
+        stop, start = leftposition(next_feature), rightposition(feature)
+        (start + 1) < stop || continue
+        igr = Interval(refname(feature), start+1, stop-1, STRAND_NEG, Annotation("IGR", annotationname(feature)*":"*annotationname(next_feature)))
+        length(collect(eachoverlap(features, igr))) == 0 || continue
+        push!(new_features, igr)
     end
     for feature in new_features
         push!(features, feature)

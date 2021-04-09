@@ -122,13 +122,12 @@ end
 
 #prepare_caulo()
 
-function check_rilseq()
+function check_library()
     features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6_utrs.gff3", ["mRNA", "5UTR", "3UTR", "tRNA", "rRNA"], "Name")
     push!(features, Interval("rybb", 1, 70, Strand('+'), RNASeqTools.Annotation("rybb1", "rybb2"))) 
     push!(features, Interval("rybb", 1, 70, Strand('-'), RNASeqTools.Annotation("rybb1", "rybb2")))
     @time alignments = PairedAlignments("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.bam")
-    #reads = PairedReads("/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_1.fasta.gz", "/home/abc/Data/vibrio/library_rilseq/trimmed_VC3_2.fasta.gz")
-    @time annotate!(alignments, features)  
+    @time annotate!(alignments, features; prioritize_type="sRNA")  
     c = 0  
     c2 = 0
     results = Dict{String, Set{LongDNASeq}}()
@@ -154,56 +153,11 @@ function check_rilseq()
     println(c, " von ", c2)
 end
 
-#check_rilseq()
+#check_library()
 
 function check_rilseq_caulo()
-    features = Features("/home/abc/Data/caulo/annotation/NC_011916.gff", "gene", "Name")
-    addutrs!(features, "gene") 
+    features = Features("/home/abc/Data/caulo/annotation/NC_011916_utrs.gff", ["mRNA", "3UTR", "5UTR", "IGR", "sRNA"], "Name")
     @time alignments = PairedAlignments("/home/abc/Data/caulo/rilseq/trimmed_CC3_1.bam")
-    @time annotate!(alignments, features; prioritize_type="gene") 
-    c = 0 
-    counts = Dict{String, Int}()
-    @time for (key,(alignment1, alignment2)) in alignments.dict
-        !ischimeric(alignment1, alignment2) && continue
-        c += 1
-        if hasannotation(alignment1) && hasannotation(alignment2)
-            names = Set{String}()
-            rna = false
-            for aln1 in alignment1
-                startswith(annotationname(aln1), "CCNA_R") && (rna=true) 
-                push!(names, annotationname(aln1))
-            end
-            for aln2 in alignment2
-                startswith(annotationname(aln2), "CCNA_R") && (rna=true) 
-                push!(names, annotationname(aln2))
-            end
-            #!rna && continue
-
-            key = join(names, "-")
-            key in keys(counts) ? counts[key] += 1 : counts[key] = 1
-
-        end
-    end
-    outstring = join(["$key,$value" for (key,value) in counts], "\n")
-    write("/home/abc/Data/caulo/chimeras3.csv", outstring)
-    println(c)
-end
-
-#check_rilseq_caulo()
-
-function prepare_vibrio()
-    files = PairedSingleTypeFiles("/home/abc/Data/vibrio/micha_rilseq/demultiplexed/", ".fastq.gz")
-    trim_fastp(files)
-    trimmed_files = PairedSingleTypeFiles("/home/abc/Data/vibrio/micha_rilseq/demultiplexed/", ".fastq.gz"; prefix="trimmed")
-    genome = Genome("/home/abc/Data/vibrio/genome/NC_002505_6.fa")
-    align_mem(trimmed_files, genome)
-end
-
-#prepare_vibrio()
-
-function check_rilseq_vibrio()
-    features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6_utrs.gff3", ["mRNA", "5UTR", "3UTR", "sRNA"], "Name")
-    @time alignments = PairedAlignments("/home/abc/Data/vibrio/micha_rilseq/demultiplexed/trimmed_hfq_2_0.2_1.bam")
     @time annotate!(alignments, features; prioritize_type="sRNA") 
     c = 0 
     counts = Dict{String, Int}()
@@ -229,23 +183,58 @@ function check_rilseq_vibrio()
         end
     end
     outstring = join(["$key,$value" for (key,value) in counts], "\n")
-    write("/home/abc/Data/vibrio/micha_rilseq/chimeras_hfq_2.csv", outstring)
+    write("/home/abc/Data/caulo/chimeras3_test.csv", outstring)
     println(c)
 end
 
-#check_rilseq_vibrio()
+#check_rilseq_caulo()
 
-function adjust_annotation()
-    features = Features("/home/abc/Data/caulo/annotation/NC_011916.gff", "gene", "Name")
-    new_features = Interval[]
-    for feature in features
-        startswith(annotationname(feature), "CCNA_R") ?
-        push!(new_features, Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), Annotation("sRNA", annotationname(feature)))) :
-        push!(new_features, Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), Annotation("mRNA", annotationname(feature))))
-    end
-    my_features = Features(IntervalCollection(new_features))
-    addutrs!(my_features, "mRNA")
-    write(my_features, "/home/abc/Data/caulo/annotation/NC_011916_utrs.gff")
+function prepare_vibrio()
+    files = PairedSingleTypeFiles("/home/abc/Data/vibrio/micha_rilseq/demultiplexed/", ".fastq.gz")
+    trim_fastp(files)
+    trimmed_files = PairedSingleTypeFiles("/home/abc/Data/vibrio/micha_rilseq/demultiplexed/", ".fastq.gz"; prefix="trimmed")
+    genome = Genome("/home/abc/Data/vibrio/genome/NC_002505_6.fa")
+    align_mem(trimmed_files, genome)
 end
 
-adjust_annotation()
+#prepare_vibrio()
+
+function check_rilseq_vibrio()
+    features = Features("/home/abc/Data/vibrio/annotation/NC_002505_6_rnaseq.gff3", ["mRNA", "5UTR", "3UTR", "sRNA", "IGR"], "Name")
+    c = 0 
+    counts = Dict{String, Int}()
+    for bam in ["/home/abc/Data/vibrio/micha_rilseq/demultiplexed/trimmed_hfq_1_0.2_1.bam", "/home/abc/Data/vibrio/micha_rilseq/demultiplexed/trimmed_hfq_2_0.2_1.bam"]
+    
+        @time alignments = PairedAlignments(bam; rev_comp=:read1)
+        @time annotate!(alignments, features; prioritize_type="sRNA") 
+        @time for (key,(alignment1, alignment2)) in alignments.dict
+            !ischimeric(alignment1, alignment2; max_distance=200, only_distance=true) && continue
+            c += 1
+            if hasannotation(alignment1) && hasannotation(alignment2)
+                names = Set{String}()
+                rna = false
+                for aln1 in alignment1
+                    startswith(annotationname(aln1), "CCNA_R") && (rna=true) 
+                    push!(names, annotationname(aln1))
+                end
+                for aln2 in alignment2
+                    startswith(annotationname(aln2), "CCNA_R") && (rna=true) 
+                    push!(names, annotationname(aln2))
+                end
+                #!rna && continue
+
+                key = join(names, "-")
+                key in keys(counts) ? counts[key] += 1 : counts[key] = 1
+
+            end
+        end
+        alignments = nothing
+        GC.gc()
+    end
+    outstring = join(["$key,$value" for (key,value) in counts], "\n")
+    write("/home/abc/Data/vibrio/micha_rilseq/chimeras_hfq_combined.csv", outstring)
+    println(c)
+end
+
+check_rilseq_vibrio()
+
