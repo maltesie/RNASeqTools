@@ -228,6 +228,34 @@ function rev_comp!(reads::PairedReads; treat=:both)
     end
 end
 
+#function rev_comp(files::SingleTypeFiles)
+#    @assert files.type in [".fastq.gz", "fasta.gz", ".fastq", ".fasta"]
+#    is_fastq = files.type in [".fastq", ".fastq.gz"]
+#    is_zipped = endswith(files.type, ".gz")
+#    record = is_fastq ? FASTQ.Record() : FASTA.Record()
+#    sequencer = is_fastq ? FASTQ.sequence : FASTA.sequence
+#    
+#    for file in files
+#        outfile = file * ".tmp"
+#        f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
+#        reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
+#        writer = is_zipped ? GzipCompressorStream(open(outfile, "w")) : open(outfile, "w")
+#        while !eof(reader)
+#            read!(record, reader)
+#        end
+#    end
+#end
+#
+#function rev_comp(files::PairedSingleTypeFiles; treat=:both)
+#    @assert files.type in [".fastq.gz", "fasta.gz", ".fastq", ".fasta"]
+#    @assert treat in [:both, :read1, :read2]
+#    for (file1, file2) in files
+#        reads = PairedReads(file1, file2)
+#        rev_comp!(reads; treat=treat)
+#        write(file1[1:end-length(files.type)] * ".fasta.gz", file2[1:end-length(files.type)] * ".fasta.gz", reads)
+#    end
+#end
+
 function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
     0 <= pos <= length(read) || resize!(read, 0)
     

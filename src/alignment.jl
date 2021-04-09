@@ -101,7 +101,7 @@ function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNA
     return res
 end
 
-struct Alignment
+struct MyAlignment
     ref::Interval{AlignmentAnnotation}
     seq::Interval{Nothing}
     isprimary::Bool
@@ -138,7 +138,7 @@ function positions(cigar::AbstractString)
     return seqstart, seqstop, relrefstop, seqlen
 end
 
-function Alignment(xapart::Union{String, SubString{String}})
+function MyAlignment(xapart::Union{String, SubString{String}})
     chr, pos, cigar, nm = split(xapart, ",")
     refstart = parse(Int, pos)
     strand = refstart > 0 ? Strand('+') : Strand('-')
@@ -146,20 +146,20 @@ function Alignment(xapart::Union{String, SubString{String}})
     readstart, readstop, relrefstop, readlen = positions(cigar)
     ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, AlignmentAnnotation())
     seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
-    return Alignment(ref_interval, seq_interval, false)
+    return MyAlignment(ref_interval, seq_interval, false)
 end
 
-annotation(aln::Alignment) = aln.ref.metadata
-annotationname(aln::Alignment) = annotation(aln).name
-annotationtype(aln::Alignment) = annotation(aln).type
-annotationoverlap(aln::Alignment) = annotation(aln).overlap
-refinterval(aln::Alignment) = aln.ref
-refname(aln::Alignment) = aln.ref.seqname
-BioGenerics.leftposition(aln::Alignment) = aln.ref.first
-BioGenerics.rightposition(aln::Alignment) = aln.ref.last
-GenomicFeatures.strand(aln::Alignment) = aln.ref.strand
-readinterval(aln::Alignment) = aln.seq
-hasannotation(aln::Alignment) = !isempty(annotation(aln))
+annotation(aln::MyAlignment) = aln.ref.metadata
+annotationname(aln::MyAlignment) = annotation(aln).name
+annotationtype(aln::MyAlignment) = annotation(aln).type
+annotationoverlap(aln::MyAlignment) = annotation(aln).overlap
+refinterval(aln::MyAlignment) = aln.ref
+refname(aln::MyAlignment) = aln.ref.seqname
+BioGenerics.leftposition(aln::MyAlignment) = aln.ref.first
+BioGenerics.rightposition(aln::MyAlignment) = aln.ref.last
+GenomicFeatures.strand(aln::MyAlignment) = aln.ref.strand
+readinterval(aln::MyAlignment) = aln.seq
+hasannotation(aln::MyAlignment) = !isempty(annotation(aln))
 
 @inline function translateddata(data::SubArray{UInt8,1})
     for i in 1:length(data)
@@ -203,7 +203,7 @@ function nmtag(record::BAM.Record)
 end
 
 struct AlignedRead
-    alns::Vector{Alignment}
+    alns::Vector{MyAlignment}
 end
 
 function AlignedRead(record::BAM.Record; invertstrand=false)
@@ -220,13 +220,13 @@ function AlignedRead(record::BAM.Record; invertstrand=false)
             intpos = abs(parse(Int, pos))
             intpos < leftestpos && (leftest = i; leftestpos=intpos)
         end
-        leftest != 0 && (return AlignedRead([Alignment(xastrings[leftest])]))
+        leftest != 0 && (return AlignedRead([MyAlignment(xastrings[leftest])]))
     end
     readstart, readstop, relrefstop, readlen = positions(BAM.cigar(record))
     strand = BAM.ispositivestrand(record) ? Strand('+') : Strand('-')
     ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, AlignmentAnnotation())
     seq_interval = strand === STRAND_POS ? Interval("read", readstart, readstop) : Interval("read", readlen-readstop+1, readlen-readstart+1)
-    aln_part = Alignment(ref_interval, seq_interval, BAM.isprimary(record))
+    aln_part = MyAlignment(ref_interval, seq_interval, BAM.isprimary(record))
     return AlignedRead([aln_part])
 end
 
@@ -397,31 +397,43 @@ end
 
 strand_filter(a::Interval, b::Interval) = strand(a) == strand(b)
 
-function annotate!(alns::Alignments, features::Features)
+function annotate!(alns::Alignments, features::Features; prioritize_type=nothing)
     for alignedread in alns
         for (i,alignment) in enumerate(alignedread)
+            foundpriority = false
             for feature_interval in eachoverlap(features.list, refinterval(alignment), filter=strand_filter)
                 olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
-                if annotationoverlap(alignment) < olp
+                if !isnothing(prioritize_type) && (type(feature_interval) == prioritize_type)
+                    alignedread.alns[i] = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
+                                            AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
+                    foundpriority = true
+                elseif annotationoverlap(alignment) < olp
                     alignedread.alns[i] = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
                                             AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
                 end
+                foundpriority && break
             end
         end
     end
 end
 
-function annotate!(alns::PairedAlignments, features::Features)
+function annotate!(alns::PairedAlignments, features::Features; prioritize_type=nothing)
     for (alignment1, alignment2) in alns
         both_alns = [alignment1, alignment2]
         for (i,alignedread) in enumerate(both_alns)
             for (j,alignment) in enumerate(alignedread)
-                for feature_interval in eachoverlap(features.list, refinterval(alignment), filter=strand_filter)
+                foundpriority = false
+                for (k,feature_interval) in enumerate(eachoverlap(features.list, refinterval(alignment), filter=strand_filter))
                     olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
-                    if annotationoverlap(alignment) < olp
-                        both_alns[i].alns[j] = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
+                    if !isnothing(prioritize_type) && (type(feature_interval) == prioritize_type)
+                        both_alns[i].alns[j] = MyAlignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
+                                            AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
+                        foundpriority = true
+                    elseif annotationoverlap(alignment) < olp
+                        both_alns[i].alns[j] = MyAlignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
                                             AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
                     end
+                    foundpriority && break
                 end
             end
         end

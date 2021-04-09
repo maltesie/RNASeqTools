@@ -156,11 +156,10 @@ end
 
 function check_rilseq_caulo()
     features = Features("/home/abc/Data/caulo/annotation/NC_011916.gff", "gene", "Name")
-    @time alignments = PairedAlignments("/home/abc/Data/caulo/rilseq/trimmed_CC1_1.bam")
-    @time annotate!(alignments, features) 
     addutrs!(features, "gene") 
-    c = 0  
-
+    @time alignments = PairedAlignments("/home/abc/Data/caulo/rilseq/trimmed_CC4_1.bam")
+    @time annotate!(alignments, features) 
+    c = 0 
     counts = Dict{String, Int}()
     @time for (key,(alignment1, alignment2)) in alignments.dict
         !ischimeric(alignment1, alignment2) && continue
@@ -184,8 +183,50 @@ function check_rilseq_caulo()
         end
     end
     outstring = join(["$key,$value" for (key,value) in counts], "\n")
-    write("/home/abc/Data/caulo/chimeras2.csv", outstring)
+    write("/home/abc/Data/caulo/chimeras3.csv", outstring)
     println(c)
 end
 
-check_rilseq_caulo()
+#check_rilseq_caulo()
+
+function prepare_vibrio()
+    files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fastq.gz")
+    trim_fastp(files; umi=9)
+    trimmed_files = PairedSingleTypeFiles("/home/abc/Data/caulo/rilseq/", ".fastq.gz"; prefix="trimmed")
+    genome = Genome("/home/abc/Data/caulo/genome/GCF_000022005.1_ASM2200v1_genomic.fna")
+    align_mem(trimmed_files, genome)
+end
+
+function check_rilseq_vibrio()
+    features = Features("/home/abc/Data/vibrio/annotation/NC_011916.gff", ["mRNA", "5UTR", "3UTR", "sRNA"], "Name")
+    @time alignments = PairedAlignments("/home/abc/Data/vibrio/micha_rilseq/")
+    @time annotate!(alignments, features) 
+    c = 0 
+    counts = Dict{String, Int}()
+    @time for (key,(alignment1, alignment2)) in alignments.dict
+        !ischimeric(alignment1, alignment2) && continue
+        c += 1
+        if hasannotation(alignment1) && hasannotation(alignment2)
+            names = Set{String}()
+            rna = false
+            for aln1 in alignment1
+                startswith(annotationname(aln1), "CCNA_R") && (rna=true) 
+                push!(names, annotationname(aln1))
+            end
+            for aln2 in alignment2
+                startswith(annotationname(aln2), "CCNA_R") && (rna=true) 
+                push!(names, annotationname(aln2))
+            end
+            #!rna && continue
+
+            key = join(names, "-")
+            key in keys(counts) ? counts[key] += 1 : counts[key] = 1
+
+        end
+    end
+    outstring = join(["$key,$value" for (key,value) in counts], "\n")
+    write("/home/abc/Data/caulo/chimeras3.csv", outstring)
+    println(c)
+end
+
+check_rilseq_vibrio()

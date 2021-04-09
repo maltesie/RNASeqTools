@@ -9,7 +9,7 @@ import IntervalTrees.IntervalBTree, IntervalTrees.IntervalBTreeIteratorState
 export align_mem, local_alignment
 export trim_fastp, split_libs 
 export Genome, Reads, PairedReads, Alignments, PairedAlignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage
-export cut!, rev_comp!, approxoccursin, annotate!
+export cut!, rev_comp!, rev_comp, approxoccursin, annotate!
 export hasannotation, ischimeric, istriplet, refinterval, readinterval, annotation, annotationname, annotationtype, annotationoverlap, merge!, count, alignments, refname
 export values, addutrs!
 export similarity
