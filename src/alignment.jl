@@ -206,6 +206,10 @@ struct AlignedRead
     alns::Vector{MyAlignment}
 end
 
+function AlignedRead()
+    return AlignedRead([])
+end
+
 function AlignedRead(record::BAM.Record; invertstrand=false)
     BAM.ismapped(record) || return AlignedRead([])
     xa = xatag(record)
@@ -377,12 +381,29 @@ function is_bitstring_bam(file::String)
     return false
 end
 
-function read_bam(bam_file::String; stop_at=nothing, invertstrand=:none)
-    @assert invertstrand in [:read1, :read2, :both, :none]
+function init_dicts(bam_file::String)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
+    ids1 = Vector{UInt64}()
+    ids2 = Vector{UInt64}()
+    is_bitstring = is_bitstring_bam(bam_file)
+    c = 0
+    while !eof(reader)
+        read!(reader, record)
+        BAM.ismapped(record) || continue
+        id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(record.data[1:BAM.seqname_length(record)])
+        isread2(record) && ispaired(record) ? push!(ids2, id) : push!(ids1, id)
+    end
+    close(reader)
+    return Dict{UInt, AlignedRead}(id=>AlignedRead() for id in ids1), Dict{UInt, AlignedRead}(id=>AlignedRead() for id in ids2)
+end
+
+function read_bam(bam_file::String; stop_at=nothing, invertstrand=:none)
+    @assert invertstrand in [:read1, :read2, :both, :none]
     reads1 = Dict{UInt, AlignedRead}()
     reads2 = Dict{UInt, AlignedRead}()
+    record = BAM.Record()
+    reader = BAM.Reader(open(bam_file))
     is_bitstring = is_bitstring_bam(bam_file)
     c = 0
     while !eof(reader)
@@ -420,18 +441,17 @@ end
 
 function annotate!(alns::PairedAlignments, features::Features; prioritize_type=nothing)
     for (alignment1, alignment2) in alns
-        both_alns = [alignment1, alignment2]
-        for (i,alignedread) in enumerate(both_alns)
+        for alignedread in (alignment1, alignment2)
             for (j,alignment) in enumerate(alignedread)
                 foundpriority = false
                 for (k,feature_interval) in enumerate(eachoverlap(features, refinterval(alignment)))
                     olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
                     if !isnothing(prioritize_type) && (annotationtype(feature_interval) == prioritize_type)
-                        both_alns[i].alns[j] = MyAlignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
+                        alignedread.alns[j] = MyAlignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
                                             AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
                         break
                     elseif annotationoverlap(alignment) < olp
-                        both_alns[i].alns[j] = MyAlignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
+                        alignedread.alns[j] = MyAlignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
                                             AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
                     end
                 end

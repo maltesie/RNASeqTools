@@ -53,7 +53,7 @@ function merge!(features1::Features, features2::Features)
 end
 
 Base.iterate(features::Features) = iterate(features.list)
-Base.iterate(features::Features, state::Tuple{Int64,IntervalBTree{Int64,Interval{Annotation},64},IntervalBTreeIteratorState{Int64,Interval{Annotation},64}}) = iterate(features.list, state)
+Base.iterate(features::Features, state::Tuple{Int64,GenomicFeatures.ICTree{Annotation},GenomicFeatures.ICTreeIteratorState{Interval{Annotation}}}) = iterate(features.list, state)
 Base.length(features::Features) = length(features.list)
 
 strand_filter(a::Interval, b::Interval)::Bool = strand(a) == strand(b)
