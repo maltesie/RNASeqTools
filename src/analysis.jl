@@ -83,7 +83,7 @@ function tss(notex::Coverage, tex::Coverage; min_step=10, min_ratio=1.3)
             push!(intervals, Interval(chr, pos, pos, STRAND_NEG, val))
         end
     end
-    return Coverage(IntervalCollection(intervals, true), tex.chroms, "tss")
+    return Coverage(IntervalCollection(intervals, true), tex.chroms)
 end
 
 function terms(coverage::Coverage; min_step=10)
@@ -102,5 +102,5 @@ function terms(coverage::Coverage; min_step=10)
             push!(intervals, Interval(chr, pos, pos, STRAND_NEG, val))
         end
     end
-    return Coverage(IntervalCollection(intervals, true), coverage.chroms, "terms")
+    return Coverage(IntervalCollection(intervals, true), coverage.chroms)
 end

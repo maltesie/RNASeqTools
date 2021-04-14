@@ -107,7 +107,7 @@ struct MyAlignment
     isprimary::Bool
 end
 
-function positions(cigar::AbstractString)
+function readpositions(cigar::AbstractString)
     seqstart = 1
     seqstop = 0
     pending_seqstop = 0
@@ -138,12 +138,40 @@ function positions(cigar::AbstractString)
     return seqstart, seqstop, relrefstop, seqlen
 end
 
+function readpositions(record::BAM.Record)
+    offset, nops = BAM.cigar_position(record)
+    seqstart = 1
+    seqstop = 0
+    pending_seqstop = 0
+    relrefstop = 0
+    inseq = false
+    seqlen = 0
+    for i in offset:4:offset + (nops - 1) * 4
+        x = unsafe_load(Ptr{UInt32}(pointer(record.data, i)))
+        op = BioAlignments.Operation(x & 0x0F)
+        n = x >> 4
+        seqlen += n
+        if BioAlignments.isinsertop(op)
+            inseq || (seqstart += n)
+            pending_seqstop += n
+        elseif BioAlignments.isdeleteop(op)
+            relrefstop += n
+        elseif BioAlignments.ismatchop(op)
+            inseq = true
+            seqstop += n + pending_seqstop
+            relrefstop +=n
+            pending_seqstop = 0
+        end
+    end
+    return seqstart, seqstop, relrefstop, seqlen
+end
+
 function MyAlignment(xapart::Union{String, SubString{String}}; invertstrand=false)
     chr, pos, cigar, nm = split(xapart, ",")
     refstart = parse(Int, pos)
     strand = (refstart > 0) == !invertstrand ? Strand('+') : Strand('-')
     refstart *= sign(refstart)
-    readstart, readstop, relrefstop, readlen = positions(cigar)
+    readstart, readstop, relrefstop, readlen = readpositions(cigar)
     seq_interval = (refstart > 0) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
     ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, AlignmentAnnotation())
     return MyAlignment(ref_interval, seq_interval, false)
@@ -210,36 +238,13 @@ function AlignedRead()
     return AlignedRead([])
 end
 
-function AlignedRead(record::BAM.Record; invertstrand=false)
-    BAM.ismapped(record) || return AlignedRead([])
-    xa = xatag(record)
-    if !isnothing(xa)
-        leftest = 0
-        leftestpos = BAM.leftposition(record)
-        nms = nmtag(record)
-        xastrings = split(xa, ";")[1:end-1]
-        for (i,xapart) in enumerate(xastrings)
-            chr, pos, cigar, nm = split(xapart, ",")
-            parse(Int, nm) > nms && continue
-            intpos = abs(parse(Int, pos))
-            intpos < leftestpos && (leftest = i; leftestpos=intpos)
-        end
-        leftest != 0 && (return AlignedRead([MyAlignment(xastrings[leftest]; invertstrand=invertstrand)]))
-    end
-    readstart, readstop, relrefstop, readlen = positions(BAM.cigar(record))
-    seq_interval = BAM.ispositivestrand(record) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
-    strand = BAM.ispositivestrand(record) == !invertstrand ? Strand('+') : Strand('-')
-    ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, AlignmentAnnotation())
-    aln_part = MyAlignment(ref_interval, seq_interval, BAM.isprimary(record))
-    return AlignedRead([aln_part])
-end
-
 alignments(alnread::AlignedRead) = alnread.alns
 count(alnread::AlignedRead) = length(alnread.alns)
 merge!(alnread1::AlignedRead, alnread2::AlignedRead) = append!(alnread1.alns, alnread2.alns)
 hasannotation(alnread::AlignedRead) = any(hasannotation(alnpart) for alnpart in alnread)
 isfullyannotated(alnread::AlignedRead) = all(hasannotation(alnpart) for alnpart in alnread)
 
+Base.length(alnread::AlignedRead) = length(alnread.alns)
 Base.isempty(alnread::AlignedRead) = isempty(alnread.alns)
 Base.iterate(alnread::AlignedRead) = iterate(alnread.alns)
 Base.iterate(alnread::AlignedRead, state::Int) = iterate(alnread.alns, state)
@@ -381,24 +386,7 @@ function is_bitstring_bam(file::String)
     return false
 end
 
-function init_dicts(bam_file::String)
-    record = BAM.Record()
-    reader = BAM.Reader(open(bam_file))
-    ids1 = Vector{UInt64}()
-    ids2 = Vector{UInt64}()
-    is_bitstring = is_bitstring_bam(bam_file)
-    c = 0
-    while !eof(reader)
-        read!(reader, record)
-        BAM.ismapped(record) || continue
-        id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(record.data[1:BAM.seqname_length(record)])
-        isread2(record) && ispaired(record) ? push!(ids2, id) : push!(ids1, id)
-    end
-    close(reader)
-    return Dict{UInt, AlignedRead}(id=>AlignedRead() for id in ids1), Dict{UInt, AlignedRead}(id=>AlignedRead() for id in ids2)
-end
-
-function read_bam(bam_file::String; stop_at=nothing, invertstrand=:none)
+function read_bam(bam_file::String; only_unique=true, stop_at=nothing, invertstrand=:none)
     @assert invertstrand in [:read1, :read2, :both, :none]
     reads1 = Dict{UInt, AlignedRead}()
     reads2 = Dict{UInt, AlignedRead}()
@@ -409,10 +397,35 @@ function read_bam(bam_file::String; stop_at=nothing, invertstrand=:none)
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
-        id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(record.data[1:BAM.seqname_length(record)])
+        id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(@view(record.data[1:BAM.seqname_length(record)]))
         current_read_dict = isread2(record) && ispaired(record) ? reads2 : reads1
-        invert = (current_read_dict === reads2 && invertstrand in [:read2, :both]) || (current_read_dict === reads1 && invertstrand in [:read1, :both])
-        id in keys(current_read_dict) ? merge!(current_read_dict[id], AlignedRead(record; invertstrand=invert)) : push!(current_read_dict, id=>AlignedRead(record; invertstrand=invert))
+        invert = (current_read_dict === reads2 && invertstrand in (:read2, :both)) || (current_read_dict === reads1 && invertstrand in (:read1, :both))
+        foundit = false
+        if hasxatag(record) && !only_unique
+            xa = xatag(record)
+            leftest = 0
+            leftestpos = BAM.leftposition(record)
+            nms = nmtag(record)
+            xastrings = split(xa, ";")[1:end-1]
+            for (i,xapart) in enumerate(xastrings)
+                chr, pos, cigar, nm = split(xapart, ",")
+                parse(Int, nm) > nms && continue
+                intpos = abs(parse(Int, pos))
+                intpos < leftestpos && (leftest = i; leftestpos=intpos; nms=nm)
+            end
+            if leftest != 0 
+                alnpart = MyAlignment(xastrings[leftest]; invertstrand=invert)
+                foundit = true
+            end
+        end
+        if !foundit
+            readstart, readstop, relrefstop, readlen = readpositions(record)
+            seq_interval = BAM.ispositivestrand(record) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
+            strand = BAM.ispositivestrand(record) == !invert ? Strand('+') : Strand('-')
+            ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, AlignmentAnnotation())
+            alnpart = MyAlignment(ref_interval, seq_interval, BAM.isprimary(record))
+        end
+        id in keys(current_read_dict) ? push!(current_read_dict[id].alns, alnpart) : push!(current_read_dict, id=>AlignedRead([alnpart]))
         c += 1
         isnothing(stop_at) || ((c >= stop_at) && break) 
     end
@@ -421,18 +434,21 @@ function read_bam(bam_file::String; stop_at=nothing, invertstrand=:none)
 end
 
 function annotate!(alns::Alignments, features::Features; prioritize_type=nothing)
+    myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
+        GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refn], Interval("", 1, 1, STRAND_NA, Annotation("", ""))) for refn in refnames(features)) 
     for alignedread in alns
         for (i,alignment) in enumerate(alignedread)
             foundpriority = false
-            for feature_interval in eachoverlap(features, refinterval(alignment))
+            myiterator = myiterators[refname(alignment)]
+            myiterator.query = refinterval(alignment)
+            for feature_interval in myiterator
                 olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
-                if !isnothing(prioritize_type) && (annotationtype(feature_interval) == prioritize_type)
-                    alignedread.alns[i] = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
-                                            AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
-                    break
-                elseif annotationoverlap(alignment) < olp
-                    alignedread.alns[i] = Alignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
-                                            AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
+                foundpriority = (!isnothing(prioritize_type) && (annotationtype(feature_interval) == prioritize_type))
+                if foundpriority || annotationoverlap(alignment) < olp
+                    annotation(alignedread[i]).type = feature_interval.metadata.type
+                    annotation(alignedread[i]).name = feature_interval.metadata.name
+                    annotation(alignedread[i]).overlap = olp
+                    foundpriority && break
                 end
             end
         end
@@ -440,19 +456,22 @@ function annotate!(alns::Alignments, features::Features; prioritize_type=nothing
 end
 
 function annotate!(alns::PairedAlignments, features::Features; prioritize_type=nothing)
+    myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
+        GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refn], Interval("", 1, 1, STRAND_NA, Annotation("", ""))) for refn in refnames(features)) 
     for (alignment1, alignment2) in alns
         for alignedread in (alignment1, alignment2)
-            for (j,alignment) in enumerate(alignedread)
+            for (i,alignment) in enumerate(alignedread)
                 foundpriority = false
-                for (k,feature_interval) in enumerate(eachoverlap(features, refinterval(alignment)))
+                myiterator = myiterators[refname(alignment)]
+                myiterator.query = refinterval(alignment)
+                for feature_interval in myiterator
                     olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
-                    if !isnothing(prioritize_type) && (annotationtype(feature_interval) == prioritize_type)
-                        alignedread.alns[j] = MyAlignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
-                                            AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
-                        break
-                    elseif annotationoverlap(alignment) < olp
-                        alignedread.alns[j] = MyAlignment(Interval(refname(alignment), leftposition(alignment), rightposition(alignment), strand(alignment), 
-                                            AlignmentAnnotation(feature_interval.metadata.type, feature_interval.metadata.name, olp)), readinterval(alignment), alignment.isprimary)
+                    foundpriority = (!isnothing(prioritize_type) && (annotationtype(feature_interval) == prioritize_type))
+                    if foundpriority || annotationoverlap(alignment) < olp
+                        annotation(alignedread[i]).type = feature_interval.metadata.type
+                        annotation(alignedread[i]).name = feature_interval.metadata.name
+                        annotation(alignedread[i]).overlap = olp
+                        foundpriority && break
                     end
                 end
             end

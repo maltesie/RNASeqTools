@@ -9,7 +9,7 @@ end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
 
-struct AlignmentAnnotation <: AnnotationStyle
+mutable struct AlignmentAnnotation <: AnnotationStyle
     type::String
     name::String
     overlap::UInt8
@@ -45,6 +45,13 @@ function Features(feature_list::Vector{Interval{Annotation}})
     return Features(IntervalCollection(feature_list, true))
 end
 
+refnames(features::Features) = collect(keys(features.list.trees))
+function overlaps(alignmentinterval::Interval{AlignmentAnnotation}, feature::Interval{Annotation}) 
+    seqname(feature) == seqname(alignmentinterval) || return false
+    strand(feature) == strand(alignmentinterval) || return false
+    return leftposition(feature) <= rightposition(alignmentinterval) && leftposition(alignmentinterval) <= rightposition(feature)
+end
+
 Base.push!(features::Features, interval::Interval) = push!(features.list, interval)
 function merge!(features1::Features, features2::Features) 
     for feature in features2
@@ -53,17 +60,29 @@ function merge!(features1::Features, features2::Features)
 end
 
 Base.iterate(features::Features) = iterate(features.list)
-Base.iterate(features::Features, state::Tuple{Int64,GenomicFeatures.ICTree{Annotation},GenomicFeatures.ICTreeIteratorState{Interval{Annotation}}}) = iterate(features.list, state)
+Base.iterate(features::Features, state::Tuple{Int64,GenomicFeatures.ICTree{Annotation},GenomicFeatures.ICTreeIteratorState{Annotation}}) = iterate(features.list, state)
 Base.length(features::Features) = length(features.list)
 
 strand_filter(a::Interval, b::Interval)::Bool = strand(a) == strand(b)
 function GenomicFeatures.eachoverlap(features::Features, feature::Interval{T}) where {T<:AnnotationStyle}
-    my_feature = feature isa AlignmentAnnotation ? Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), Annotation()) : feature
-    haskey(features.list.trees, refname(my_feature)) ?
+    haskey(features.list.trees, refname(feature)) ?
     (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
-                GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refname(feature)], my_feature)) :
+                GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refname(feature)], feature)) :
     (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
-                GenomicFeatures.ICTreeIntersection{Annotation}(), GenomicFeatures.ICTree{Annotation}(), my_feature))
+                GenomicFeatures.ICTreeIntersection{Annotation}(), GenomicFeatures.ICTree{Annotation}(), feature))
+end
+
+function hasoverlap(features::Features, feature::Interval)
+    for int in eachoverlap(features, feature)
+        return true
+    end
+    return false
+end
+function firstoverlap(features::Features, feature::Interval)
+    for int in eachoverlap(features, feature)
+        return int
+    end
+    return nothing
 end
 
 function Base.write(file::String, features::Features)
