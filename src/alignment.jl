@@ -322,8 +322,8 @@ function Base.iterate(alignments::Alignments, state::Int)
     return (aln, state)
 end
 
-function Alignments(bam_file::String; stop_at=nothing, rev_comp=:none)
-    alignments1, alignments2 = read_bam(bam_file; stop_at=stop_at, invertstrand=rev_comp)
+function Alignments(bam_file::String; nskip=nothing, rev_comp=:none)
+    alignments1, alignments2 = read_bam(bam_file; nskip=nskip, invertstrand=rev_comp)
     @assert isempty(alignments2)
     Alignments(alignments1)
 end
@@ -348,16 +348,16 @@ function Base.iterate(alignments::PairedAlignments, state::Int)
     return ((aln1, aln2), state)
 end
 
-function PairedAlignments(bam_file1::String, bam_file2::String; stop_at=nothing, rev_comp=:none)
-    alignments1, alignments_e1 = read_bam(bam_file1; stop_at=stop_at, invertstrand=rev_comp)
-    alignments2, alignments_e2 = read_bam(bam_file2; stop_at=stop_at, invertstrand=rev_comp)
+function PairedAlignments(bam_file1::String, bam_file2::String; nskip=nothing, rev_comp=:none)
+    alignments1, alignments_e1 = read_bam(bam_file1; nskip=nskip, invertstrand=rev_comp)
+    alignments2, alignments_e2 = read_bam(bam_file2; nskip=nskip, invertstrand=rev_comp)
     @assert isempty(alignments_e1) && isempty(alignments_e2)
     alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
     PairedAlignments(alignments)
 end
 
-function PairedAlignments(pebam_file::String; stop_at=nothing, rev_comp=:none)
-    alignments1, alignments2 = read_bam(pebam_file; stop_at=stop_at, invertstrand=rev_comp)
+function PairedAlignments(pebam_file::String; nskip=nothing, rev_comp=:none)
+    alignments1, alignments2 = read_bam(pebam_file; nskip=nskip, invertstrand=rev_comp)
     alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
     PairedAlignments(alignments)
 end
@@ -386,7 +386,7 @@ function is_bitstring_bam(file::String)
     return false
 end
 
-function read_bam(bam_file::String; only_unique=true, stop_at=nothing, invertstrand=:none)
+function read_bam(bam_file::String; only_unique=true, invertstrand=:none)
     @assert invertstrand in [:read1, :read2, :both, :none]
     reads1 = Dict{UInt, AlignedRead}()
     reads2 = Dict{UInt, AlignedRead}()
@@ -397,6 +397,7 @@ function read_bam(bam_file::String; only_unique=true, stop_at=nothing, invertstr
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
+        c += 1
         id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(@view(record.data[1:BAM.seqname_length(record)]))
         current_read_dict = isread2(record) && ispaired(record) ? reads2 : reads1
         invert = (current_read_dict === reads2 && invertstrand in (:read2, :both)) || (current_read_dict === reads1 && invertstrand in (:read1, :both))
@@ -426,8 +427,6 @@ function read_bam(bam_file::String; only_unique=true, stop_at=nothing, invertstr
             alnpart = MyAlignment(ref_interval, seq_interval, BAM.isprimary(record))
         end
         id in keys(current_read_dict) ? push!(current_read_dict[id].alns, alnpart) : push!(current_read_dict, id=>AlignedRead([alnpart]))
-        c += 1
-        isnothing(stop_at) || ((c >= stop_at) && break) 
     end
     close(reader)
     return reads1, reads2
@@ -455,7 +454,7 @@ function annotate!(alns::Alignments, features::Features; prioritize_type=nothing
     end
 end
 
-function annotate!(alns::PairedAlignments, features::Features; prioritize_type=nothing)
+function annotate!(alns::PairedAlignments, features::Features; prioritize_type=nothing, overwrite_type=nothing)
     myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
         GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refn], Interval("", 1, 1, STRAND_NA, Annotation("", ""))) for refn in refnames(features)) 
     for (alignment1, alignment2) in alns
@@ -467,7 +466,8 @@ function annotate!(alns::PairedAlignments, features::Features; prioritize_type=n
                 for feature_interval in myiterator
                     olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
                     foundpriority = (!isnothing(prioritize_type) && (annotationtype(feature_interval) == prioritize_type))
-                    if foundpriority || annotationoverlap(alignment) < olp
+                    overwrite = (!isnothing(overwrite_type) && (annotation(alignedread[i]).type == overwrite_type))
+                    if foundpriority || annotationoverlap(alignment) < olp || overwrite
                         annotation(alignedread[i]).type = feature_interval.metadata.type
                         annotation(alignedread[i]).name = feature_interval.metadata.name
                         annotation(alignedread[i]).overlap = olp
