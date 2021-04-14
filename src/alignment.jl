@@ -292,8 +292,8 @@ function ischimeric(alnread::AlignedRead)
     return count(alnread) > 1 ? true : false
 end
 
-function ischimeric(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, check_annotation=true)
-    (ischimeric(alnread1) || ischimeric(alnread2)) && (return true)
+function ischimeric(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, check_annotation=true, per_read=false)
+    per_read && (ischimeric(alnread1) || ischimeric(alnread2)) && (return true)
     return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; max_distance=max_distance, check_annotation=check_annotation)) >= 2
 end
 

@@ -159,7 +159,6 @@ function addigrs!(features::Features; fiveutr_type="5UTR", threeutr_type="3UTR")
         stop, start = leftposition(next_feature), rightposition(feature)
         (start + 1) < stop || continue
         igr = Interval(refname(feature), start+1, stop-1, STRAND_POS, Annotation("IGR", annotationname(feature)*":"*annotationname(next_feature)))
-        length(collect(eachoverlap(features, igr))) == 0 || continue
         push!(new_features, igr)
     end
     for i in 1:nb_features_neg-1
@@ -168,7 +167,6 @@ function addigrs!(features::Features; fiveutr_type="5UTR", threeutr_type="3UTR")
         stop, start = leftposition(next_feature), rightposition(feature)
         (start + 1) < stop || continue
         igr = Interval(refname(feature), start+1, stop-1, STRAND_NEG, Annotation("IGR", annotationname(feature)*":"*annotationname(next_feature)))
-        length(collect(eachoverlap(features, igr))) == 0 || continue
         push!(new_features, igr)
     end
     for feature in new_features
