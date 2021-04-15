@@ -272,7 +272,7 @@ function overlapdistance(i1::Interval, i2::Interval)::Float64
 end
 distance(i1::Interval, i2::Interval)::Float64 = -min(-0.0, overlapdistance(i1,i2))
 
-function countconcordant(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, check_annotation=true)
+function countconcordant(alnread1::AlignedRead, alnread2::AlignedRead; min_distance=100, check_annotation=true)
     c = 0
     for part in alnread1, otherpart in alnread2
         if check_annotation 
@@ -283,7 +283,7 @@ function countconcordant(alnread1::AlignedRead, alnread2::AlignedRead; max_dista
                 end
             end
         end
-        distance(refinterval(part), refinterval(otherpart)) < max_distance && (c+=1)
+        distance(refinterval(part), refinterval(otherpart)) < min_distance && (c+=1)
     end
     return c
 end
@@ -292,14 +292,14 @@ function ischimeric(alnread::AlignedRead)
     return count(alnread) > 1 ? true : false
 end
 
-function ischimeric(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, check_annotation=true, per_read=false)
+function ischimeric(alnread1::AlignedRead, alnread2::AlignedRead; min_distance=100, check_annotation=true, per_read=false)
     per_read && (ischimeric(alnread1) || ischimeric(alnread2)) && (return true)
-    return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; max_distance=max_distance, check_annotation=check_annotation)) >= 2
+    return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; min_distance=min_distance, check_annotation=check_annotation)) >= 2
 end
 
-function istriplet(alnread1::AlignedRead, alnread2::AlignedRead; max_distance=100, check_annotation=true)
+function istriplet(alnread1::AlignedRead, alnread2::AlignedRead; min_distance=100, check_annotation=true)
     2 < (count(alnread1) + count(alnread2)) < 5 || (return false)
-    return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; max_distance=max_distance, check_annotation=check_annotation)) == 3
+    return (count(alnread1) + count(alnread2) - countconcordant(alnread1, alnread2; min_distance=min_distance, check_annotation=check_annotation)) == 3
 end
 
 struct Alignments <: AlignmentContainer
@@ -322,56 +322,74 @@ function Base.iterate(alignments::Alignments, state::Int)
     return (aln, state)
 end
 
-function Alignments(bam_file::String; nskip=nothing, rev_comp=:none)
-    alignments1, alignments2 = read_bam(bam_file; nskip=nskip, invertstrand=rev_comp)
+function Alignments(bam_file::String; min_templength=nothing, only_unique=true, rev_comp=:none)
+    alignments1, alignments2 = read_bam(bam_file; min_templength=min_templength, only_unique=only_unique, invertstrand=rev_comp)
     @assert isempty(alignments2)
     Alignments(alignments1)
 end
 
 struct PairedAlignments <: AlignmentContainer
-    dict::Dict{UInt, Tuple{AlignedRead, AlignedRead}}
+    read1::Dict{UInt, AlignedRead}
+    read2::Dict{UInt, AlignedRead}
+    keys::Set{UInt}
 end
 
-Base.length(alignments::PairedAlignments) = length(alignments.dict)
-Base.keys(alignments::PairedAlignments) = keys(alignments.dict)
-Base.values(alignments::PairedAlignments) = values(alignments.dict)
+Base.length(alignments::PairedAlignments) = length(alignments.keys)
 function Base.iterate(alignments::PairedAlignments) 
-    dictiteration = iterate(alignments.dict)
+    dictiteration = iterate(alignments.keys)
     isnothing(dictiteration) && (return nothing)
-    ((key, (aln1, aln2)), state) = dictiteration
-    return ((aln1, aln2), state)
+    key, state = dictiteration
+    return ((alignments.read1[key], alignments.read2[key]), state)
 end
 function Base.iterate(alignments::PairedAlignments, state::Int) 
-    dictiteration = iterate(alignments.dict, state)
+    dictiteration = iterate(alignments.keys, state)
     isnothing(dictiteration) && (return nothing)
-    ((key, (aln1, aln2)), state) = dictiteration
-    return ((aln1, aln2), state)
+    key, state = dictiteration
+    return ((alignments.read1[key], alignments.read2[key]), state)
 end
 
-function PairedAlignments(bam_file1::String, bam_file2::String; nskip=nothing, rev_comp=:none)
-    alignments1, alignments_e1 = read_bam(bam_file1; nskip=nskip, invertstrand=rev_comp)
-    alignments2, alignments_e2 = read_bam(bam_file2; nskip=nskip, invertstrand=rev_comp)
+function PairedAlignments(bam_file1::String, bam_file2::String; min_templength=nothing, only_unique=true, rev_comp=:none)
+    alignments1, alignments_e1 = read_bam(bam_file1; min_templength=min_templength, only_unique=only_unique, invertstrand=rev_comp)
+    alignments2, alignments_e2 = read_bam(bam_file2; min_templength=min_templength, only_unique=only_unique, invertstrand=rev_comp)
     @assert isempty(alignments_e1) && isempty(alignments_e2)
-    alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
-    PairedAlignments(alignments)
+    PairedAlignments(alignments1, alignments2, intersect(Set(keys(alignments1)), Set(keys(alignments2))))
 end
 
-function PairedAlignments(pebam_file::String; nskip=nothing, rev_comp=:none)
-    alignments1, alignments2 = read_bam(pebam_file; nskip=nskip, invertstrand=rev_comp)
-    alignments = Dict(key=>(alignments1[key], alignments2[key]) for key in intersect(Set(keys(alignments1)), Set(keys(alignments2))))
-    PairedAlignments(alignments)
+function PairedAlignments(pebam_file::String; min_templength=nothing, only_unique=true, rev_comp=:none)
+    alignments1, alignments2 = read_bam(pebam_file; min_templength=min_templength, only_unique=only_unique, invertstrand=rev_comp)
+    PairedAlignments(alignments1, alignments2, intersect(Set(keys(alignments1)), Set(keys(alignments2))))
 end
 
 function ispaired(record::BAM.Record)::Bool
-    return BAM.isfilled(record) && (BAM.flag(record) & UInt16(0x001) != 0)
+    BAM.flag(record) & UInt(0x001) != 0
+end
+
+function isproperpair(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x002) != 0
+end
+
+function isprimary(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x100) == 0
 end
 
 function isread1(record::BAM.Record)::Bool
-    return BAM.isfilled(record) && (BAM.flag(record) & UInt16(0x040) != 0)
+    BAM.flag(record) & UInt(0x040) != 0
 end
 
 function isread2(record::BAM.Record)::Bool
-    return BAM.isfilled(record) && (BAM.flag(record) & UInt16(0x080) != 0)
+    BAM.flag(record) & UInt(0x080) != 0
+end
+
+function ispositivestrand(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x010) == 0
+end
+
+function mateispositivestrand(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x020) == 0
+end
+
+function paironsamestrand(record::BAM.Record, invertstrand::Symbol)::Bool
+    (ispositivestrand(record) != (invertstrand in (:both, :read1))) == (mateispositivestrand(record) != (invertstrand in (:both, :read2)))
 end
 
 function is_bitstring_bam(file::String)
@@ -386,17 +404,19 @@ function is_bitstring_bam(file::String)
     return false
 end
 
-function read_bam(bam_file::String; only_unique=true, invertstrand=:none)
+function read_bam(bam_file::String; min_templength=nothing, only_unique=true, invertstrand=:none)
     @assert invertstrand in [:read1, :read2, :both, :none]
     reads1 = Dict{UInt, AlignedRead}()
     reads2 = Dict{UInt, AlignedRead}()
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     is_bitstring = is_bitstring_bam(bam_file)
+    check_templen = isnothing(min_templength) ? false : 0 < min_templength
     c = 0
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
+        (check_templen && (0 < abs(BAM.templength(record)) < min_templength) && paironsamestrand(record, invertstrand) && isproperpair(record)) && continue
         c += 1
         id = is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(@view(record.data[1:BAM.seqname_length(record)]))
         current_read_dict = isread2(record) && ispaired(record) ? reads2 : reads1
