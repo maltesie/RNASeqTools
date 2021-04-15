@@ -53,7 +53,7 @@ function overlaps(alignmentinterval::Interval{AlignmentAnnotation}, feature::Int
 end
 
 Base.push!(features::Features, interval::Interval) = push!(features.list, interval)
-function merge!(features1::Features, features2::Features) 
+function Base.merge!(features1::Features, features2::Features) 
     for feature in features2
         push!(features1, feature)
     end
@@ -95,7 +95,7 @@ function Base.write(file::String, features::Features)
     close(writer)
 end
 
-function addutrs!(features::Features; cds_typ="mRNA", utr_length=150, min_utr_length=25)
+function addutrs!(features::Features; cds_typ="CDS", utr_length=150, min_utr_length=25)
     new_features = Vector{Interval{Annotation}}()
     base_features_pos = [feature for feature in features if (annotationtype(feature)==cds_typ) && (feature.strand == STRAND_POS)]
     base_features_neg = [feature for feature in features if (annotationtype(feature)==cds_typ) && (feature.strand == STRAND_NEG)]
