@@ -20,14 +20,16 @@ function align_mem(in_file::String, out_file::String, genome_file::String;
 end
 
 function align_mem(in_file1::String, in_file2::String, out_file::String, genome_file::String; 
-    z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
+    z_score=100, unpair_panelty=9, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools")
 
     tmp_bwa = joinpath(dirname(in_file1), "tmp.bwa")
     tmp_view = joinpath(dirname(in_file1), "tmp.view")
 
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
-    cmd = pipeline(`$bwa_bin mem -d $z_score -v 1 -t 6 $genome_file $in_file1 $in_file2`, stdout=tmp_bwa)
+    cmd = unpair_rescue ? 
+        pipeline(`$bwa_bin mem -d $z_score -v 1 -U $unpair_panelty -P -t 6 $genome_file $in_file1 $in_file2`, stdout=tmp_bwa) : 
+        pipeline(`$bwa_bin mem -d $z_score -v 1 -U $unpair_panelty -t 6 $genome_file $in_file1 $in_file2`, stdout=tmp_bwa)
     run(cmd)
     cmd = pipeline(`$sam_bin view -u $tmp_bwa`, stdout=tmp_view)
     run(cmd)
@@ -54,13 +56,13 @@ function align_mem(read_files::SingleTypeFiles, genome::Genome; z_score=100, bwa
     end
 end
 
-function align_mem(read_files::PairedSingleTypeFiles, genome::Genome; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
+function align_mem(read_files::PairedSingleTypeFiles, genome::Genome; z_score=100, unpair_panelty=9, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
     tmp_genome = joinpath(dirname(read_files.list[1][1]), "tmp_genome.fa")
     write(tmp_genome, genome)
     for (file1, file2) in read_files
         out_file = file1[1:end-length(read_files.type)] * ".bam"
         (isfile(out_file) && !overwrite_existing) && continue
-        align_mem(file1, file2, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
+        align_mem(file1, file2, out_file, tmp_genome; z_score=z_score, unpair_panelty=unpair_panelty, unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
