@@ -161,8 +161,14 @@ correlation(coverages::Vector{Coverage}) = correlation(coverages...)
 
 function diff(coverage::Vector{Float32})
     d = zeros(Float32,length(coverage))
-    d[1] = coverage[1]
-    d[2:end] = coverage[2:end] - coverage[1:end-1]
+    d[2:end] = coverage[2:end] .- coverage[1:end-1]
+    for i in 4:length(d)
+        d[i-2] = sum(@view(d[i-2:i]))
+        abs(d[i-3])<abs(d[i-2]) && (d[i-3]=0)
+    end
+    for i in length(d):-1:2
+        abs(d[i-1])>abs(d[i]) && (d[i]=0)
+    end
     return d
 end
 
