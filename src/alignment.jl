@@ -336,6 +336,7 @@ struct PairedAlignments <: AlignmentContainer
     keys::Set{UInt}
 end
 
+Base.getindex(alignments::PairedAlignments, key::UInt) = (alignments.read1[key], alignments.read2[key])
 Base.length(alignments::PairedAlignments) = length(alignments.keys)
 function Base.iterate(alignments::PairedAlignments) 
     dictiteration = iterate(alignments.keys)

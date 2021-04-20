@@ -14,12 +14,12 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=false)
+function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=true)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     chromosome_list = [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))]
-    intervals_f = Interval[]
-    intervals_r = Interval[]
+    intervals_f = Vector{Interval{Nothing}}()
+    intervals_r = Vector{Interval{Nothing}}()
     count = 0
     while !eof(reader)
         read!(reader, record)
@@ -29,11 +29,11 @@ function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=f
         left = BAM.position(record)
         right = BAM.rightposition(record)
         count += 1
-        BAM.ispositivestrand(record) ? push!(coverage_f, Interval(ref, left, right)) : push!(coverage_r, Interval(ref, left, right))
+        BAM.ispositivestrand(record) ? push!(intervals_f, Interval(ref, left, right)) : push!(intervals_r, Interval(ref, left, right))
     end
     close(reader)
-    coverage_f = coverage(IntervalCollection(intervals_f))
-    coverage_r = coverage(IntervalCollection(intervals_r))
+    coverage_f = coverage(IntervalCollection(intervals_f, true))
+    coverage_r = coverage(IntervalCollection(intervals_r, true))
     norm_factor = norm/count
     filename_f = bam_file[1:end-4] * "_forward.bw"
     filename_r = bam_file[1:end-4] * "_reverse.bw"
@@ -49,7 +49,7 @@ function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=f
     close(writer_r)
 end
 
-function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_only=false, skip_existing_files=true)
+function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_only=true, skip_existing_files=true)
     @assert files.type == ".bam"
     for file in files
         filename_f = file[1:end-4] * "_forward.bw"
@@ -82,23 +82,24 @@ function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String)
     reader_r = open(BigWig.Reader, bigwig_reverse_file)
     chrlist_f = BigWig.chromlist(reader_f)
     chrlist_r = BigWig.chromlist(reader_r)
+    @assert chrlist_f == chrlist_r
     intervals = Vector{Interval{Float32}}()
     for record in reader_f
-        push!(intervals, Interval(BigWig.chromid(record), BigWig.chromstart(record), BigWig.chromend(record), STRAND_POS, BigWig.value(record)))
+        push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), STRAND_POS, BigWig.value(record)))
     end
     for record in reader_r
-        push!(intervals, Interval(BigWig.chromid(record), BigWig.chromstart(record), BigWig.chromend(record), STRNAD_NEG, BigWig.value(record)))
+        push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), STRAND_NEG, BigWig.value(record)))
     end
     close(reader_f)
     close(reader_r)
-    return Coverage(IntervalCollection(intervals, true), chrlist)
+    return Coverage(IntervalCollection(intervals, true), chrlist_f)
 end
 
 function Coverage(paired_files::PairedSingleTypeFiles)
-    @assert paired_files.type = ".bw"
+    @assert paired_files.type == ".bw"
     coverages = Vector{Coverage}()
     for (file_forward, file_reverse) in paired_files
-        push!(coverages, Coverage(file_forward, file_revers))
+        push!(coverages, Coverage(file_forward, file_reverse))
     end
     return merge(coverages...)
 end
@@ -119,25 +120,17 @@ function Base.values(coverage::Coverage, interval::Interval)
 end
 
 function Base.values(coverage::Coverage)
-    vals_f = Dict{String,Vector{Float32}}()
-    vals_r = Dict{String,Vector{Float32}}()
+    vals = Dict{String,Tuple{Vector{Float32},Vector{Float32}}}()
     for (chr, len) in coverage.chroms
         interval_f = Interval(chr, 1, len, STRAND_POS)
-        push!(vals_f, chr=>values(coverage, interval_f))
         interval_r = Interval(chr, 1, len, STRAND_NEG)
-        push!(vals_r, chr=>values(coverage, interval_r))
+        push!(vals, chr=>(values(coverage, interval_f), values(coverage, interval_r)))
     end
-    return vals_f, vals_r
+    return vals
 end
 
 Base.push!(coverage::Coverage, interval::Interval) = push!(coverage.list, interval)
-function merge!(coverage1::Coverage, coverage2::Coverage) 
-    for interval in coverage2
-        push!(coverage1, feature)
-    end
-end
-
-function merge(coverages::Coverage ...)
+function Base.merge(coverages::Coverage ...)
     @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
     new_intervals = Vector{Interval{Float32}}()
     for coverage in coverages
@@ -147,16 +140,17 @@ function merge(coverages::Coverage ...)
     end
     return Coverage(IntervalCollection(new_intervals, true), coverages[1].chroms)
 end
-merge(coverages::Vector{Coverage}) = merge(coverages...)
+Base.merge(coverages::Vector{Coverage}) = merge(coverages...)
 
 function correlation(coverages::Coverage ...)
     @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
     value_arrays = Dict{String,Matrix{Float32}}(chr => Matrix{Float32}(undef, length(coverages), len) for (chr, len) in coverages[1].chroms)
     for (i,coverage) in enumerate(coverages)  
-        for (chr, values) in values(coverage)
-            value_arrays[chr][i,!] = values
+        for (chr, (values_f, values_r)) in values(coverage)
+            value_arrays[chr][i,1:end] = values_f .+ values_r
         end
     end
+
     correlations = Dict{String,Matrix{Float32}}(chr => Matrix{Float32}(undef, length(coverages), length(coverages)) for (chr, len) in coverages[1].chroms)
     for (chr, arr) in value_arrays
         correlations[chr] = cor(arr, dims=2)
@@ -164,3 +158,50 @@ function correlation(coverages::Coverage ...)
     return correlations
 end
 correlation(coverages::Vector{Coverage}) = correlation(coverages...)
+
+function diff(coverage::Vector{Float64})
+    d = zeros(Float64,length(coverage))
+    d[1] = coverage[1]
+    d[2:end] = coverage[2:end] - coverage[1:end-1]
+    return d
+end
+
+function tss(notex::Coverage, tex::Coverage; min_step=10, min_ratio=1.3)
+    @assert notex.chroms == tex.chroms
+    chrs = [chr[1] for chr in notex.chroms]
+    notex_f, notex_r = values(notex)
+    tex_f, tex_r = values(tex)
+    intervals = Vector{Interval{Float64}}()
+    for chr in chrs
+        d_forward = diff(tex_f[chr])
+        d_reverse = diff(tex_r[chr])
+        check_forward = circshift(((tex_f[chr] ./ notex_f[chr]) .>= min_ratio), 1) .& (d_forward .>= min_step)
+        check_reverse = circshift(((tex_r[chr] ./ notex_r[chr]) .>= min_ratio), 1) .& (d_reverse .>= min_step)
+        for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
+            push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
+        end
+        for (pos, val)  in zip(findall(!iszero, check_reverse), abs.(d_reverse[check_reverse]))
+            push!(intervals, Interval(chr, pos, pos, STRAND_NEG, val))
+        end
+    end
+    return Coverage(IntervalCollection(intervals, true), tex.chroms)
+end
+
+function terms(coverage::Coverage; min_step=10)
+    f, r = values(coverage)
+    intervals = Vector{Interval{Float64}}()
+    chrs = [chr[1] for chr in coverage.chroms]
+    for chr in chrs
+        d_forward = diff(f[chr])
+        d_reverse = diff(r[chr])
+        check_forward = d_forward .<= -min_step
+        check_reverse = d_reverse .<= -min_step
+        for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
+            push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
+        end
+        for (pos, val)  in zip(findall(!iszero, check_reverse), abs.(d_reverse[check_reverse]))
+            push!(intervals, Interval(chr, pos, pos, STRAND_NEG, val))
+        end
+    end
+    return Coverage(IntervalCollection(intervals, true), coverage.chroms)
+end

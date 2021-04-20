@@ -1,7 +1,6 @@
 struct Genome <: SequenceContainer
     seq::LongDNASeq
     chrs::Dict{String, UnitRange{Int}}
-    name::Union{String, Nothing}
 end
 
 function Genome(sequences::Vector{LongDNASeq}, names::Vector{String}; description=nothing)
@@ -30,7 +29,7 @@ function Genome(genome_fasta::String)
         temp_start += length(chr_seq)
         total_seq *= chr_seq
     end
-    Genome(LongDNASeq(total_seq), chrs, name)
+    Genome(LongDNASeq(total_seq), chrs)
 end
 
 Base.length(genome::Genome) = length(genome.seq)
@@ -54,8 +53,7 @@ function Base.iterate(genome::Genome, state::Int)
 end
 
 function Base.:*(genome1::Genome, genome2::Genome)
-    new_description = isnothing(genome1.name) ? genome2 : (isnothing(genome2.name) ? genome1.name : genome1.name * "+" * genome2.name)
-    return Genome(genome1.seq*genome2.seq, merge(genome1.chrs, Dict(key=>(range .+ length(genome1)) for (key, range) in genome2.chrs)), new_description)
+    return Genome(genome1.seq*genome2.seq, merge(genome1.chrs, Dict(key=>(range .+ length(genome1)) for (key, range) in genome2.chrs)))
 end
 
 function Base.write(file::String, genome::Genome)
@@ -105,7 +103,6 @@ end
 
 struct PairedReads <: SequenceContainer
     dict::Dict{UInt, LongDNASeqPair}
-    name::Union{String, Nothing}
 end
 
 Base.length(reads::PairedReads) = length(reads.dict)
@@ -122,12 +119,12 @@ function Base.iterate(reads::PairedReads, state::Int)
     return ((read1, read2), state)
 end
 
-function PairedReads(file1::String, file2::String; description=nothing, stop_at=nothing)
+function PairedReads(file1::String, file2::String; stop_at=nothing)
     reads1 = read_reads(file1; nb_reads=stop_at)
     reads2 = read_reads(file2; nb_reads=stop_at)
     @assert length(reads1) == length(reads2)
     @assert all([haskey(reads2, key) for key in keys(reads1)])
-    PairedReads(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)), description)
+    PairedReads(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)))
 end
 
 function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedReads)
@@ -144,7 +141,6 @@ end
 
 struct Reads <: SequenceContainer
     dict::Dict{UInt, LongDNASeq}
-    name::Union{String, Nothing}
 end
 
 Base.length(reads::Reads) = length(reads.dict)
@@ -169,9 +165,9 @@ function Base.write(fasta_file::String, reads::Reads)
     close(f)
 end
 
-function Reads(file::String; description="", stop_at=nothing)
+function Reads(file::String; stop_at=nothing)
     reads = read_reads(file, nb_reads=stop_at)
-    Reads(reads, description)
+    Reads(reads)
 end
 
 function Reads(f, paired_reads::PairedReads; use_when_tied=:none)
@@ -189,7 +185,7 @@ function Reads(f, paired_reads::PairedReads; use_when_tied=:none)
             check2 && push!(reads, key=>copy(read2))
         end
     end
-    Reads(reads, paired_reads.name)
+    Reads(reads)
 end
 
 function read_reads(file::String; nb_reads=nothing)
@@ -367,4 +363,64 @@ function Base.filter!(f, reads::PairedReads; logic=:or)
             ((check1 && !check2) || (!check1 && check2)) || delete!(reads.dict, key)
         end
     end
+end
+
+function similarity(read1::LongDNASeq, read2::LongDNASeq; score_model=nothing)
+    isnothing(score_model) && (score_model = AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1))
+    (length(read1) > length(read2)) ? ((short_seq, long_seq) = (read2, read1)) : ((short_seq, long_seq) = (read1, read2))
+    aln = local_alignment(long_seq, short_seq, score_model)
+    hasalignment(aln) || (return 0.0) 
+    return count_matches(alignment(aln))/length(short_seq)
+end
+
+function similarity(reads::PairedReads; window_size=10, step_size=2)
+    similarities = Dict{UInt, Float64}()
+    score_model = AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1)
+    for (read1, read2) in reads
+        push!(similarities, key=>similarity(read1, read2; score_model=score_model))
+    end
+    return similarities
+end
+
+function nucleotide_count(reads::Reads; normalize=true)
+    max_length = maximum([length(read) for read in reads])
+    count = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
+    nb_reads = length(reads)
+    for read in reads
+        (align==:left) ? 
+        (index = 1:length(read)) : 
+        (index = (max_length - length(read) + 1):max_length)
+        for (i, n) in zip(index, read)
+            count[n][i] += 1
+        end
+    end
+    if normalize
+        for (key, c) in count
+            c /= length(reads)
+        end
+    end
+    return count
+end
+
+function nucleotide_count(reads::PairedReads; normalize=true)
+    max_length = maximum(vcat([[length(read1) length(read2)] for (read1, read2) in reads]...))
+    count1 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
+    count2 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
+    nb_reads = length(reads)
+    for (read1, read2) in reads
+        (align==:left) ? 
+        (index1 = 1:length(read1); index2 = 1:length(read2)) : 
+        (index1 = (max_length - length(read1) + 1):max_length; index2 = (max_length - length(read2) + 1):max_length)
+        for ((i1, n1),(i2, n2)) in zip(zip(index1, read1), zip(index2, read2))
+            count1[n1][i1] += 1
+            count2[n2][i2] += 1
+        end
+    end
+    if normalize
+        for ((key1, c1), (key2, c2)) in zip(count1, count2)
+            c1 /= length(reads)
+            c2 /= length(reads)
+        end
+    end
+    return count1, count2
 end

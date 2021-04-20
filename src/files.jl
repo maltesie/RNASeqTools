@@ -25,15 +25,8 @@ end
 
 Base.length(files::SingleTypeFiles) = length(files.list)
 
-function Base.iterate(files::SingleTypeFiles)
-    isempty(files.list) && (return nothing)
-    return (files.list[1], 1)
-end
-
-function Base.iterate(files::SingleTypeFiles, state::Int)
-    state + 1 > length(files.list) && (return nothing)
-    return (files.list[state+1], state + 1)
-end
+Base.iterate(files::SingleTypeFiles) = iterate(files.list)
+Base.iterate(files::SingleTypeFiles, state::Int) = iterate(files.list, state)
 
 function hassingledir(files::SingleTypeFiles)
     return length(unique(dirname(file) for file in files)) == 1
@@ -52,8 +45,8 @@ struct PairedSingleTypeFiles <: FileCollection
 end
 
 function PairedSingleTypeFiles(files1::Vector{String}, files2::Vector{String})
-    endingsa = [fname[findlast(fname, "."):end] for fname in files1]
-    endingsb = [fname[findlast(fname, "."):end] for fname in files2]
+    endingsa = [fname[findlast('.', fname):end] for fname in files1]
+    endingsb = [fname[findlast('.', fname):end] for fname in files2]
     @assert (length(unique(endingsa)) == 1) && (unique(endingsa) == unique(endingsb))
     PairedSingleTypeFiles(collect(zip(files1, files2)), endingsa[1], nothing, nothing)
 end
@@ -67,16 +60,8 @@ function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffi
 end
 
 Base.length(files::PairedSingleTypeFiles) = length(files.list)
-
-function Base.iterate(files::PairedSingleTypeFiles)
-    isempty(files.list) && (return nothing)
-    return (files.list[1], 1)
-end
-
-function Base.iterate(files::PairedSingleTypeFiles, state::Int)
-    state + 1 > length(files.list) && (return nothing)
-    return (files.list[state+1], state + 1)
-end
+Base.iterate(files::PairedSingleTypeFiles) = iterate(files.list)
+Base.iterate(files::PairedSingleTypeFiles, state::Int) = iterate(files.list, state)
 
 function hassingledir(files::PairedSingleTypeFiles)
     dirs1 = unique([dirname(file[1]) for file in files])
