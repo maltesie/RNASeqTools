@@ -113,7 +113,7 @@ function Base.values(coverage::Coverage, interval::Interval)
     offset = interval.first-1
     start = interval.first
     stop = interval.last
-    for olint in eachoverlap(coverage.list, interval)
+    for olint in eachoverlap(coverage.list, interval; filter=strand_filter)
         vals[max(start,olint.first)-offset:min(olint.last, stop)-offset] .+= olint.metadata
     end
     return vals
@@ -159,8 +159,8 @@ function correlation(coverages::Coverage ...)
 end
 correlation(coverages::Vector{Coverage}) = correlation(coverages...)
 
-function diff(coverage::Vector{Float64})
-    d = zeros(Float64,length(coverage))
+function diff(coverage::Vector{Float32})
+    d = zeros(Float32,length(coverage))
     d[1] = coverage[1]
     d[2:end] = coverage[2:end] - coverage[1:end-1]
     return d
@@ -169,14 +169,18 @@ end
 function tss(notex::Coverage, tex::Coverage; min_step=10, min_ratio=1.3)
     @assert notex.chroms == tex.chroms
     chrs = [chr[1] for chr in notex.chroms]
-    notex_f, notex_r = values(notex)
-    tex_f, tex_r = values(tex)
-    intervals = Vector{Interval{Float64}}()
+    vals_notex = values(notex)
+    vals_tex = values(tex)
+    intervals = Vector{Interval{Float32}}()
     for chr in chrs
-        d_forward = diff(tex_f[chr])
-        d_reverse = diff(tex_r[chr])
-        check_forward = circshift(((tex_f[chr] ./ notex_f[chr]) .>= min_ratio), 1) .& (d_forward .>= min_step)
-        check_reverse = circshift(((tex_r[chr] ./ notex_r[chr]) .>= min_ratio), 1) .& (d_reverse .>= min_step)
+        notex_f = first(vals_notex[chr])
+        notex_r = last(vals_notex[chr])
+        tex_f = first(vals_tex[chr])
+        tex_r = last(vals_tex[chr])
+        d_forward = diff(tex_f)
+        d_reverse = diff(tex_r)
+        check_forward = circshift(((tex_f ./ notex_f) .>= min_ratio), 1) .& (d_forward .>= min_step)
+        check_reverse = circshift(((tex_r ./ notex_r) .>= min_ratio), 1) .& (d_reverse .>= min_step)
         for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
             push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
         end
@@ -189,7 +193,7 @@ end
 
 function terms(coverage::Coverage; min_step=10)
     f, r = values(coverage)
-    intervals = Vector{Interval{Float64}}()
+    intervals = Vector{Interval{Float32}}()
     chrs = [chr[1] for chr in coverage.chroms]
     for chr in chrs
         d_forward = diff(f[chr])

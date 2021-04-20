@@ -24,7 +24,6 @@ include("sequence.jl")
 include("annotation.jl")
 include("alignment.jl")
 include("coverage.jl")
-include("analysis.jl")
 include("visualization.jl")
 
 end
