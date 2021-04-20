@@ -78,7 +78,6 @@ function Coverage(bigwig_file::String, direction::Symbol)
 end
 
 function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String)
-    @assert direction in [:forward, :reverse]
     reader_f = open(BigWig.Reader, bigwig_forward_file)
     reader_r = open(BigWig.Reader, bigwig_reverse_file)
     chrlist_f = BigWig.chromlist(reader_f)
@@ -93,6 +92,15 @@ function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String)
     close(reader_f)
     close(reader_r)
     return Coverage(IntervalCollection(intervals, true), chrlist)
+end
+
+function Coverage(paired_files::PairedSingleTypeFiles)
+    @assert paired_files.type = ".bw"
+    coverages = Vector{Coverage}()
+    for (file_forward, file_reverse) in paired_files
+        push!(coverages, Coverage(file_forward, file_revers))
+    end
+    return merge(coverages...)
 end
 
 Base.iterate(coverage::Coverage) = iterate(coverage.list)
@@ -129,7 +137,7 @@ function merge!(coverage1::Coverage, coverage2::Coverage)
     end
 end
 
-function merge(coverages::Vector{Coverage})
+function merge(coverages::Coverage ...)
     @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
     new_intervals = Vector{Interval{Float32}}()
     for coverage in coverages
@@ -139,3 +147,20 @@ function merge(coverages::Vector{Coverage})
     end
     return Coverage(IntervalCollection(new_intervals, true), coverages[1].chroms)
 end
+merge(coverages::Vector{Coverage}) = merge(coverages...)
+
+function correlation(coverages::Coverage ...)
+    @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
+    value_arrays = Dict{String,Matrix{Float32}}(chr => Matrix{Float32}(undef, length(coverages), len) for (chr, len) in coverages[1].chroms)
+    for (i,coverage) in enumerate(coverages)  
+        for (chr, values) in values(coverage)
+            value_arrays[chr][i,!] = values
+        end
+    end
+    correlations = Dict{String,Matrix{Float32}}(chr => Matrix{Float32}(undef, length(coverages), length(coverages)) for (chr, len) in coverages[1].chroms)
+    for (chr, arr) in value_arrays
+        correlations[chr] = cor(arr, dims=2)
+    end
+    return correlations
+end
+correlation(coverages::Vector{Coverage}) = correlation(coverages...)

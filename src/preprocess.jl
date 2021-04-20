@@ -145,12 +145,12 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
 
     params = []
     skip_quality_filtering && push!(params, "--disable_quality_filtering")
-    !isnothing(average_window_quality) && push!(params, "--cut_mean_quality=$average_window_quality")
-    !isnothing(filter_complexity) && append!(params, ["-y" "--complexity_threshold=$filter_complexity"])
-    !isnothing(trim_poly_x) && append!(params, ["-x", "--poly_x_min_len=$trim_poly_x"])
-    !isnothing(trim_poly_g) ? append!(params, ["-g", "--poly_g_min_len=$trim_poly_g"]) : push!(params,"-G")
-    cut_tail && push!(params, "--cut_tail")
-    cut_front && push!(params, "--cut_front")
+    !skip_quality_filtering && !isnothing(average_window_quality) && push!(params, "--cut_mean_quality=$average_window_quality")
+    !skip_quality_filtering && !isnothing(filter_complexity) && append!(params, ["-y" "--complexity_threshold=$filter_complexity"])
+    !skip_quality_filtering && !isnothing(trim_poly_x) && append!(params, ["-x", "--poly_x_min_len=$trim_poly_x"])
+    !skip_quality_filtering && !isnothing(trim_poly_g) ? append!(params, ["-g", "--poly_g_min_len=$trim_poly_g"]) : push!(params,"-G")
+    !skip_quality_filtering && cut_tail && push!(params, "--cut_tail")
+    !skip_quality_filtering && cut_front && push!(params, "--cut_front")
     !isnothing(min_length) && push!(params, "--length_required=$min_length")
     !isnothing(umi) && append!(params, ["-U", "--umi_loc=$(String(umi_loc))", "--umi_len=$umi"])
     !isnothing(adapter) && push!(params, "--adapter_sequence=$adapter")
@@ -171,7 +171,7 @@ end
 
 function trim_fastp(input_files::SingleTypeFiles; 
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, min_length=25, 
-    cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=30,
+    cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, skip_quality_filtering=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}([(file, nothing) for file in input_files])
@@ -181,7 +181,7 @@ end
 
 function trim_fastp(input_files::PairedSingleTypeFiles; 
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, umi_loc=:read1, min_length=25, 
-    cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=30,
+    cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, skip_quality_filtering=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}(input_files.list)
