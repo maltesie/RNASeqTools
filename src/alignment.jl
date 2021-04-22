@@ -42,13 +42,15 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm(tmp_view)
 end
 
-function align_mem(read_files::SingleTypeFiles, genome::Genome; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
+function align_mem(read_files::T, genome::Genome; z_score=100, unpair_panelty=9, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
     tmp_genome = joinpath(dirname(read_files.list[1]), "tmp_genome.fa")
     write(tmp_genome, genome)
-    for file in read_files
+    for file_s in read_files
         out_file = file[1:end-length(read_files.type)] * ".bam"
         (isfile(out_file) && !overwrite_existing) && continue
-        align_mem(file, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
+        isa(read_files, SingleTypeFiles) ?
+        align_mem(file, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+        align_mem(first(file), last(file), out_file, tmp_genome; z_score=z_score, unpair_panelty=unpair_panelty, unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
@@ -56,47 +58,26 @@ function align_mem(read_files::SingleTypeFiles, genome::Genome; z_score=100, bwa
     end
 end
 
-function align_mem(read_files::PairedSingleTypeFiles, genome::Genome; z_score=100, unpair_panelty=9, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
-    tmp_genome = joinpath(dirname(read_files.list[1][1]), "tmp_genome.fa")
-    write(tmp_genome, genome)
-    for (file1, file2) in read_files
-        out_file = file1[1:end-length(read_files.type)] * ".bam"
-        (isfile(out_file) && !overwrite_existing) && continue
-        align_mem(file1, file2, out_file, tmp_genome; z_score=z_score, unpair_panelty=unpair_panelty, unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin)
-    end
-    rm(tmp_genome)
-    for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
-        isfile(tmp_genome * ending) && rm(tmp_genome * ending)
-    end
-end
-
-function align_mem(reads::Reads, genome::Genome, out_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
+function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools") where {T<:SequenceContainer}
     tmp_reads = joinpath(dirname(out_file), "tmp_reads.fasta")
+    tmp_reads2 = joinpath(dirname(out_file), "tmp_reads2.fasta")
     tmp_genome = joinpath(dirname(out_file), "tmp_genome.fa")
-    write(tmp_genome, genome)
     write(tmp_reads, reads)
-    align_mem(tmp_reads, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
+    for (i,genome) in enumerate(genomes)
+        write(tmp_genome, genome)
+        length(genomes) > 1 && (out_file = joinpath(dirname(out_file), "$(i)_" * basename(out_file)))
+        isa(reads, Reads) ? 
+        align_mem(tmp_reads, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+        align_mem(tmp_reads, tmp_reads2, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin) 
+        rm(tmp_genome)
+    end
     rm(tmp_reads)
-    rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
         rm(tmp_genome * ending)
     end
 end
-
-function align_mem(reads::PairedReads, genome::Genome, out_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
-    tmp_reads1 = joinpath(dirname(out_file), "temp1.fasta")
-    tmp_reads2 = joinpath(dirname(out_file), "temp2.fasta")
-    tmp_genome = joinpath(dirname(out_file), "tmp_genome.fa")
-    write(tmp_reads1, tmp_reads2, reads)
-    write(tmp_genome, genome)
-    align_mem(tmp_reads1, tmp_reads2, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
-    rm(tmp_reads1)
-    rm(tmp_reads2)
-    rm(tmp_genome)
-    for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
-        rm(tmp_genome * ending)
-    end
-end
+align_mem(reads::Union{Reads, PairedReads}, genome::Genome, out_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools") = 
+    align_mem(reads, [genome], out_file; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
 function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)
     res = pairalign(LocalAlignment(), query_sequence, reference_sequence, scoremodel)
@@ -267,6 +248,7 @@ function hasannotation(alnread::AlignedRead, annotation_name::String)
     return false
 end
 
+refname(i::Interval) = i.seqname
 Base.length(i::Interval{T}) where {T<:AnnotationStyle} = rightposition(i) - leftposition(i) + 1
 function overlapdistance(i1::Interval, i2::Interval)::Float64
     strand(i1) != strand(i2) && return -Inf

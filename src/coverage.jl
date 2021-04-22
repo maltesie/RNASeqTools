@@ -107,6 +107,28 @@ end
 Base.iterate(coverage::Coverage) = iterate(coverage.list)
 Base.iterate(coverage::Coverage, state) =iterate(coverage.list, state)
 
+function Base.write(filename_f::String, filename_r::String, coverage::Coverage)
+    @assert endswith(filename_f, ".bw") && endswith(filename_f, ".bw")
+    writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
+    writer_r = BigWig.Writer(open(filename_r, "w"), chromosome_list)
+    for interval in coverage
+        strand(interval) == STRAND_POS ? 
+        write(writer_f, (interval.seqname, interval.first, interval.last, interval.metadata)) :
+        write(writer_r, (interval.seqname, interval.first, interval.last, interval.metadata))
+    end
+    close(writer_f)
+    close(writer_r)
+end
+function Base.write(filename::String, coverage::Coverage, gff_type::String)
+    writer = GFF3.Writer(open(filename, "w"))
+    for interval in coverage
+        line = "$(interval.seqname)\t.\t$gff_type\t$(interval.first)\t$(interval.last)\t.\t$(interval.strand)\t.\tValue=$(interval.metadata)"
+        record = GFF3.Record(line)
+        write(writer, record)
+    end
+    close(writer)
+end
+
 function Base.values(coverage::Coverage, interval::Interval)
     len = interval.last - interval.first + 1
     vals = zeros(Float32, len)
@@ -129,13 +151,48 @@ function Base.values(coverage::Coverage)
     return vals
 end
 
-Base.push!(coverage::Coverage, interval::Interval) = push!(coverage.list, interval)
 function Base.merge(coverages::Coverage ...)
     @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
+    nb_coverages = length(coverages)
+    vals_f = Dict(chr=>zeros(Float32, len) for (chr,len) in coverages[1].chroms)
+    vals_r = Dict(chr=>zeros(Float32, len) for (chr,len) in coverages[1].chroms)
     new_intervals = Vector{Interval{Float32}}()
+    has_pos = false
+    has_neg = false
     for coverage in coverages
         for interval in coverage
-            push!(new_intervals, interval)
+            strand(interval) == STRAND_POS ? 
+            (vals_f[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata; has_pos=true) :
+            (vals_r[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata; has_neg=true)
+        end
+    end
+    for vals in (vals_f, vals_r)
+        vals===vals_f && !has_pos && continue
+        vals===vals_r && !has_neg && continue
+        current_pos = 1
+        current_end = 1
+        current_refid = 1
+        current_ref = first(coverages[1].chroms[current_refid])
+        current_len = last(coverages[1].chroms[current_refid])
+        while true
+            if current_end >= current_len
+                current_refid += 1
+                if current_refid > length(coverages[1].chroms)
+                    break
+                end
+                current_ref = first(coverages[1].chroms[current_refid])
+                current_len = last(coverages[1].chroms[current_refid])
+                current_pos = 1
+                current_end = 1
+            end
+            current_value = vals[current_ref][current_pos]
+            while vals[current_ref][current_end+1] == current_value
+                current_end += 1
+                current_end == current_len && break
+            end
+            push!(new_intervals, Interval(current_ref, current_pos, current_end, vals===vals_f ? STRAND_POS : STRAND_NEG, current_value/nb_coverages))
+            current_pos = current_end + 1
+            current_end = current_pos
         end
     end
     return Coverage(IntervalCollection(new_intervals, true), coverages[1].chroms)
@@ -159,34 +216,62 @@ function correlation(coverages::Coverage ...)
 end
 correlation(coverages::Vector{Coverage}) = correlation(coverages...)
 
-function diff(coverage::Vector{Float32})
-    d = zeros(Float32,length(coverage))
-    d[2:end] = coverage[2:end] .- coverage[1:end-1]
-    for i in 4:length(d)
-        d[i-2] = sum(@view(d[i-2:i]))
-        abs(d[i-3])<abs(d[i-2]) && (d[i-3]=0)
+function mincorrelation(coverages::Coverage ...)
+    corr = correlation(coverages)
+    min_corr = 1.0
+    for (chr, matrix) in corr
+        for i in first(size(matrix)), j in 1:i
+            min_corr = min(matrix[i,j], min_corr)
+        end
     end
-    for i in length(d):-1:2
-        abs(d[i-1])>abs(d[i]) && (d[i]=0)
+    return min_corr
+end
+mincorrelation(coverages::Vector{Coverage}) = mincorrelation(coverages...)
+
+function rolling_sum(a, n::Int)
+    @assert 1<=n<=length(a)
+    out = similar(a, length(a)-n+1)
+    out[1] = sum(a[1:n])
+    for i in eachindex(out)[2:end]
+        out[i] = out[i-1]-a[i-1]+a[i+n-1]
     end
-    return d
+    return out
 end
 
-function tss(notex::Coverage, tex::Coverage; min_step=10, min_ratio=1.3)
+function diff(coverage::Vector{Float32}, invert::Bool, window_size::Int, min_background_increase::Float64)
+    d = zeros(Float32,length(coverage))
+    filtered_d = zeros(Float32,length(coverage))
+    invert ? d[1:end-1] = @view(coverage[1:end-1]) .- @view(coverage[2:end])  : d[2:end] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
+    half_window_size = floor(Int, window_size/2)
+    filtered_d[half_window_size:end-half_window_size] = rolling_sum(d,window_size)
+    for i in 1:length(d)-window_size+1
+        mv, mi = findmax(@view(d[i:i+window_size-1]))
+        for j in 1:window_size
+            mi != j && (d[i+j-1]=0.0)
+        end
+    end
+    filtered_d[findall(iszero, d)] .= 0.0
+    for i in findall(!iszero, filtered_d)
+        check_range = invert ? (i:i+half_window_size) : (i-half_window_size+1:i)
+        lim = filtered_d[i]/min_background_increase
+        any(@view(coverage[check_range]) .< lim) || (filtered_d[i] = 0.0)
+    end
+    return filtered_d
+end
+
+function tsss(notex::Coverage, tex::Coverage; min_step=10, min_ratio=1.3, min_background_increase=0.2, window_size=10)
     @assert notex.chroms == tex.chroms
     chrs = [chr[1] for chr in notex.chroms]
     vals_notex = values(notex)
     vals_tex = values(tex)
     intervals = Vector{Interval{Float32}}()
     for chr in chrs
-        notex_f = first(vals_notex[chr])
-        notex_r = last(vals_notex[chr])
-        tex_f = first(vals_tex[chr])
-        tex_r = last(vals_tex[chr])
-        d_forward = diff(tex_f)
-        d_reverse = diff(tex_r)
-        check_forward = circshift(((tex_f ./ notex_f) .>= min_ratio), 1) .& (d_forward .>= min_step)
-        check_reverse = circshift(((tex_r ./ notex_r) .>= min_ratio), 1) .& (d_reverse .>= min_step)
+        notex_f, notex_r = vals_notex[chr]
+        tex_f, tex_r = vals_tex[chr]
+        d_forward = diff(tex_f, false, window_size, min_background_increase)
+        d_reverse = diff(tex_r, true, window_size, min_background_increase)
+        check_forward = ((tex_f ./ notex_f) .>= min_ratio) .& (d_forward .>= min_step)
+        check_reverse = ((tex_r ./ notex_r) .>= min_ratio) .& (d_reverse .>= min_step)
         for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
             push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
         end
@@ -197,15 +282,16 @@ function tss(notex::Coverage, tex::Coverage; min_step=10, min_ratio=1.3)
     return Coverage(IntervalCollection(intervals, true), tex.chroms)
 end
 
-function terms(coverage::Coverage; min_step=10)
-    f, r = values(coverage)
+function terms(coverage::Coverage; min_step=10, window_size=10, min_background_increase=0.1)
+    vals = values(coverage)
     intervals = Vector{Interval{Float32}}()
     chrs = [chr[1] for chr in coverage.chroms]
     for chr in chrs
-        d_forward = diff(f[chr])
-        d_reverse = diff(r[chr])
-        check_forward = d_forward .<= -min_step
-        check_reverse = d_reverse .<= -min_step
+        f, r = vals[chr]
+        d_forward = diff(f, true, window_size, min_background_increase)
+        d_reverse = diff(r, false, window_size, min_background_increase)
+        check_forward = d_forward .>= min_step
+        check_reverse = d_reverse .>= min_step
         for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
             push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
         end

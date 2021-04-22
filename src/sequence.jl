@@ -1,9 +1,9 @@
-struct Genome <: SequenceContainer
+struct Genome
     seq::LongDNASeq
     chrs::Dict{String, UnitRange{Int}}
 end
 
-function Genome(sequences::Vector{LongDNASeq}, names::Vector{String}; description=nothing)
+function Genome(sequences::Vector{LongDNASeq}, names::Vector{String})
     seq = LongDNASeq()
     chrs = Dict{String, UnitRange{Int}}()
     sequence_position = 1
@@ -12,7 +12,7 @@ function Genome(sequences::Vector{LongDNASeq}, names::Vector{String}; descriptio
         push!(chrs, name=>sequence_position:sequence_position+length(sequence)-1)
         sequence_position += length(sequence)
     end
-    return Genome(seq, chrs, description)
+    return Genome(seq, chrs)
 end
 
 function Genome(sequence::LongDNASeq, name::String)
@@ -57,7 +57,7 @@ function Base.:*(genome1::Genome, genome2::Genome)
 end
 
 function Base.write(file::String, genome::Genome)
-    write_genomic_fasta(Dict(chr=>String(seq) for (chr, seq) in genome), file; name=genome.name)
+    write_genomic_fasta(Dict(chr=>String(seq) for (chr, seq) in genome), file)
 end
 
 function read_genomic_fasta(fasta_file::String)
