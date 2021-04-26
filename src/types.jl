@@ -11,3 +11,4 @@ abstract type FileCollection end
 abstract type Report end
 
 LongDNASeqPair = Tuple{LongDNASeq, LongDNASeq}
+CoverageValues = Dict{String, Vector{Float32}}

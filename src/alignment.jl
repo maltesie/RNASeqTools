@@ -1,12 +1,12 @@
 function align_mem(in_file::String, out_file::String, genome_file::String; 
-    z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools")
+    z_score=100, clipping_penalty=5, bwa_bin="bwa-mem2", sam_bin="samtools")
 
     tmp_bwa = joinpath(dirname(in_file), "tmp.bwa")
     tmp_view = joinpath(dirname(in_file), "tmp.view")
 
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
-    cmd = pipeline(`$bwa_bin mem -d $z_score -v 1 -t 6 $genome_file $in_file`, stdout=tmp_bwa)
+    cmd = pipeline(`$bwa_bin mem -d $z_score -v 1 -L $clipping_penalty -t 6 $genome_file $in_file`, stdout=tmp_bwa)
     run(cmd)
     cmd = pipeline(`$sam_bin view -u $tmp_bwa`, stdout=tmp_view)
     run(cmd)
@@ -20,7 +20,7 @@ function align_mem(in_file::String, out_file::String, genome_file::String;
 end
 
 function align_mem(in_file1::String, in_file2::String, out_file::String, genome_file::String; 
-    z_score=100, unpair_panelty=9, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools")
+    z_score=100, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools")
 
     tmp_bwa = joinpath(dirname(in_file1), "tmp.bwa")
     tmp_view = joinpath(dirname(in_file1), "tmp.view")
@@ -28,8 +28,8 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
     cmd = unpair_rescue ? 
-        pipeline(`$bwa_bin mem -d $z_score -v 1 -U $unpair_panelty -P -t 6 $genome_file $in_file1 $in_file2`, stdout=tmp_bwa) : 
-        pipeline(`$bwa_bin mem -d $z_score -v 1 -U $unpair_panelty -t 6 $genome_file $in_file1 $in_file2`, stdout=tmp_bwa)
+        pipeline(`$bwa_bin mem -d $z_score -v 1 -L $clipping_penalty -U $unpair_penalty -P -t 6 $genome_file $in_file1 $in_file2`, stdout=tmp_bwa) : 
+        pipeline(`$bwa_bin mem -d $z_score -v 1 -L $clipping_penalty -U $unpair_penalty -t 6 $genome_file $in_file1 $in_file2`, stdout=tmp_bwa)
     run(cmd)
     cmd = pipeline(`$sam_bin view -u $tmp_bwa`, stdout=tmp_view)
     run(cmd)
@@ -42,7 +42,8 @@ function align_mem(in_file1::String, in_file2::String, out_file::String, genome_
     rm(tmp_view)
 end
 
-function align_mem(read_files::T, genome::Genome; z_score=100, unpair_panelty=9, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
+function align_mem(read_files::T, genome::Genome; z_score=100, clipping_penalty=5, unpair_penalty=9, 
+                unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
     tmp_genome = joinpath(dirname(read_files.list[1]), "tmp_genome.fa")
     write(tmp_genome, genome)
     for file_s in read_files
@@ -50,7 +51,8 @@ function align_mem(read_files::T, genome::Genome; z_score=100, unpair_panelty=9,
         (isfile(out_file) && !overwrite_existing) && continue
         isa(read_files, SingleTypeFiles) ?
         align_mem(file, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin) :
-        align_mem(first(file), last(file), out_file, tmp_genome; z_score=z_score, unpair_panelty=unpair_panelty, unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin)
+        align_mem(first(file), last(file), out_file, tmp_genome; z_score=z_score, unpair_penalty=unpair_penalty, 
+                unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
@@ -58,7 +60,8 @@ function align_mem(read_files::T, genome::Genome; z_score=100, unpair_panelty=9,
     end
 end
 
-function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools") where {T<:SequenceContainer}
+function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; z_score=100, clipping_penalty=5, 
+                unpair_penalty=9, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools") where {T<:SequenceContainer}
     tmp_reads = joinpath(dirname(out_file), "tmp_reads.fasta")
     tmp_reads2 = joinpath(dirname(out_file), "tmp_reads2.fasta")
     tmp_genome = joinpath(dirname(out_file), "tmp_genome.fa")
@@ -67,8 +70,9 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; z_score=
         write(tmp_genome, genome)
         length(genomes) > 1 && (out_file = joinpath(dirname(out_file), "$(i)_" * basename(out_file)))
         isa(reads, Reads) ? 
-        align_mem(tmp_reads, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin) :
-        align_mem(tmp_reads, tmp_reads2, out_file, tmp_genome; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin) 
+        align_mem(tmp_reads, out_file, tmp_genome; z_score=z_score, clipping_penalty=clipping_penalty, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+        align_mem(tmp_reads, tmp_reads2, out_file, tmp_genome; z_score=z_score, clipping_penalty=clipping_penalty, 
+                unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin) 
         rm(tmp_genome)
     end
     rm(tmp_reads)

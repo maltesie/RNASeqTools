@@ -95,6 +95,39 @@ function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String)
     return Coverage(IntervalCollection(intervals, true), chrlist_f)
 end
 
+function Coverage(values_f::CoverageValues, values_r::CoverageValues, chroms::Vector{Tuple{String, Int}})
+    new_intervals = Vector{Interval{Float32}}()
+    for vals in (values_f, values_r)
+        current_pos = 1
+        current_end = 1
+        current_refid = 1
+        current_ref = first(chroms[current_refid])
+        current_len = last(chroms[current_refid])
+        while true
+            if current_end >= current_len
+                current_refid += 1
+                if current_refid > length(chroms)
+                    break
+                end
+                current_ref = first(chroms[current_refid])
+                current_len = last(chroms[current_refid])
+                current_pos = 1
+                current_end = 1
+            end
+            current_value = vals[current_ref][current_pos]
+            while vals[current_ref][current_end+1] == current_value
+                current_end += 1
+                current_end == current_len && break
+            end
+            (current_pos == 1 && current_end == current_len) || push!(new_intervals, Interval(current_ref, current_pos, current_end, 
+                                                                    vals===vals_f ? STRAND_POS : STRAND_NEG, current_value/nb_coverages))
+            current_pos = current_end + 1
+            current_end = current_pos
+        end
+    end
+    return Coverage(IntervalCollection(new_intervals, true), chroms)
+end
+
 function Coverage(paired_files::PairedSingleTypeFiles)
     @assert paired_files.type == ".bw"
     coverages = Vector{Coverage}()
@@ -156,9 +189,6 @@ function Base.merge(coverages::Coverage ...)
     nb_coverages = length(coverages)
     vals_f = Dict(chr=>zeros(Float32, len) for (chr,len) in coverages[1].chroms)
     vals_r = Dict(chr=>zeros(Float32, len) for (chr,len) in coverages[1].chroms)
-    new_intervals = Vector{Interval{Float32}}()
-    has_pos = false
-    has_neg = false
     for coverage in coverages
         for interval in coverage
             strand(interval) == STRAND_POS ? 
@@ -166,38 +196,16 @@ function Base.merge(coverages::Coverage ...)
             (vals_r[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata; has_neg=true)
         end
     end
-    for vals in (vals_f, vals_r)
-        vals===vals_f && !has_pos && continue
-        vals===vals_r && !has_neg && continue
-        current_pos = 1
-        current_end = 1
-        current_refid = 1
-        current_ref = first(coverages[1].chroms[current_refid])
-        current_len = last(coverages[1].chroms[current_refid])
-        while true
-            if current_end >= current_len
-                current_refid += 1
-                if current_refid > length(coverages[1].chroms)
-                    break
-                end
-                current_ref = first(coverages[1].chroms[current_refid])
-                current_len = last(coverages[1].chroms[current_refid])
-                current_pos = 1
-                current_end = 1
-            end
-            current_value = vals[current_ref][current_pos]
-            while vals[current_ref][current_end+1] == current_value
-                current_end += 1
-                current_end == current_len && break
-            end
-            push!(new_intervals, Interval(current_ref, current_pos, current_end, vals===vals_f ? STRAND_POS : STRAND_NEG, current_value/nb_coverages))
-            current_pos = current_end + 1
-            current_end = current_pos
-        end
-    end
-    return Coverage(IntervalCollection(new_intervals, true), coverages[1].chroms)
+    return Coverage(vals_f, vals_r, coverage[1].chroms)
 end
 Base.merge(coverages::Vector{Coverage}) = merge(coverages...)
+
+function differential(coverage1::Coverage, coverage2::Coverage)
+    @assert coverage1.chroms == coverage2.chroms
+    vals1 = values(coverage1)
+    vals2 = values(coverage2)
+    return Coverage(Dict(key=>vals1[key] ./ vals2[key] for key in keys(vals1)))
+end
 
 function correlation(coverages::Coverage ...)
     @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
@@ -301,3 +309,4 @@ function terms(coverage::Coverage; min_step=10, window_size=10, min_background_i
     end
     return Coverage(IntervalCollection(intervals, true), coverage.chroms)
 end
+

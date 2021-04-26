@@ -25,6 +25,10 @@ struct Features <: AnnotationContainer
     list::IntervalCollection{Annotation}
 end
 
+function Features(feature_list::Vector{Interval{Annotation}})
+    return Features(IntervalCollection(feature_list, true))
+end
+
 function Features(gff_file::String, type::Vector{String}, name_key::String)
     features = open(collect, GFF3.Reader, gff_file)
     intervals = Vector{Interval{Annotation}}()
@@ -34,15 +38,26 @@ function Features(gff_file::String, type::Vector{String}, name_key::String)
         annotation = Annotation(GFF3.featuretype(feature), join(GFF3.attributes(feature, name_key), ","))
         push!(intervals, Interval(seqname, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annotation))
     end
-    return Features(IntervalCollection(intervals, true))
+    return Features(intervals)
 end
 
 function Features(gff_file::String, type::String, name_key::String)
     return Features(gff_file, [type], name_key)
 end
 
-function Features(feature_list::Vector{Interval{Annotation}})
-    return Features(IntervalCollection(feature_list, true))
+function Features(bams::SingleTypeFiles)
+    my_features = Vector{Interval{Annotation}}()
+    record = BAM.Record()
+    for bam_file in bams
+        reader = BAM.Reader(open(bam_file))
+        while !eof(reader)
+            read!(reader, record)
+            annotation = Annotation("ALN", BAM.tempname(record))
+            push!(my_features, Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), BAM.ispositivestrand(record) ? STRAND_POS : STRAND_NEG, annotation))
+        end
+        close(reader)
+    end
+    return Features(my_features)
 end
 
 refnames(features::Features) = collect(keys(features.list.trees))
