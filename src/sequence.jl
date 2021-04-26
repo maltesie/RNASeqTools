@@ -101,33 +101,33 @@ function is_bitstring_fasta(file::String)
     return false
 end
 
-struct PairedReads{T} <: SequenceContainer
+struct PairedSequences{T} <: SequenceContainer
     dict::Dict{T, LongDNASeqPair}
 end
 
-Base.length(reads::PairedReads) = length(reads.dict)
-Base.keys(reads::PairedReads) = keys(reads.dict)
-Base.values(reads::PairedReads) = values(reads.dict)
-function Base.iterate(reads::PairedReads) 
+Base.length(reads::PairedSequences) = length(reads.dict)
+Base.keys(reads::PairedSequences) = keys(reads.dict)
+Base.values(reads::PairedSequences) = values(reads.dict)
+function Base.iterate(reads::PairedSequences) 
     it = iterate(reads.dict)
     isnothing(it) ? (return nothing) : ((key, (read1, read2)), state) = it
     return ((read1, read2), state)
 end
-function Base.iterate(reads::PairedReads, state::Int) 
+function Base.iterate(reads::PairedSequences, state::Int) 
     it = iterate(reads.dict, state)
     isnothing(it) ? (return nothing) : ((key, (read1, read2)), state) = it
     return ((read1, read2), state)
 end
 
-function PairedReads(file1::String, file2::String; stop_at=nothing, hash_id=true)
+function PairedSequences(file1::String, file2::String; stop_at=nothing, hash_id=true)
     reads1 = read_reads(file1; nb_reads=stop_at, hash_id=hash_id)
     reads2 = read_reads(file2; nb_reads=stop_at, hash_id=hash_id)
     @assert length(reads1) == length(reads2)
     @assert all([haskey(reads2, key) for key in keys(reads1)])
-    PairedReads(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)))
+    PairedSequences(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)))
 end
 
-function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedReads)
+function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedSequences)
     f1 = endswith(fasta_file1, ".gz") ? GzipCompressorStream(open(fasta_file1, "w")) : open(fasta_file1, "w")
     f2 = endswith(fasta_file2, ".gz") ? GzipCompressorStream(open(fasta_file2, "w")) : open(fasta_file2, "w")
     for (key, (read1, read2)) in reads.dict
@@ -139,25 +139,25 @@ function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedReads
     close(f2)
 end
 
-struct Reads{T} <: SequenceContainer
+struct Sequences{T} <: SequenceContainer
     dict::Dict{T, LongDNASeq}
 end
 
-Base.length(reads::Reads) = length(reads.dict)
-Base.keys(reads::Reads) = keys(reads.dict)
-Base.values(reads::Reads) = values(reads.dict)
-function Base.iterate(reads::Reads) 
+Base.length(reads::Sequences) = length(reads.dict)
+Base.keys(reads::Sequences) = keys(reads.dict)
+Base.values(reads::Sequences) = values(reads.dict)
+function Base.iterate(reads::Sequences) 
     it = iterate(reads.dict)
     isnothing(it) ? (return nothing) : ((key, read), state) = it
     return (read, state)
 end
-function Base.iterate(reads::Reads, state::Int) 
+function Base.iterate(reads::Sequences, state::Int) 
     it = iterate(reads.dict, state)
     isnothing(it) ? (return nothing) : ((key, read), state) = it
     return (read, state)
 end
 
-function Base.write(fasta_file::String, reads::Reads{T}) where {T}
+function Base.write(fasta_file::String, reads::Sequences{T}) where T
     f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")
     for (key, read) in reads.dict
         T === String ? write(f, ">$key\n$(String(read))\n") : write(f, ">$(bitstring(key))\n$(String(read))\n")
@@ -165,14 +165,14 @@ function Base.write(fasta_file::String, reads::Reads{T}) where {T}
     close(f)
 end
 
-Reads(seqs::Vector{LongDNASeq}) = Reads(Dict(i::UInt=>read for (i,seq) in enumerate(seqs)))
+Sequences(seqs::Vector{LongDNASeq}) = Sequences(Dict(i::UInt=>read for (i,seq) in enumerate(seqs)))
 
-function Reads(file::String; stop_at=nothing, hash_id=true)
+function Sequences(file::String; stop_at=nothing, hash_id=true)
     reads = read_reads(file, nb_reads=stop_at, hash_id=hash_id)
-    Reads(reads)
+    Sequences(reads)
 end
 
-function Reads(f, paired_reads::PairedReads{T}; use_when_tied=:none) where {T}
+function Sequences(f, paired_reads::PairedSequences{T}; use_when_tied=:none) where T
     @assert use_when_tied in [:none, :read1, :read2]
     reads = Dict{T, LongDNASeq}()
     for (key, (read1, read2)) in paired_reads
@@ -187,7 +187,7 @@ function Reads(f, paired_reads::PairedReads{T}; use_when_tied=:none) where {T}
             check2 && push!(reads, key=>copy(read2))
         end
     end
-    Reads(reads)
+    Sequences(reads)
 end
 
 function read_reads(file::String; nb_reads=nothing, hash_id=true)
@@ -213,13 +213,13 @@ function read_reads(file::String; nb_reads=nothing, hash_id=true)
     return reads
 end
 
-function rev_comp!(reads::Reads)
+function rev_comp!(reads::Sequences)
     for read in reads
         BioSequences.reverse_complement!(read)
     end
 end
 
-function rev_comp!(reads::PairedReads; treat=:both)
+function rev_comp!(reads::PairedSequences; treat=:both)
     @assert treat in [:both, :read1, :read2]
     for (read1, read2) in reads
         treat in [:both, :read1] && BioSequences.reverse_complement!(read1)
@@ -249,7 +249,7 @@ end
 #    @assert files.type in [".fastq.gz", "fasta.gz", ".fastq", ".fasta"]
 #    @assert treat in [:both, :read1, :read2]
 #    for (file1, file2) in files
-#        reads = PairedReads(file1, file2)
+#        reads = PairedSequences(file1, file2)
 #        rev_comp!(reads; treat=treat)
 #        write(file1[1:end-length(files.type)] * ".fasta.gz", file2[1:end-length(files.type)] * ".fasta.gz", reads)
 #    end
@@ -277,13 +277,13 @@ function cut!(read::LongDNASeq, int::Tuple{Int, Int})
     reverse!(resize!(reverse!(resize!(read, last(int), true)), length(read)-first(int)+1, true))
 end
 
-function cut!(reads::Reads, pos::Int; keep=:left, from=:left)
+function cut!(reads::Sequences, pos::Int; keep=:left, from=:left)
     for read in reads
         cut!(read, pos; keep=keep, from=from)
     end
 end
 
-function cut!(reads::PairedReads, pos::Int; keep=:left, from=:left)
+function cut!(reads::PairedSequences, pos::Int; keep=:left, from=:left)
     for (read1, read2) in reads
         ((pos > length(read1)) && (pos > length(read2))) && continue
         cut!(read1, pos; keep=keep, from=from)
@@ -291,7 +291,7 @@ function cut!(reads::PairedReads, pos::Int; keep=:left, from=:left)
     end
 end
 
-function cut!(reads::Reads, seq::LongDNASeq; keep=:left_of_query, from=:left)
+function cut!(reads::Sequences, seq::LongDNASeq; keep=:left_of_query, from=:left)
     @assert keep in [:left_of_query, :right_of_query, :left_and_query, :right_and_query]
     @assert from in [:left, :right]
     for read in reads
@@ -310,7 +310,7 @@ function cut!(reads::Reads, seq::LongDNASeq; keep=:left_of_query, from=:left)
     end
 end
 
-function cut!(reads::PairedReads, seq::LongDNASeq; keep=:left_of_query, from=:left, treat=:both)
+function cut!(reads::PairedSequences, seq::LongDNASeq; keep=:left_of_query, from=:left, treat=:both)
     @assert keep in [:left_of_query, :right_of_query, :left_and_query, :right_and_query]
     @assert treat in [:read1, :read2, :both]
     @assert from in [:left, :right]
@@ -348,13 +348,13 @@ function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1, check_indels=false)
     return approxsearch(s2, s1, k) != 0:-1
 end
 
-function Base.filter!(f, reads::Reads)
+function Base.filter!(f, reads::Sequences)
     for (key, read) in reads.dict
         f(read) || delete!(reads.dict, key)
     end
 end
 
-function Base.filter!(f, reads::PairedReads; logic=:or)
+function Base.filter!(f, reads::PairedSequences; logic=:or)
     @assert logic in [:or, :xor, :and]
     for (key, (read1, read2)) in reads.dict
         if logic == :and 
@@ -376,7 +376,7 @@ function similarity(read1::LongDNASeq, read2::LongDNASeq; score_model=nothing)
     return count_matches(alignment(aln))/length(short_seq)
 end
 
-function similarity(reads::PairedReads{T}; window_size=10, step_size=2)
+function similarity(reads::PairedSequences{T}; window_size=10, step_size=2) where T
     similarities = Dict{T, Float64}()
     score_model = AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1)
     for (read1, read2) in reads
@@ -385,7 +385,7 @@ function similarity(reads::PairedReads{T}; window_size=10, step_size=2)
     return similarities
 end
 
-function nucleotidecount(reads::Reads; normalize=true)
+function nucleotidecount(reads::Sequences; normalize=true)
     max_length = maximum([length(read) for read in reads])
     count = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     nb_reads = length(reads)
@@ -405,7 +405,7 @@ function nucleotidecount(reads::Reads; normalize=true)
     return count
 end
 
-function nucleotidecount(reads::PairedReads; normalize=true)
+function nucleotidecount(reads::PairedSequences; normalize=true)
     max_length = maximum(vcat([[length(read1) length(read2)] for (read1, read2) in reads]...))
     count1 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     count2 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
@@ -426,12 +426,4 @@ function nucleotidecount(reads::PairedReads; normalize=true)
         end
     end
     return count1, count2
-end
-
-function extractseqs(genome::Genome, features::Features)
-    seqs = Vector{LongDNASeq}()
-    for feature in features
-        push!(seqs, genome[refname(feature)][leftposition(feature):rightposition(feature)])
-    end
-    return Reads(seqs)
 end

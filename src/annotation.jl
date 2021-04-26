@@ -190,6 +190,14 @@ function addigrs!(features::Features; fiveutr_type="5UTR", threeutr_type="3UTR")
     end
 end
 
-annotationtype(feature::Interval{T}) where {T<:AnnotationStyle} = feature.metadata.type
-annotationname(feature::Interval{T}) where {T<:AnnotationStyle} = feature.metadata.name
-refname(feature::Interval{T}) where {T<:AnnotationStyle} = feature.seqname
+annotationtype(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata.type
+annotationname(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata.name
+refname(feature::Interval{T}) where T<:AnnotationStyle = feature.seqname
+
+function featureseqs(features::Features, genome::Genome)
+    seqs = Vector{LongDNASeq}()
+    for feature in features
+        push!(seqs, genome[refname(feature)][leftposition(feature):rightposition(feature)])
+    end
+    return Sequences(seqs)
+end

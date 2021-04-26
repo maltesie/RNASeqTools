@@ -69,7 +69,7 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; z_score=
     for (i,genome) in enumerate(genomes)
         write(tmp_genome, genome)
         length(genomes) > 1 && (out_file = joinpath(dirname(out_file), "$(i)_" * basename(out_file)))
-        isa(reads, Reads) ? 
+        isa(reads, Sequences) ? 
         align_mem(tmp_reads, out_file, tmp_genome; z_score=z_score, clipping_penalty=clipping_penalty, bwa_bin=bwa_bin, sam_bin=sam_bin) :
         align_mem(tmp_reads, tmp_reads2, out_file, tmp_genome; z_score=z_score, clipping_penalty=clipping_penalty, 
                 unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin) 
@@ -80,7 +80,7 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; z_score=
         rm(tmp_genome * ending)
     end
 end
-align_mem(reads::Union{Reads, PairedReads}, genome::Genome, out_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools") = 
+align_mem(reads::Union{Sequences, PairedSequences}, genome::Genome, out_file::String; z_score=100, bwa_bin="bwa-mem2", sam_bin="samtools") = 
     align_mem(reads, [genome], out_file; z_score=z_score, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
 function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)
