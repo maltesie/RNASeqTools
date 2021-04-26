@@ -9,11 +9,12 @@ import IntervalTrees.IntervalBTree, IntervalTrees.IntervalBTreeIteratorState
 export align_mem, local_alignment
 export trim_fastp, split_libs 
 export Genome, Reads, PairedReads, Alignments, PairedAlignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage, Annotation, AlignmentAnnotation
-export cut!, rev_comp!, rev_comp, approxoccursin, annotate!
+export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles, GffFiles
+export cut!, rev_comp!, rev_comp, approxoccursin, annotate!, extractseqs
 export hasannotation, ischimeric, istriplet, refinterval, readinterval, annotation, annotationname, annotationtype, annotationoverlap, count, alignments, refname
 export values, addutrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation
-export similarity, tsss, terms, nucleotide_count
-export dashboard, hist_length_distribution, hist_similarity, line_nucleotide_distribution
+export similarity, tsss, terms, nucleotidecount
+export dashboard, lengthhist, similarityhist, nucleotidedist
 
 include("types.jl")
 include("misc.jl")

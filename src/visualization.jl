@@ -25,24 +25,24 @@ function dashboard(reads::Reads)
     run_server(app, "0.0.0.0", 8083)
 end
 
-function hist_length_distribution(reads::Reads)
+function lengthhist(reads::Reads)
     lengths = [length(read) for read in reads]
     histogram(lengths, legend=false, title=title)
 end
 
-function hist_length_distribution(reads::PairedReads, title="length of reads")
+function lengthhist(reads::PairedReads, title="length of reads")
     lengths = vcat([[length(read1) length(read2)] for (read1, read2) in reads]...)
     histogram(lengths, labels=["read1" "read2"], title=title)
 end
 
-function line_nucleotide_distribution(reads::Reads; align=:left, normalize=true, title="nucleotides of reads")
+function nucleotidedist(reads::Reads; align=:left, normalize=true, title="nucleotides of reads")
     count = nucleotide_count(reads; normalize=normalize)
     dna_trans = Dict(DNA_A => "A", DNA_T=>"T", DNA_G=>"G", DNA_C=>"C", DNA_N=>"N")
     label = reshape([dna_trans[key] for key in keys(count)], (1, length(dna_trans)))
     plot(collect(values(count)), label=label, title=title)
 end
 
-function line_nucleotide_distribution(reads::PairedReads; align=:left, normalize=true, title1="nucleotides of read1", title2="nucleotides of read2")
+function nucleotidedist(reads::PairedReads; align=:left, normalize=true, title1="nucleotides of read1", title2="nucleotides of read2")
     (count1, count2) = nucleotide_count(reads; normalize=normalize)
     dna_trans = Dict(DNA_A => "A", DNA_T=>"T", DNA_G=>"G", DNA_C=>"C", DNA_N=>"N")
     label = reshape([dna_trans[key] for key in keys(count1)], (1, length(dna_trans)))
@@ -51,7 +51,7 @@ function line_nucleotide_distribution(reads::PairedReads; align=:left, normalize
     plot(p1, p2, layout=(2,1))
 end
 
-function hist_similarity(reads::PairedReads; window_size=10, step_size=5, title="similarity of reads")
+function similarityhist(reads::PairedReads; window_size=10, step_size=5, title="similarity of reads")
     sim = similarity(reads; window_size=window_size, step_size=step_size)
     histogram(collect(values(sim)), title=title, legend=false)
 end

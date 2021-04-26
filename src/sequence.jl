@@ -385,7 +385,7 @@ function similarity(reads::PairedReads{T}; window_size=10, step_size=2)
     return similarities
 end
 
-function nucleotide_count(reads::Reads; normalize=true)
+function nucleotidecount(reads::Reads; normalize=true)
     max_length = maximum([length(read) for read in reads])
     count = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     nb_reads = length(reads)
@@ -405,7 +405,7 @@ function nucleotide_count(reads::Reads; normalize=true)
     return count
 end
 
-function nucleotide_count(reads::PairedReads; normalize=true)
+function nucleotidecount(reads::PairedReads; normalize=true)
     max_length = maximum(vcat([[length(read1) length(read2)] for (read1, read2) in reads]...))
     count1 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     count2 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
@@ -428,7 +428,7 @@ function nucleotide_count(reads::PairedReads; normalize=true)
     return count1, count2
 end
 
-function extract_seqs(genome::Genome, features::Features)
+function extractseqs(genome::Genome, features::Features)
     seqs = Vector{LongDNASeq}()
     for feature in features
         push!(seqs, genome[refname(feature)][leftposition(feature):rightposition(feature)])

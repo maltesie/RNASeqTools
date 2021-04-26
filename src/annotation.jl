@@ -46,6 +46,7 @@ function Features(gff_file::String, type::String, name_key::String)
 end
 
 function Features(bams::SingleTypeFiles)
+    @assert bams.type == ".bam"
     my_features = Vector{Interval{Annotation}}()
     record = BAM.Record()
     for bam_file in bams
