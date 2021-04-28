@@ -33,7 +33,7 @@ function Genome(genome_fasta::String)
 end
 
 Base.length(genome::Genome) = length(genome.seq)
-Base.getindex(genome::Genome, key::String) = genome.seq[genome.chr[key]]
+Base.getindex(genome::Genome, key::String) = genome.seq[genome.chrs[key]]
 
 function chomosomecount(genome::Genome)
     return length(genome.chrs)
@@ -165,7 +165,7 @@ function Base.write(fasta_file::String, reads::Sequences{T}) where T
     close(f)
 end
 
-Sequences(seqs::Vector{LongDNASeq}) = Sequences(Dict(i::UInt=>read for (i,seq) in enumerate(seqs)))
+Sequences(seqs::Vector{LongDNASeq}) = Sequences(Dict(i=>seq for (i::UInt,seq) in enumerate(seqs)))
 
 function Sequences(file::String; stop_at=nothing, hash_id=true)
     reads = read_reads(file, nb_reads=stop_at, hash_id=hash_id)
