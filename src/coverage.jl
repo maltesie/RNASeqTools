@@ -137,6 +137,7 @@ function Coverage(paired_files::PairedSingleTypeFiles)
     return merge(coverages...)
 end
 
+value(interval::Interval{Float32}) = interval.metadata
 Base.iterate(coverage::Coverage) = iterate(coverage.list)
 Base.iterate(coverage::Coverage, state) =iterate(coverage.list, state)
 

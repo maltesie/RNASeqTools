@@ -65,7 +65,7 @@ Base.iterate(features::Features, state::Tuple{Int64,GenomicFeatures.ICTree{Annot
 Base.length(features::Features) = length(features.list)
 
 strand_filter(a::Interval, b::Interval)::Bool = strand(a) == strand(b)
-function GenomicFeatures.eachoverlap(features::Features, feature::Interval{T}) where {T<:AnnotationStyle}
+function GenomicFeatures.eachoverlap(features::I, feature::Interval{T}) where {I<:AnnotationContainer, T<:AnnotationStyle}
     haskey(features.list.trees, refname(feature)) ?
     (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
                 GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refname(feature)], feature)) :
@@ -101,51 +101,56 @@ function Base.write(file::String, features::Features)
     close(writer)
 end
 
-function addutrs!(features::Features; cds_typ="CDS", utr_length=150, min_utr_length=25)
+function maxsignalposition(coverage::Coverage, from::Int, to::Int, strand::Strand)
+    maxsignal::Float32 = 0.0
+    pos::Int = -1
+    for term in eachoverlap(coverage, Interval(refname(feature), from, to, strand, Annotation()))
+        value(term) > maxsignal && (maxsignal=value(term); pos=rightposition(term))
+    end
+    return maxsignal, pos
+end
+
+function addutrs!(features::Features, tss_coverage::Union{Coverage,Nothing}, term_coverage::Union{Coverage,Nothing}; cds_typ="CDS", max_utr_length=150, min_utr_length=25, guess_missing=true)
     new_features = Vector{Interval{Annotation}}()
     base_features_pos = [feature for feature in features if (type(feature)==cds_typ) && (feature.strand == STRAND_POS)]
     base_features_neg = [feature for feature in features if (type(feature)==cds_typ) && (feature.strand == STRAND_NEG)]
-    
     first_feature, last_feature = base_features_pos[1], base_features_pos[end]
     stop, start = leftposition(first_feature), rightposition(last_feature)
     push!(new_features, Interval(refname(last_feature), start+1, start+utr_length, STRAND_POS, Annotation("3UTR", name(last_feature), Dict{String,String}())))
     push!(new_features, Interval(refname(first_feature), max(1, stop-utr_length), stop-1, STRAND_POS, Annotation("5UTR", name(first_feature), Dict{String,String}())))
-    
     first_feature, last_feature = base_features_neg[1], base_features_neg[end]
     stop, start = leftposition(first_feature), rightposition(last_feature)
     push!(new_features, Interval(refname(last_feature), start+1, start+utr_length, STRAND_NEG, Annotation("5UTR", name(last_feature), Dict{String,String}())))
     push!(new_features, Interval(refname(first_feature), max(1, stop-utr_length), stop-1, STRAND_NEG, Annotation("3UTR", name(first_feature), Dict{String,String}())))
     
-    nb_features_pos = length(base_features_pos)
-    nb_features_neg = length(base_features_neg)
-    for i in 1:nb_features_pos-1
-        feature, next_feature = base_features_pos[i], base_features_pos[i+1]
-        stop, start = leftposition(next_feature), rightposition(feature)
-        if refname(feature) != refname(next_feature)
-            push!(new_features, Interval(refname(feature), start+1, start+utr_length, STRAND_POS, Annotation("3UTR", name(feature), Dict{String,String}())))
-            push!(new_features, Interval(refname(next_feature), max(1, stop-utr_length), stop-1, STRAND_POS, Annotation("5UTR", name(next_feature), Dict{String,String}())))
-        elseif  stop - start > 2 * utr_length + 1 
-            push!(new_features, Interval(refname(next_feature), stop-utr_length, stop-1, STRAND_POS, Annotation("5UTR", name(next_feature), Dict{String,String}())))
-            push!(new_features, Interval(refname(feature), start+1, start+utr_length, STRAND_POS, Annotation("3UTR", name(feature), Dict{String,String}())))
-        elseif stop - start > 2 * min_utr_length
-            new_utr_length = floor(Int, (stop-start)/2)
-            push!(new_features, Interval(refname(next_feature), stop-new_utr_length, stop-1, STRAND_POS, Annotation("5UTR", name(next_feature), Dict{String,String}())))
-            push!(new_features, Interval(refname(feature), start+1, start+new_utr_length, STRAND_POS, Annotation("3UTR", name(feature), Dict{String,String}())))
-        end
-    end
-    for i in 1:nb_features_neg-1
-        feature, next_feature = base_features_neg[i], base_features_neg[i+1]
-        stop, start = leftposition(next_feature), rightposition(feature)
-        if refname(feature) != refname(next_feature) 
-            push!(new_features, Interval(refname(feature), start+1, start+utr_length, STRAND_NEG, Annotation("5UTR", name(feature), Dict{String,String}())))
-            push!(new_features, Interval(refname(next_feature), max(1, stop-utr_length), stop-1, STRAND_NEG, Annotation("3UTR", name(next_feature), Dict{String,String}())))
-        elseif  stop - start > 2 * utr_length + 1
-            push!(new_features, Interval(refname(next_feature), stop-utr_length, stop-1, STRAND_NEG, Annotation("3UTR", name(next_feature), Dict{String,String}())))
-            push!(new_features, Interval(refname(feature), start+1, start+utr_length, STRAND_NEG, Annotation("5UTR", name(feature), Dict{String,String}())))
-        elseif stop - start > 2 * min_utr_length
-            new_utr_length = floor(Int, (stop-start)/2)
-            push!(new_features, Interval(refname(next_feature), stop-new_utr_length, stop-1, STRAND_NEG, Annotation("3UTR", name(next_feature), Dict{String,String}())))
-            push!(new_features, Interval(refname(feature), start+1, start+new_utr_length, STRAND_NEG, Annotation("5UTR", name(feature), Dict{String,String}())))
+    for base_features in (base_features_pos, base_features_neg)
+        nb_features_pos = length(base_features)
+        stran = base_features === base_features_pos ? STRAND_POS : STRAND_NEG
+        for i in 1:nb_features-1
+            feature, next_feature = base_features[i], base_features[i+1]
+            threeref, fiveref, threename, fivename = refname(feature), refname(next_feature), name(feature), name(next_feature)
+            stop, start = leftposition(next_feature), rightposition(feature)
+            threestart::Int, threestop::Int, fivestart::Int, fivestop::Int, maxsignal::Float32  = 0, 0, 0, 0, 0.0
+            if refname(feature) != refname(next_feature)
+                threestart, threestop = start+1, start+utr_length
+                fivestart, fivestop = max(1, stop-utr_length), stop-1
+            elseif  stop - start > 2 * utr_length + 1 
+                threestart, threestop = start+1, start+utr_length
+                fivestart, fivestop = stop-utr_length, stop-1
+            elseif stop - start > 2 * min_utr_length
+                new_utr_length = floor(Int, (stop-start)/2)
+                threestart, threestop = start+1, start+new_utr_length
+                fivestart, fivestop = stop-new_utr_length, stop-1
+            else
+                continue
+            end
+            base_features === base_features_neg && (threestart, fivestart, threestop, fivestop = fivestart, threestart, fivestop, threestop)
+            isnothing(tss_coverage) || maxsignal, fivestop = maxsignalposition(tss_coverage, fivestart, fivestop, STRAND_POS)
+            isnothing(term_coverage) || maxsignal, threestop = maxsignalposition(term_coverage, threestart, threestop, STRAND_POS)
+            if guess_missing || max_signal != 0.0
+                push!(new_features, Interval(threeref, threestart, threestop, stran, Annotation("3UTR", threename, Dict{String,String}())))
+                push!(new_features, Interval(fiveref, fivestart, fivestop, stran, Annotation("5UTR", fivename, Dict{String,String}())))
+            end
         end
     end
     for feature in new_features
@@ -159,22 +164,22 @@ function addigrs!(features::Features; fiveutr_type="5UTR", threeutr_type="3UTR")
     base_features_neg = [feature for feature in features if (type(feature) in [fiveutr_type, threeutr_type]) && (feature.strand == STRAND_NEG)]
     nb_features_pos = length(base_features_pos)
     nb_features_neg = length(base_features_neg)
-    for i in 1:nb_features_pos-1
-        feature, next_feature = base_features_pos[i], base_features_pos[i+1]
-        type(feature) == threeutr_type && type(next_feature) == fiveutr_type && refname(feature) == refname(next_feature) || continue
-        stop, start = leftposition(next_feature), rightposition(feature)
-        (start + 1) < stop || continue
-        igr = Interval(refname(feature), start+1, stop-1, STRAND_POS, Annotation("IGR", name(feature)*":"*name(next_feature), Dict{String,String}()))
-        push!(new_features, igr)
+    for base_features in (base_features_pos, base_features_neg)
+        stan = base_features === base_features_pos ? STRAND_POS : STRAND_NEG
+        for i in 1:nb_features_-1
+            feature, next_feature = base_features[i], base_features[i+1]
+            
+            base_features === base_features_pos ? 
+            type(feature) == threeutr_type && type(next_feature) == fiveutr_type && refname(feature) == refname(next_feature) || continue :
+            type(feature) == fiveutr_type && type(next_feature) == threeutr_type && refname(feature) == refname(next_feature) || continue
+            
+            stop, start = leftposition(next_feature), rightposition(feature)
+            (start + 1) < stop || continue
+            igr = Interval(refname(feature), start+1, stop-1, stran, Annotation("IGR", name(feature)*":"*name(next_feature), Dict{String,String}()))
+            push!(new_features, igr)
+        end
     end
-    for i in 1:nb_features_neg-1
-        feature, next_feature = base_features_neg[i], base_features_neg[i+1]
-        type(feature) == fiveutr_type && type(next_feature) == threeutr_type && refname(feature) == refname(next_feature) || continue
-        stop, start = leftposition(next_feature), rightposition(feature)
-        (start + 1) < stop || continue
-        igr = Interval(refname(feature), start+1, stop-1, STRAND_NEG, Annotation("IGR", name(feature)*":"*name(next_feature), Dict{String,String}()))
-        push!(new_features, igr)
-    end
+
     for feature in new_features
         push!(features, feature)
     end
