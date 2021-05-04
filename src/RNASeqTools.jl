@@ -22,9 +22,9 @@ include("misc.jl")
 include("files.jl")
 include("preprocess.jl")
 include("sequence.jl")
+include("coverage.jl")
 include("annotation.jl")
 include("alignment.jl")
-include("coverage.jl")
 include("visualization.jl")
 
 end

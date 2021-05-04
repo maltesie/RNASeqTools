@@ -18,8 +18,8 @@ function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=t
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     chromosome_list = [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))]
-    intervals_f = Vector{Interval{Nothing}}()
-    intervals_r = Vector{Interval{Nothing}}()
+    vals_f = CoverageValues(chr=>zeros(Float32, len) for (chr, len) in chromosome_list)
+    vals_r = CoverageValues(chr=>zeros(Float32, len) for (chr, len) in chromosome_list)
     count = 0
     while !eof(reader)
         read!(reader, record)
@@ -29,21 +29,18 @@ function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=t
         left = BAM.position(record)
         right = BAM.rightposition(record)
         count += 1
-        BAM.ispositivestrand(record) ? push!(intervals_f, Interval(ref, left, right)) : push!(intervals_r, Interval(ref, left, right))
+        BAM.ispositivestrand(record) ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
     end
     close(reader)
-    coverage_f = coverage(IntervalCollection(intervals_f, true))
-    coverage_r = coverage(IntervalCollection(intervals_r, true))
     norm_factor = norm/count
+    coverage = Coverage(vals_f, vals_r, chromosome_list)
     filename_f = bam_file[1:end-4] * "_forward.bw"
     filename_r = bam_file[1:end-4] * "_reverse.bw"
     writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
     writer_r = BigWig.Writer(open(filename_r, "w"), chromosome_list)
-    for interval in coverage_f
-        write(writer_f, (interval.seqname, interval.first, interval.last, interval.metadata*norm_factor))
-    end
-    for interval in coverage_r
-        write(writer_r, (interval.seqname, interval.first, interval.last, interval.metadata*norm_factor))
+    for interval in coverage
+        writer = strand(interval) == STRAND_POS ? writer_f : writer_r
+        write(writer, (interval.seqname, interval.first, interval.last, interval.metadata*norm_factor))
     end
     close(writer_f)
     close(writer_r)
@@ -120,7 +117,7 @@ function Coverage(values_f::CoverageValues, values_r::CoverageValues, chroms::Ve
                 current_end == current_len && break
             end
             (current_pos == 1 && current_end == current_len) || push!(new_intervals, Interval(current_ref, current_pos, current_end, 
-                                                                    vals===vals_f ? STRAND_POS : STRAND_NEG, current_value/nb_coverages))
+                                                                    vals===values_f ? STRAND_POS : STRAND_NEG, current_value))
             current_pos = current_end + 1
             current_end = current_pos
         end
@@ -138,6 +135,7 @@ function Coverage(paired_files::PairedSingleTypeFiles)
 end
 
 value(interval::Interval{Float32}) = interval.metadata
+Base.length(coverage::Coverage) = length(coverage.list)
 Base.iterate(coverage::Coverage) = iterate(coverage.list)
 Base.iterate(coverage::Coverage, state) =iterate(coverage.list, state)
 
@@ -152,15 +150,6 @@ function Base.write(filename_f::String, filename_r::String, coverage::Coverage)
     end
     close(writer_f)
     close(writer_r)
-end
-function Base.write(filename::String, coverage::Coverage, gff_type::String)
-    writer = GFF3.Writer(open(filename, "w"))
-    for interval in coverage
-        line = "$(interval.seqname)\t.\t$gff_type\t$(interval.first)\t$(interval.last)\t.\t$(interval.strand)\t.\tValue=$(interval.metadata)"
-        record = GFF3.Record(line)
-        write(writer, record)
-    end
-    close(writer)
 end
 
 function Base.values(coverage::Coverage, interval::Interval)

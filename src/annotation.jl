@@ -46,6 +46,10 @@ function Features(gff_file::String, type::String, name_key::String)
     return Features(gff_file, [type], name_key)
 end
 
+function Features(coverage::Coverage, type::String)
+    return Features([Interval(refname(i), leftposition(i), rightposition(i), strand(i), Annotation(type, "", Dict{String,String}("Value"=>"$(value(i))"))) for i in coverage])
+end
+
 refnames(features::Features) = collect(keys(features.list.trees))
 function overlaps(alignmentinterval::Interval{AlignmentAnnotation}, feature::Interval{Annotation}) 
     seqname(feature) == seqname(alignmentinterval) || return false
@@ -144,9 +148,9 @@ function addutrs!(features::Features, tss_coverage::Union{Coverage,Nothing}, ter
             else
                 continue
             end
-            base_features === base_features_neg && (threestart, fivestart, threestop, fivestop = fivestart, threestart, fivestop, threestop)
-            isnothing(tss_coverage) || maxsignal, fivestop = maxsignalposition(tss_coverage, fivestart, fivestop, STRAND_POS)
-            isnothing(term_coverage) || maxsignal, threestop = maxsignalposition(term_coverage, threestart, threestop, STRAND_POS)
+            base_features === base_features_neg && ((threestart, fivestart, threestop, fivestop) = (fivestart, threestart, fivestop, threestop))
+            isnothing(tss_coverage) || (maxsignal, fivestop = maxsignalposition(tss_coverage, fivestart, fivestop, STRAND_POS))
+            isnothing(term_coverage) || (maxsignal, threestop = maxsignalposition(term_coverage, threestart, threestop, STRAND_POS))
             if guess_missing || max_signal != 0.0
                 push!(new_features, Interval(threeref, threestart, threestop, stran, Annotation("3UTR", threename, Dict{String,String}())))
                 push!(new_features, Interval(fiveref, fivestart, fivestop, stran, Annotation("5UTR", fivename, Dict{String,String}())))
