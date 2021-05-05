@@ -2,8 +2,8 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
     min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, 
     bwa_bin="bwa-mem2", sam_bin="samtools")
 
-    tmp_bwa = joinpath(dirname(in_file1), "tmp.bwa")
-    tmp_view = joinpath(dirname(in_file1), "tmp.view")
+    tmp_bwa = tempname()
+    tmp_view = tempname()
 
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
@@ -30,10 +30,10 @@ align_mem(in_file::String, out_file::String, genome_file::String;
 
 function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, 
                 unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
-    tmp_genome = joinpath(dirname(read_files.list[1]), "tmp_genome.fa")
+    tmp_genome = tempname()
     write(tmp_genome, genome)
-    for file_s in read_files
-        out_file = file[1:end-length(read_files.type)] * ".bam"
+    for file in read_files
+        out_file = isa(read_files, SingleTypeFiles) ? file[1:end-length(read_files.type)] * ".bam" : first(file)[1:end-length(read_files.type)-length(read_files.suffix1)] * ".bam"
         (isfile(out_file) && !overwrite_existing) && continue
         isa(read_files, SingleTypeFiles) ?
         align_mem(file, out_file, tmp_genome; min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, bwa_bin=bwa_bin, sam_bin=sam_bin) :
@@ -49,9 +49,9 @@ end
 function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, 
                 unpair_penalty=9, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where T<:SequenceContainer
     (isfile(out_file) && !overwrite_existing) && return
-    tmp_reads = joinpath(dirname(out_file), "tmp_reads.fasta")
-    tmp_reads2 = joinpath(dirname(out_file), "tmp_reads2.fasta")
-    tmp_genome = joinpath(dirname(out_file), "tmp_genome.fa")
+    tmp_reads = tempname()
+    tmp_reads2 = tempname()
+    tmp_genome = tempname()
     write(tmp_reads, reads)
     for (i,genome) in enumerate(genomes)
         write(tmp_genome, genome)

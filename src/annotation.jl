@@ -204,3 +204,29 @@ function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
     end
     return Sequences{String}(seqs)
 end
+
+function annotate_dge!(features::Features, from_coverage::Coverage, to_coverage::Coverage)
+    from_vals = values(from_coverage)
+    to_vals = values(to_coverage)
+    averages = [strand(feature) == STRAND_NEG ? 
+                    (mean(last(from_vals[refname(feature)])[leftposition(feature):rightposition(feature)]), mean(last(to_vals[refname(feature)])[leftposition(feature):rightposition(feature)])) : 
+                    (mean(first(from_vals[refname(feature)])[leftposition(feature):rightposition(feature)]), mean(first(to_vals[refname(feature)])[leftposition(feature):rightposition(feature)]))
+                    for feature in features] 
+
+    from_sum = sum(first(t) for t in averages)
+    to_sum = sum(last(t) for t in averages)
+    n = Normal()
+    correction_factor = (1/from_sum + 1/to_sum)
+    for (feature, (from_avg, to_avg)) in zip(features, averages)
+        p_est = (from_avg + to_avg) / (from_sum + to_sum)
+        z = abs(from_avg/from_sum - to_avg/to_sum) / sqrt(p_est*(1-p_est)*correction_factor)
+        p = ccdf(n, z)
+        adj_p = min(p * length(averages), 1.0)
+        fold_change = log2(to_avg/from_avg) + log2(from_sum/to_sum)
+        params(feature)["LogFoldChange"] = "$(round(fold_change; digits=3))"
+        params(feature)["PValue"] = "$p"
+        params(feature)["AdjustedPValue"] = "$adj_p"
+    end
+end
+        
+    

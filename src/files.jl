@@ -15,12 +15,8 @@ function SingleTypeFiles(files::Vector{String})
     SingleTypeFiles(files, endings[1])
 end
 
-function SingleTypeFiles(folder::String, type::String)
-    SingleTypeFiles([joinpath(folder, fname) for fname in readdir(folder) if endswith(fname, type)], type)
-end
-
-function SingleTypeFiles(folder::String, type::String, prefix::String)
-    SingleTypeFiles([joinpath(folder, fname) for fname in readdir(folder) if (endswith(fname, type) && startswith(fname, prefix))], type)
+function SingleTypeFiles(folder::String, type::String; prefix=nothing)
+    SingleTypeFiles([joinpath(folder, fname) for fname in readdir(folder) if isnothing(prefix) ? endswith(fname, type) : endswith(fname, type) && startswith(fname, prefix)], type)
 end
 
 Base.length(files::SingleTypeFiles) = length(files.list)
@@ -40,15 +36,15 @@ end
 struct PairedSingleTypeFiles <: FileCollection
     list::Vector{Tuple{String,String}}
     type::String
-    suffix1::Union{String,Nothing}
-    suffix2::Union{String,Nothing}
+    suffix1::String
+    suffix2::String
 end
 
 function PairedSingleTypeFiles(files1::Vector{String}, files2::Vector{String})
     endingsa = [fname[findlast('.', fname):end] for fname in files1]
     endingsb = [fname[findlast('.', fname):end] for fname in files2]
     @assert (length(unique(endingsa)) == 1) && (unique(endingsa) == unique(endingsb))
-    PairedSingleTypeFiles(collect(zip(files1, files2)), endingsa[1], nothing, nothing)
+    PairedSingleTypeFiles(collect(zip(files1, files2)), endingsa[1], "", "")
 end
 
 function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffix2="_2", prefix=nothing)
@@ -74,17 +70,14 @@ function Base.dirname(files::PairedSingleTypeFiles)
     return dirname(files.list[1][1])
 end
 
-FastqFiles(folder::String) = SingleTypeFiles(folder, ".fastq")
-FastqgzFiles(folder::String) = SingleTypeFiles(folder, ".fastq.gz")
-FastaFiles(folder::String) = SingleTypeFiles(folder, ".fasta")
-FastagzFiles(folder::String) = SingleTypeFiles(folder, ".fasta.gz")
-GenomeFiles(folder::String) = SingleTypeFiles(folder, ".fna")
-BamFiles(folder::String) = SingleTypeFiles(folder, ".bam")
-GffFiles(folder::String) = SingleTypeFiles(folder, ".gff")
-FastqFiles(folder::String, prefix::String) = SingleTypeFiles(folder, ".fastq", prefix)
-FastqgzFiles(folder::String, prefix::String) = SingleTypeFiles(folder, ".fastq.gz", prefix)
-FastaFiles(folder::String, prefix::String) = SingleTypeFiles(folder, ".fasta", prefix)
-FastagzFiles(folder::String, prefix::String) = SingleTypeFiles(folder, ".fasta.gz", prefix)
-GenomeFiles(folder::String, prefix::String) = SingleTypeFiles(folder, ".fna", prefix)
-BamFiles(folder::String, prefix::String) = SingleTypeFiles(folder, ".bam", prefix)
-GffFiles(folder::String, prefix::String) = SingleTypeFiles(folder, ".gff", prefix)
+FastqFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fastq"; prefix=prefix)
+FastqgzFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fastq.gz"; prefix=prefix)
+FastaFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fasta"; prefix=prefix)
+FastagzFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fasta.gz"; prefix=prefix)
+GenomeFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fna"; prefix=prefix)
+BamFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".bam"; prefix=prefix)
+GffFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".gff"; prefix=prefix)
+PairedFastqFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fastq"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
+PairedFastqgzFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fastq.gz"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
+PairedFastaFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fasta"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
+PairedFastagzFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fasta.gz"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)

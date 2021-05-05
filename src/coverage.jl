@@ -190,13 +190,6 @@ function Base.merge(coverages::Coverage ...)
 end
 Base.merge(coverages::Vector{Coverage}) = merge(coverages...)
 
-function differential(coverage1::Coverage, coverage2::Coverage)
-    @assert coverage1.chroms == coverage2.chroms
-    vals1 = values(coverage1)
-    vals2 = values(coverage2)
-    return Coverage(Dict(key=>vals1[key] ./ vals2[key] for key in keys(vals1)))
-end
-
 function correlation(coverages::Coverage ...)
     @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
     value_arrays = Dict{String,Matrix{Float32}}(chr => Matrix{Float32}(undef, length(coverages), len) for (chr, len) in coverages[1].chroms)
