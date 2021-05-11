@@ -55,3 +55,25 @@ function similarityhist(reads::PairedSequences; window_size=10, step_size=5, tit
     sim = similarity(reads; window_size=window_size, step_size=step_size)
     histogram(collect(values(sim)), title=title, legend=false)
 end
+
+function expression_pca(features::Features, samples::Vector{Coverage}; invert_strand=false)
+    vals = [values(coverage) for coverage in samples]
+    averages = zeros(Float32, length(features), length(samples))
+    check_strand = invert_strand ? STRAND_POS : STRAND_NEG
+    for (i,feature) in enumerate(features)
+        for (j,from_rep) in enumerate(samples)
+            vals = strand(feature) === check_strand ? last(from_vals[j][refname(feature)]) : first(from_vals[j][refname(feature)])
+            averages[i,j] = mean(vals[leftposition(feature):rightposition(feature)])
+        end
+    end
+    avg_sample::Vector{Float32} = [geomean(averages[i, :]) for i in 1:length(features)] .+ 0.00000000001
+    norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:length(samples)+length(to_reps)]
+    averages ./= norm_factors'
+    av = zeros(Float32, length(features))
+    stop_from = length(samples)
+    start_to = stop_from + 1
+    stop_to = stop_from + length(to_reps)
+    for i in 1:length(features)
+        av[i] = mean(@view(averages[i,1:stop_from]))
+    end
+end

@@ -30,11 +30,11 @@ function Features(feature_list::Vector{Interval{Annotation}})
     return Features(IntervalCollection(feature_list, true))
 end
 
-function Features(gff_file::String, type::Vector{String}, name_key::String)
+function Features(gff_file::String, type::Vector{String}; name_key="Name")
     features = open(collect, GFF3.Reader, gff_file)
     intervals = Vector{Interval{Annotation}}()
     for feature in features
-        GFF3.featuretype(feature) in type || continue
+        (GFF3.featuretype(feature) in type || isempty(type)) || continue
         seqname = GFF3.seqid(feature)
         annotation = Annotation(GFF3.featuretype(feature), join(GFF3.attributes(feature, name_key), ","), Dict(pair[1] => join(pair[2], ",") for pair in GFF3.attributes(feature)))
         push!(intervals, Interval(seqname, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annotation))
@@ -42,8 +42,12 @@ function Features(gff_file::String, type::Vector{String}, name_key::String)
     return Features(intervals)
 end
 
-function Features(gff_file::String, type::String, name_key::String)
-    return Features(gff_file, [type], name_key)
+function Features(gff_file::String, type::String; name_key="Name")
+    return Features(gff_file, [type], name_key=name_key)
+end
+
+function Features(gff_file::String; name_key="Name")
+    return Features(gff_file, String[], name_key=name_key)
 end
 
 function Features(coverage::Coverage, type::String)
@@ -205,28 +209,135 @@ function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
     return Sequences{String}(seqs)
 end
 
-function annotate_dge!(features::Features, from_coverage::Coverage, to_coverage::Coverage)
-    from_vals = values(from_coverage)
-    to_vals = values(to_coverage)
-    averages = [strand(feature) == STRAND_NEG ? 
-                    (mean(last(from_vals[refname(feature)])[leftposition(feature):rightposition(feature)]), mean(last(to_vals[refname(feature)])[leftposition(feature):rightposition(feature)])) : 
-                    (mean(first(from_vals[refname(feature)])[leftposition(feature):rightposition(feature)]), mean(first(to_vals[refname(feature)])[leftposition(feature):rightposition(feature)]))
-                    for feature in features] 
-
-    from_sum = sum(first(t) for t in averages)
-    to_sum = sum(last(t) for t in averages)
-    n = Normal()
-    correction_factor = (1/from_sum + 1/to_sum)
-    for (feature, (from_avg, to_avg)) in zip(features, averages)
-        p_est = (from_avg + to_avg) / (from_sum + to_sum)
-        z = abs(from_avg/from_sum - to_avg/to_sum) / sqrt(p_est*(1-p_est)*correction_factor)
-        p = ccdf(n, z)
-        adj_p = min(p * length(averages), 1.0)
-        fold_change = log2(to_avg/from_avg) + log2(from_sum/to_sum)
+function annotate_de!(features::Features, from_reps::SingleTypeFiles, to_reps::SingleTypeFiles; invert_strand=false)
+    from_reader = [BAM.Reader(open(bam_file), index=bam_file*".bai") for bam_file in from_reps]
+    to_reader = [BAM.Reader(open(bam_file), index=bam_file*".bai") for bam_file in to_reps]
+    counts = zeros(Float32, length(features), length(from_reps)+length(to_reps))
+    check_strand = invert_strand ? STRAND_NEG : STRAND_POS
+    for (i,feature) in enumerate(features)
+        for (j,from_rep) in enumerate(from_reader)
+            for record in eachoverlap(from_rep, refname(feature), leftposition(feature):rightposition(feature))
+                BAM.ispositivestrand(record) == (strand(feature)===check_strand) && (counts[i,j] += 1.0)
+            end 
+        end
+        for (j,to_rep) in enumerate(to_reader)
+            for record in eachoverlap(to_rep, refname(feature), leftposition(feature):rightposition(feature))
+                BAM.ispositivestrand(record) == (strand(feature)===check_strand) && (counts[i,j+length(from_reps)] += 1.0)
+            end
+        end
+    end
+    for reader in from_reader
+        close(reader)
+    end
+    for reader in to_reader
+        close(reader)
+    end
+    avg_sample::Vector{Float32} = [geomean(averages[i, :]) for i in 1:length(features)] .+ 0.000001
+    norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:length(from_reps)+length(to_reps)]
+    averages ./= norm_factors'
+    ps = zeros(Float32, length(features))
+    fc = zeros(Float32, length(features))
+    av = zeros(Float32, length(features))
+    stop_from = length(from_reps)
+    start_to = stop_from + 1
+    stop_to = stop_from + length(to_reps)
+    for i in 1:length(features)
+        t = OneSampleTTest(@view(averages[i,1:stop_from]), @view(averages[i,start_to:stop_to]))
+        av[i] = mean(@view(averages[i,1:stop_from]))
+        ps[i] = pvalue(t)
+        isnan(ps[i]) && (ps[i] = 1.0) 
+        fc[i] = log2(mean(@view(averages[i,start_to:stop_to]))/mean(@view(averages[i,1:stop_from])))
+        isnan(fc[i]) && (fc[i] = 0.0) 
+    end
+    adjps = adjust(PValues(ps), BenjaminiHochberg())
+    for (feature, p, adj_p, fold_change, average) in zip(features, ps, adjps, fc, av)
         params(feature)["LogFoldChange"] = "$(round(fold_change; digits=3))"
         params(feature)["PValue"] = "$p"
         params(feature)["AdjustedPValue"] = "$adj_p"
+        params(feature)["BaseValue"] = "$average"
     end
 end
-        
-    
+
+function annotate_de!(features::Features, from_reps::Vector{Coverage}, to_reps::Vector{Coverage}; invert_strand=false)
+    from_vals = [values(from_coverage) for from_coverage in from_reps]
+    to_vals = [values(to_coverage) for to_coverage in to_reps]
+    averages = zeros(Float32, length(features), length(from_reps)+length(to_reps))
+    check_strand = invert_strand ? STRAND_POS : STRAND_NEG
+    for (i,feature) in enumerate(features)
+        for (j,from_rep) in enumerate(from_reps)
+            vals = strand(feature) === check_strand ? last(from_vals[j][refname(feature)]) : first(from_vals[j][refname(feature)])
+            averages[i,j] = mean(vals[leftposition(feature):rightposition(feature)])
+        end
+        for (j,to_rep) in enumerate(to_reps)
+            vals = strand(feature) === check_strand ? last(to_vals[j][refname(feature)]) : first(to_vals[j][refname(feature)])
+            averages[i,j+length(from_reps)] = mean(vals[leftposition(feature):rightposition(feature)])
+        end
+    end
+    avg_sample::Vector{Float32} = [geomean(averages[i, :]) for i in 1:length(features)] .+ 0.000001
+    norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:length(from_reps)+length(to_reps)]
+    averages ./= norm_factors'
+    ps = zeros(Float32, length(features))
+    fc = zeros(Float32, length(features))
+    av = zeros(Float32, length(features))
+    stop_from = length(from_reps)
+    start_to = stop_from + 1
+    stop_to = stop_from + length(to_reps)
+    for i in 1:length(features)
+        t = OneSampleTTest(@view(averages[i,1:stop_from]), @view(averages[i,start_to:stop_to]))
+        av[i] = mean(@view(averages[i,1:stop_from]))
+        ps[i] = pvalue(t)
+        isnan(ps[i]) && (ps[i] = 1.0) 
+        fc[i] = log2(mean(@view(averages[i,start_to:stop_to]))/mean(@view(averages[i,1:stop_from])))
+        isnan(fc[i]) && (fc[i] = 0.0) 
+    end
+    adjps = adjust(PValues(ps), BenjaminiHochberg())
+    for (feature, p, adj_p, fold_change, average) in zip(features, ps, adjps, fc, av)
+        params(feature)["LogFoldChange"] = "$(round(fold_change; digits=3))"
+        params(feature)["PValue"] = "$p"
+        params(feature)["AdjustedPValue"] = "$adj_p"
+        params(feature)["BaseValue"] = "$average"
+    end
+end
+
+function covratio(features::Features, coverage::Coverage)
+    vals = values(coverage)
+    total = 0.0
+    for (ref, val) in vals
+        total += sum(first(val)) + sum(last(val))
+    end
+    s = 0.0
+    for feature in features
+        s += strand(feature) === STRAND_NEG ? 
+                sum(last(vals[refname(feature)])[leftposition(feature):rightposition(feature)]) :
+                sum(first(vals[refname(feature)])[leftposition(feature):rightposition(feature)])
+    end
+    return s/total
+end
+
+
+function asdataframe(features::Features; add_keys=:all)
+    add_keys === :none && (add_keys = Set())
+    add_keys === :all && (add_keys = Set(key for feature in features for key in keys(params(feature))))
+    df = DataFrame(name=String[], refname=String[], type=String[], left=Int[], right=Int[], strand=Char[])
+    add_row =  DataFrame(name="", refname="", type="", left=0, right=0, strand='+')
+    for key in add_keys
+        df[!, Symbol(key)] = String[]
+        add_row[!, Symbol(key)] = [""]
+    end
+    for feature in features
+        add_row[1, :name] = name(feature)
+        add_row[1, :refname] = refname(feature)
+        add_row[1, :type] = type(feature)
+        add_row[1, :left] = leftposition(feature)
+        add_row[1, :right] = rightposition(feature)
+        add_row[1, :strand] = strand(feature) === STRAND_NEG ? '-' : '+'
+        pa = params(feature)
+        for key in keys(pa)
+            (key in add_keys || add_keys === :all) && (add_row[1, Symbol(key)] = pa[key])
+        end
+        append!(df, add_row)
+    end
+    return df
+end
+
+Base.write(fname::String, df::DataFrame) = CSV.write(fname, df)

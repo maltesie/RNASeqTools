@@ -2,7 +2,7 @@ module RNASeqTools
 
 using XAM, FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
-using Plots, Measures, Statistics, Distributions
+using Plots, Measures, Statistics, HypothesisTests, MultipleTesting, DataFrames, StatsBase
 using Dash, DashHtmlComponents, DashCoreComponents, DashTable
 import IntervalTrees.IntervalBTree, IntervalTrees.IntervalBTreeIteratorState
 
@@ -10,7 +10,7 @@ export align_mem, local_alignment
 export trim_fastp, split_libs 
 export Genome, Sequences, PairedSequences, Alignments, PairedAlignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage, Annotation, AlignmentAnnotation
 export FastaFiles, PairedFastaFiles, FastagzFiles, PairedFastagzFiles, FastqFiles, PaireFastqFiles, FastqgzFiles, PairedFastqgzFiles, BamFiles, GenomeFiles, GffFiles
-export cut!, rev_comp!, rev_comp, approxoccursin, annotate!, featureseqs, conservedfeatures, annotate_dge!
+export cut!, rev_comp!, rev_comp, approxoccursin, annotate!, featureseqs, conservedfeatures, annotate_de!, asdataframe
 export hasannotation, ischimeric, istriplet, refinterval, readinterval, annotation, name, type, overlap, count, alignments, refname
 export values, addutrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation
 export similarity, tsss, terms, nucleotidecount
