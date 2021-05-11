@@ -66,8 +66,8 @@ function expression_pca(features::Features, samples::Vector{Coverage}; invert_st
             averages[i,j] = mean(vals[leftposition(feature):rightposition(feature)])
         end
     end
-    avg_sample::Vector{Float32} = [geomean(averages[i, :]) for i in 1:length(features)] .+ 0.00000000001
-    norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:length(samples)+length(to_reps)]
+    avg_sample::Vector{Float32} = [geomean(averages[i, :]) for i in 1:length(features)] .+ 0.000001
+    norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:length(samples)]
     averages ./= norm_factors'
     av = zeros(Float32, length(features))
     stop_from = length(samples)
