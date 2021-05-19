@@ -81,3 +81,4 @@ PairedFastqFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = P
 PairedFastqgzFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fastq.gz"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
 PairedFastaFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fasta"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
 PairedFastagzFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fasta.gz"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
+CoverageFiles(folder::String; suffix1="_forward", suffix2="_reverse", prefix=nothing) = PairedSingleTypeFiles(folder, ".bw"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)

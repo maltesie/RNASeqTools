@@ -434,7 +434,7 @@ function read_bam(bam_file::String; min_templength=nothing, only_unique=true, in
             nms = nmtag(record)
             xastrings = split(xa, ";")[1:end-1]
             for (i,xapart) in enumerate(xastrings)
-                chr, pos, cigar, nm = split(xapart, ",")
+                _, pos, _, nm = split(xapart, ",")
                 parse(UInt8, nm) > nms && continue
                 intpos = abs(parse(Int, pos))
                 intpos < leftestpos && (leftest = i; leftestpos=intpos; nms=nm)
@@ -445,10 +445,10 @@ function read_bam(bam_file::String; min_templength=nothing, only_unique=true, in
             end
         end
         if !foundit
-            readstart, readstop, relrefstop, readlen = readpositions(record)
+            readstart, readstop, _, readlen = readpositions(record)
             seq_interval = BAM.ispositivestrand(record) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
-            strand = BAM.ispositivestrand(record) == !invert ? Strand('+') : Strand('-')
-            ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), strand, AlignmentAnnotation())
+            st = BAM.ispositivestrand(record) == !invert ? Strand('+') : Strand('-')
+            ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), st, AlignmentAnnotation())
             alnpart = AlignedPart(ref_interval, seq_interval, BAM.isprimary(record), astag(record)) #record["AS"]::UInt8)
         end
         id in keys(current_read_dict) ? push!(current_read_dict[id].alns, alnpart) : push!(current_read_dict, id=>AlignedRead([alnpart]))
@@ -461,14 +461,14 @@ function annotate!(alns::Alignments, features::Features; prioritize_type=nothing
     myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
         GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refn], Interval("", 1, 1, STRAND_NA, Annotation("", "", Dict{String,String}()))) for refn in refnames(features)) 
     for alignedread in alns
-        for (i,alignment) in enumerate(alignedread)
+        for (i,aln) in enumerate(alignedread)
             foundpriority = false
-            myiterator = myiterators[refname(alignment)]
-            myiterator.query = refinterval(alignment)
+            myiterator = myiterators[refname(aln)]
+            myiterator.query = refinterval(aln)
             for feature_interval in myiterator
-                olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
+                olp = round(UInt8, (overlapdistance(feature_interval, refinterval(aln)) / length(refinterval(aln))) * 100)
                 foundpriority = (!isnothing(prioritize_type) && (type(feature_interval) == prioritize_type))
-                if foundpriority || overlap(alignment) < olp
+                if foundpriority || overlap(aln) < olp
                     annotation(alignedread[i]).type = feature_interval.metadata.type
                     annotation(alignedread[i]).name = feature_interval.metadata.name
                     annotation(alignedread[i]).overlap = olp
@@ -484,15 +484,15 @@ function annotate!(alns::PairedAlignments, features::Features; prioritize_type=n
         GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refn], Interval("", 1, 1, STRAND_NA, Annotation("", "", Dict{String, String}()))) for refn in refnames(features)) 
     for (alignment1, alignment2) in alns
         for alignedread in (alignment1, alignment2)
-            for (i,alignment) in enumerate(alignedread)
+            for (i,aln) in enumerate(alignedread)
                 foundpriority = false
-                myiterator = myiterators[refname(alignment)]
-                myiterator.query = refinterval(alignment)
+                myiterator = myiterators[refname(aln)]
+                myiterator.query = refinterval(aln)
                 for feature_interval in myiterator
-                    olp = round(UInt8, (overlapdistance(feature_interval, refinterval(alignment)) / length(refinterval(alignment))) * 100)
+                    olp = round(UInt8, (overlapdistance(feature_interval, refinterval(aln)) / length(refinterval(aln))) * 100)
                     foundpriority = (!isnothing(prioritize_type) && (type(feature_interval) == prioritize_type))
                     overwrite = (!isnothing(overwrite_type) && (annotation(alignedread[i]).type == overwrite_type))
-                    if foundpriority || overlap(alignment) < olp || overwrite
+                    if foundpriority || overlap(aln) < olp || overwrite
                         annotation(alignedread[i]).type = feature_interval.metadata.type
                         annotation(alignedread[i]).name = feature_interval.metadata.name
                         annotation(alignedread[i]).overlap = olp
@@ -513,8 +513,8 @@ function conservedfeatures(features::Features, feature_alignments::Alignments{St
             params = Dict(ref=>join(("$(readinterval(aln))" for aln in feature_alignments[key] if refname(aln)==ref), ",") for ref in refs)
             push!(params, "Count"=>"$(length(refs))")
             push!(params, "Name"=>key)
-            annotation = Annotation("ALN", key, params)
-            push!(my_features, Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), annotation))
+            annot = Annotation("ALN", key, params)
+            push!(my_features, Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), annot))
         end
     end
     return Features(my_features)

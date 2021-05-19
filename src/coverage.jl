@@ -14,12 +14,15 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=true)
+function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=true, invert_reads=:none)
+    @assert invert_reads in (:none, :both, :read1, :read2)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     chromosome_list = [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))]
     vals_f = CoverageValues(chr=>zeros(Float32, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float32, len) for (chr, len) in chromosome_list)
+    invert1 = invert_reads in (:both, :read1)
+    invert2 = invert_reads in (:both, :read2)
     count = 0
     while !eof(reader)
         read!(reader, record)
@@ -29,7 +32,8 @@ function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=t
         left = BAM.position(record)
         right = BAM.rightposition(record)
         count += 1
-        BAM.ispositivestrand(record) ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
+        ispositive = BAM.ispositivestrand(record) != ((invert1 && (isread1(record) && ispaired(record))) || (invert2 && isread2(record) && ispaired(record)) || (invert1 && !ispaired(record)))
+        ispositive ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
     end
     close(reader)
     norm_factor = norm/count
@@ -46,13 +50,13 @@ function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=t
     close(writer_r)
 end
 
-function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_only=true, skip_existing_files=true)
+function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_only=true, skip_existing_files=true, invert_reads=:none)
     @assert files.type == ".bam"
     for file in files
         filename_f = file[1:end-4] * "_forward.bw"
         filename_r = file[1:end-4] * "_reverse.bw"
         (skip_existing_files && isfile(filename_f) && isfile(filename_r)) && continue
-        compute_coverage(file; norm=norm, unique_mappings_only=unique_mappings_only)
+        compute_coverage(file; norm=norm, unique_mappings_only=unique_mappings_only, invert_reads=invert_reads)
     end
 end
 
@@ -176,48 +180,18 @@ end
 
 function Base.merge(coverages::Coverage ...)
     @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
-    nb_coverages = length(coverages)
     vals_f = Dict(chr=>zeros(Float32, len) for (chr,len) in coverages[1].chroms)
     vals_r = Dict(chr=>zeros(Float32, len) for (chr,len) in coverages[1].chroms)
-    for coverage in coverages
-        for interval in coverage
+    for cv in coverages
+        for interval in cv
             strand(interval) == STRAND_POS ? 
-            (vals_f[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata; has_pos=true) :
-            (vals_r[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata; has_neg=true)
+            vals_f[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata :
+            vals_r[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata
         end
     end
-    return Coverage(vals_f, vals_r, coverage[1].chroms)
+    return Coverage(vals_f, vals_r, coverages[1].chroms)
 end
 Base.merge(coverages::Vector{Coverage}) = merge(coverages...)
-
-function correlation(coverages::Coverage ...)
-    @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
-    value_arrays = Dict{String,Matrix{Float32}}(chr => Matrix{Float32}(undef, length(coverages), len) for (chr, len) in coverages[1].chroms)
-    for (i,coverage) in enumerate(coverages)  
-        for (chr, (values_f, values_r)) in values(coverage)
-            value_arrays[chr][i,1:end] = values_f .+ values_r
-        end
-    end
-
-    correlations = Dict{String,Matrix{Float32}}(chr => Matrix{Float32}(undef, length(coverages), length(coverages)) for (chr, len) in coverages[1].chroms)
-    for (chr, arr) in value_arrays
-        correlations[chr] = cor(arr, dims=2)
-    end
-    return correlations
-end
-correlation(coverages::Vector{Coverage}) = correlation(coverages...)
-
-function mincorrelation(coverages::Coverage ...)
-    corr = correlation(coverages)
-    min_corr = 1.0
-    for (chr, matrix) in corr
-        for i in first(size(matrix)), j in 1:i
-            min_corr = min(matrix[i,j], min_corr)
-        end
-    end
-    return min_corr
-end
-mincorrelation(coverages::Vector{Coverage}) = mincorrelation(coverages...)
 
 function rolling_sum(a, n::Int)
     @assert 1<=n<=length(a)
@@ -236,7 +210,7 @@ function diff(coverage::Vector{Float32}, invert::Bool, window_size::Int, min_bac
     half_window_size = floor(Int, window_size/2)
     filtered_d[half_window_size:end-half_window_size] = rolling_sum(d,window_size)
     for i in 1:length(d)-window_size+1
-        mv, mi = findmax(@view(d[i:i+window_size-1]))
+        _, mi = findmax(@view(d[i:i+window_size-1]))
         for j in 1:window_size
             mi != j && (d[i+j-1]=0.0)
         end
