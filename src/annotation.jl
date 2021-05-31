@@ -8,6 +8,10 @@ function Annotation()
     Annotation("", "", Dict{String, String}())
 end
 
+function Annotation(type::String, name::String)
+    Annotation(type, name, Dict{String, String}())
+end
+
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
 
 mutable struct AlignmentAnnotation <: AnnotationStyle
@@ -21,6 +25,9 @@ function AlignmentAnnotation()
 end
 
 Base.isempty(annotation::AlignmentAnnotation) = isempty(annotation.type) && isempty(annotation.name) && (annotation.overlap==0)
+
+name(annot::T) where {T<:AnnotationStyle} = annot.name
+type(annot::T) where {T<:AnnotationStyle} = annot.type
 
 struct Features{T} <: AnnotationContainer
     list::IntervalCollection{T}

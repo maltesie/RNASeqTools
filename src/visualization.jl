@@ -61,7 +61,7 @@ function expressionpca(features::Features, samples::Vector{Coverage}, groupnames
     M = fit(PCA, averages)
     atrans = MultivariateStats.transform(M, averages)
     p = plot()
-    for (r, n) in groupnames
+    for (r, n) in sort(groupnames, by=x->first(first(x)))
         scatter!(atrans[first(plot_pcs),r], atrans[last(plot_pcs),r], label=n)
     end
     ratios = principalvars(M) ./ tvar(M)
