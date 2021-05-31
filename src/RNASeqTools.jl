@@ -26,5 +26,6 @@ include("coverage.jl")
 include("annotation.jl")
 include("alignment.jl")
 include("visualization.jl")
+include("templates.jl")
 
 end

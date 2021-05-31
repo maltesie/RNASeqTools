@@ -19,6 +19,9 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
     run(cmd)
     cmd = pipeline(`$sam_bin index $out_file`)
     run(cmd)
+    stats_file = out_file * ".log"
+    cmd = pipeline(`$sam_bin stats $out_file ">" $stats_file`)
+    run(cmd)
 
     rm(tmp_bwa)
     rm(tmp_view)
@@ -36,9 +39,12 @@ function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatc
         out_file = isa(read_files, SingleTypeFiles) ? file[1:end-length(read_files.type)] * ".bam" : first(file)[1:end-length(read_files.type)-length(read_files.suffix1)] * ".bam"
         (isfile(out_file) && !overwrite_existing) && continue
         isa(read_files, SingleTypeFiles) ?
-        align_mem(file, out_file, tmp_genome; min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, bwa_bin=bwa_bin, sam_bin=sam_bin) :
-        align_mem(first(file), last(file), out_file, tmp_genome; min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty, 
-                unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin)
+        align_mem(file, out_file, tmp_genome; 
+                min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, 
+                gap_extend=gap_extend, clipping_penalty=clipping_penalty, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+        align_mem(first(file), last(file), out_file, tmp_genome; 
+                min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, 
+                clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]

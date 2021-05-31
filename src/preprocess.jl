@@ -162,11 +162,13 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
         out_file1 = joinpath(dirname(in_file1), prefix * basename(in_file1))
         (isfile(out_file1) && !overwrite_existing) && continue
         out_file2 = !isnothing(in_file2) ? joinpath(dirname(in_file2), prefix * basename(in_file2)) : nothing
+        push!(out_files, (out_file1, out_file2))
         file_params = ["--in1=$in_file1", "--out1=$out_file1", "--html=$(html_file)", "--json=$(json_file)"]
         !isnothing(in_file2) && append!(file_params, ["--in2=$in_file2", "--out2=$out_file2"])
         cmd = `$fastp_bin $file_params $params`
         run(cmd)
     end 
+
 end
 
 function trim_fastp(input_files::SingleTypeFiles; 
@@ -177,6 +179,7 @@ function trim_fastp(input_files::SingleTypeFiles;
     files = Vector{Tuple{String, Union{String, Nothing}}}([(file, nothing) for file in input_files])
     trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=:read1, min_length=min_length,
         cut_front=cut_front, cut_tail=cut_tail, trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, average_window_quality=average_window_quality, skip_quality_filtering=skip_quality_filtering)
+    return SingleTypeFiles([joinpath(dirname(file),prefix*basename(file)) for file in input_files if !startswith(basename(file), prefix)], input_files.type)
 end
 
 function trim_fastp(input_files::PairedSingleTypeFiles; 
@@ -187,4 +190,5 @@ function trim_fastp(input_files::PairedSingleTypeFiles;
     files = Vector{Tuple{String, Union{String, Nothing}}}(input_files.list)
     trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=umi_loc, min_length=min_length, cut_front=cut_front,
         cut_tail=cut_tail, trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, average_window_quality=average_window_quality, skip_quality_filtering=skip_quality_filtering)
+    return PairedSingleTypeFiles([(joinpath(dirname(file1),prefix*basename(file1)), joinpath(dirname(file2),prefix*basename(file2))) for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
 end
