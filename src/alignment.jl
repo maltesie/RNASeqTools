@@ -20,7 +20,7 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
     cmd = pipeline(`$sam_bin index $out_file`)
     run(cmd)
     stats_file = out_file * ".log"
-    cmd = pipeline(`$sam_bin stats $out_file ">" $stats_file`)
+    cmd = pipeline(`$sam_bin stats $out_file`, stdout=stats_file)
     run(cmd)
 
     rm(tmp_bwa)
@@ -35,8 +35,10 @@ function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatc
                 unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
     tmp_genome = tempname()
     write(tmp_genome, genome)
+    outfiles = Vector{String}()
     for file in read_files
         out_file = isa(read_files, SingleTypeFiles) ? file[1:end-length(read_files.type)] * ".bam" : first(file)[1:end-length(read_files.type)-length(read_files.suffix1)] * ".bam"
+        push!(outfiles, out_file)
         (isfile(out_file) && !overwrite_existing) && continue
         isa(read_files, SingleTypeFiles) ?
         align_mem(file, out_file, tmp_genome; 
@@ -50,6 +52,7 @@ function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatc
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
         isfile(tmp_genome * ending) && rm(tmp_genome * ending)
     end
+    return SingleTypeFiles(outfiles)
 end
 
 function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, 
@@ -465,23 +468,43 @@ function read_bam(bam_file::String; min_templength=nothing, only_unique=true, in
     return reads1, reads2
 end
 
-function annotate!(alns::Alignments, features::Features; prioritize_type=nothing)
+function annotate!(features::Features, bam_file::String; only_unique=true, invert_strand=:none, count_key="Count")
+    @assert invert_strand in [:read1, :read2, :both, :none]
+    reader = BAM.Reader(open(bam_file); index=bam_file*".bai")
+    for feature in features
+        params(feature)[count_key] = 0
+        for record in eachoverlap(reader, feature)
+            BAM.ismapped(record) || continue
+            hasxatag(record) && only_unique && continue
+            invert = isread2(record) && ispaired(record) ? invert_strand in (:read2, :both) : invert_strand in (:read1, :both)
+            (ispositivestrand(record) == (strand(feature) === STRAND_POS) == invert) && continue
+            params(feature)[count_key] += 1
+        end
+    end
+    close(reader)
+end
+
+function annotate!(aln::AlignedPart, feature_interval::Interval{Annotation}; prioritize_type=nothing, overwrite_type=nothing)
+    olp = round(UInt8, (overlapdistance(feature_interval, refinterval(aln)) / length(refinterval(aln))) * 100)
+    foundpriority = (!isnothing(prioritize_type) && (type(feature_interval) == prioritize_type))
+    overwrite = (!isnothing(overwrite_type) && (type(annotation(aln)) == overwrite_type))
+    if foundpriority || overwrite || overlap(aln)<olp
+        annotation(aln).type = feature_interval.metadata.type
+        annotation(aln).name = feature_interval.metadata.name
+        annotation(aln).overlap = olp
+    end
+    return foundpriority
+end
+
+function annotate!(alns::Alignments, features::Features; prioritize_type=nothing, overwrite_type=nothing)
     myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
         GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refn], Interval("", 1, 1, STRAND_NA, Annotation("", "", Dict{String,String}()))) for refn in refnames(features)) 
     for alignedread in alns
-        for (i,aln) in enumerate(alignedread)
-            foundpriority = false
+        for aln in alignedread
             myiterator = myiterators[refname(aln)]
             myiterator.query = refinterval(aln)
             for feature_interval in myiterator
-                olp = round(UInt8, (overlapdistance(feature_interval, refinterval(aln)) / length(refinterval(aln))) * 100)
-                foundpriority = (!isnothing(prioritize_type) && (type(feature_interval) == prioritize_type))
-                if foundpriority || overlap(aln) < olp
-                    annotation(alignedread[i]).type = feature_interval.metadata.type
-                    annotation(alignedread[i]).name = feature_interval.metadata.name
-                    annotation(alignedread[i]).overlap = olp
-                    foundpriority && break
-                end
+                annotate!(aln, feature_interval; prioritize_type=prioritize_type, overwrite_type=overwrite_type) && break
             end
         end
     end
@@ -492,20 +515,11 @@ function annotate!(alns::PairedAlignments, features::Features; prioritize_type=n
         GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refn], Interval("", 1, 1, STRAND_NA, Annotation("", "", Dict{String, String}()))) for refn in refnames(features)) 
     for (alignment1, alignment2) in alns
         for alignedread in (alignment1, alignment2)
-            for (i,aln) in enumerate(alignedread)
-                foundpriority = false
+            for aln in enumerate(alignedread)
                 myiterator = myiterators[refname(aln)]
                 myiterator.query = refinterval(aln)
                 for feature_interval in myiterator
-                    olp = round(UInt8, (overlapdistance(feature_interval, refinterval(aln)) / length(refinterval(aln))) * 100)
-                    foundpriority = (!isnothing(prioritize_type) && (type(feature_interval) == prioritize_type))
-                    overwrite = (!isnothing(overwrite_type) && (annotation(alignedread[i]).type == overwrite_type))
-                    if foundpriority || overlap(aln) < olp || overwrite
-                        annotation(alignedread[i]).type = feature_interval.metadata.type
-                        annotation(alignedread[i]).name = feature_interval.metadata.name
-                        annotation(alignedread[i]).overlap = olp
-                        foundpriority && break
-                    end
+                    annotate!(aln, feature_interval; prioritize_type=prioritize_type, overwrite_type=overwrite_type) && break
                 end
             end
         end
@@ -518,10 +532,10 @@ function conservedfeatures(features::Features, feature_alignments::Alignments{St
         key = key_gen(feature)
         if key in keys(feature_alignments)
             refs = Set(refname(aln) for aln in feature_alignments[key])
-            params = Dict(ref=>join(("$(readinterval(aln))" for aln in feature_alignments[key] if refname(aln)==ref), ",") for ref in refs)
-            push!(params, "Count"=>"$(length(refs))")
-            push!(params, "Name"=>key)
-            annot = Annotation("ALN", key, params)
+            para = Dict(ref=>join(("$(readinterval(aln))" for aln in feature_alignments[key] if refname(aln)==ref), ",") for ref in refs)
+            push!(para, "Count"=>"$(length(refs))")
+            push!(para, "Name"=>key)
+            annot = Annotation("ALN", key, para)
             push!(my_features, Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), annot))
         end
     end

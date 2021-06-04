@@ -218,7 +218,7 @@ function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
     return Sequences{String}(seqs)
 end
 
-function annotatede!(features::Features, from_reps::Vector{Coverage}, to_reps::Vector{Coverage})
+function annotate!(features::Features, from_reps::Vector{Coverage}, to_reps::Vector{Coverage})
     averages = zeros(Float32, length(features), length(from_reps)+length(to_reps))
     ps = zeros(Float32, length(features))
     fc = zeros(Float32, length(features))
@@ -255,9 +255,9 @@ function covratio(features::Features, coverage::Coverage)
     end
     s = 0.0
     for feature in features
-        s += strand(feature) === STRAND_NEG ? 
-                sum(last(vals[refname(feature)])[leftposition(feature):rightposition(feature)]) :
-                sum(first(vals[refname(feature)])[leftposition(feature):rightposition(feature)])
+        picker = strand(feature) === STRAND_NEG ? last : first
+        rightposition(feature) > length(picker(vals[refname(feature)])) && continue
+        s += sum(picker(vals[refname(feature)])[leftposition(feature):rightposition(feature)])
     end
     return s/total
 end

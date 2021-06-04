@@ -56,12 +56,12 @@ function similarityhist(reads::PairedSequences; window_size=10, step_size=5, tit
     histogram(collect(values(sim)), title=title, legend=false)
 end
 
-function expressionpca(features::Features, samples::Vector{Coverage}, groupnames::Dict{UnitRange{Int64},String}; plot_pcs=(1,2), legend=:best)
+function expressionpca(features::Features, samples::Vector{Coverage}, conditions::Dict{String, UnitRange{Int64}}; plot_pcs=(1,2), legend=:best)
     averages = normalizedcount(features, samples)
     M = fit(PCA, averages)
     atrans = MultivariateStats.transform(M, averages)
     p = plot()
-    for (r, n) in sort(groupnames, by=x->first(first(x)))
+    for (n, r) in sort(conditions, by=x->first(last(x)))
         scatter!(atrans[first(plot_pcs),r], atrans[last(plot_pcs),r], label=n)
     end
     ratios = principalvars(M) ./ tvar(M)

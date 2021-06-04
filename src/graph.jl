@@ -1,9 +1,7 @@
-struct EdgeAnnotation
-    ints::Int
-    hasdir::Bool
-    ismulti::Bool
+struct Interactions <: InteractionContainer
+    graph::MetaGraph
 end
 
-struct Interactions
-    singles::Vector{Graph}
+function Interactions(alignments::PairedAlignments)
+    
 end

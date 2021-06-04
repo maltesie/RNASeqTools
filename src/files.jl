@@ -19,10 +19,10 @@ function SingleTypeFiles(folder::String, type::String; prefix=nothing)
     SingleTypeFiles([joinpath(folder, fname) for fname in readdir(folder) if isnothing(prefix) ? endswith(fname, type) : endswith(fname, type) && startswith(fname, prefix)], type)
 end
 
-Base.length(files::SingleTypeFiles) = length(files.list)
-
-Base.iterate(files::SingleTypeFiles) = iterate(files.list)
-Base.iterate(files::SingleTypeFiles, state::Int) = iterate(files.list, state)
+function Base.:*(filesa::SingleTypeFiles, filesb::SingleTypeFiles)
+    @assert type(filesa) == type(filesb)
+    return SingleTypeFiles(vcat(filesa.list, filesb.list), type(filesa))
+end
 
 function hassingledir(files::SingleTypeFiles)
     return length(unique(dirname(file) for file in files)) == 1
@@ -55,9 +55,17 @@ function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffi
     PairedSingleTypeFiles([(joinpath(folder, name * suffix1 * type), joinpath(folder, name * suffix2 * type)) for name in names1], type, suffix1, suffix2)
 end
 
-Base.length(files::PairedSingleTypeFiles) = length(files.list)
-Base.iterate(files::PairedSingleTypeFiles) = iterate(files.list)
-Base.iterate(files::PairedSingleTypeFiles, state::Int) = iterate(files.list, state)
+type(files::T) where {T<:FileCollection} = files.type
+Base.length(files::T) where {T<:FileCollection} = length(files.list)
+Base.iterate(files::T) where {T<:FileCollection} = iterate(files.list)
+Base.iterate(files::T, state::Int) where {T<:FileCollection} = iterate(files.list, state)
+Base.getindex(files::T, i::Int) where {T<:FileCollection} = files.list[i]
+function Base.:*(filesa::PairedSingleTypeFiles, filesb::PairedSingleTypeFiles)
+    @assert type(filesa) == type(filesb)
+    suffix1 = filesa.suffix1 == filesb.suffix1 ? filesa.suffix1 : ""
+    suffix2 = filesa.suffix2 == filesb.suffix2 ? filesa.suffix2 : ""
+    return PairedSingleTypeFiles(vcat(filesa.list, filesb.list), type(filesa), suffix1, suffix2)
+end
 
 function hassingledir(files::PairedSingleTypeFiles)
     dirs1 = unique([dirname(file[1]) for file in files])
