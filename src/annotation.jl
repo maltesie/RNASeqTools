@@ -230,7 +230,7 @@ function annotate!(features::Features, from_reps::Vector{Coverage}, to_reps::Vec
     avf = mean(@view(averages[:,1:stop_from]), dims=2)
     avt = mean(@view(averages[:,start_to:stop_to]), dims=2)
     for i in 1:length(features)
-        t = OneSampleTTest(@view(averages[i,1:stop_from]), @view(averages[i,start_to:stop_to]))
+        t = UnequalVarianceTTest(@view(averages[i,1:stop_from]), @view(averages[i,start_to:stop_to]))
         ps[i] = pvalue(t)
         isnan(ps[i]) && (ps[i] = 1.0) 
         fc[i] = log2(mean(@view(averages[i,start_to:stop_to]))/mean(@view(averages[i,1:stop_from])))
