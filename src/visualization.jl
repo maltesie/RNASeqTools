@@ -56,8 +56,9 @@ function similarityhist(reads::PairedSequences; window_size=10, step_size=5, tit
     histogram(collect(values(sim)), title=title, legend=false)
 end
 
-function expressionpca(features::Features, samples::Vector{Coverage}, conditions::Dict{String, UnitRange{Int64}}; plot_pcs=(1,2), legend=:best)
+function expressionpca(features::Features, samples::Vector{Coverage}, conditions::Dict{String, UnitRange{Int64}}; plot_pcs=(1,2), legend=:best, topcut=500)
     averages = normalizedcount(features, samples)
+    averages = averages[sortperm(vec(var(averages; dims=2)); rev=true)[1:topcut],:]
     averages = log2.(averages .+ 0.00001)
     M = fit(PCA, averages)
     atrans = MultivariateStats.transform(M, averages)
@@ -71,13 +72,14 @@ function expressionpca(features::Features, samples::Vector{Coverage}, conditions
     plot(p, xlabel="PC$(first(plot_pcs)) ($ratio1%)", ylabel="PC$(last(plot_pcs)) ($ratio2%)", legend=legend)
 end
 
-function expressionpca(counts_file::String, conditions::Dict{String, UnitRange{Int64}}; plot_pcs=(1,2), legend=:best)
+function expressionpca(counts_file::String, conditions::Dict{String, UnitRange{Int64}}; plot_pcs=(1,2), legend=:best, topcut=500)
     averages = CSV.read(counts_file, DataFrame; header=1, delim=',') |> Matrix{Float64}
     averages .+= 0.1 
     (nfeatures, nsamples) = size(averages)
     avg_sample::Vector{Float32} = [geomean(averages[i, :]) for i in 1:nfeatures]
     norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:nsamples]
     averages ./= norm_factors'
+    averages = averages[sortperm(vec(var(averages; dims=2)); rev=true)[1:topcut],:]
     averages = log2.(averages)
     M = fit(PCA, averages)
     atrans = MultivariateStats.transform(M, averages)
