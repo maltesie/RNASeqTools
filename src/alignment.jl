@@ -472,14 +472,15 @@ function annotate!(features::Features, bam_file::String; only_unique=true, inver
     @assert invert_strand in [:read1, :read2, :both, :none]
     reader = BAM.Reader(open(bam_file); index=bam_file*".bai")
     for feature in features
-        params(feature)[count_key] = 0
+        c = 0
         for record in eachoverlap(reader, feature)
             BAM.ismapped(record) || continue
             hasxatag(record) && only_unique && continue
             invert = isread2(record) && ispaired(record) ? invert_strand in (:read2, :both) : invert_strand in (:read1, :both)
             (ispositivestrand(record) == (strand(feature) === STRAND_POS) == invert) && continue
-            params(feature)[count_key] += 1
+            c += 1
         end
+        params(feature)[count_key] = "$c"
     end
     close(reader)
 end

@@ -58,6 +58,27 @@ end
 
 function expressionpca(features::Features, samples::Vector{Coverage}, conditions::Dict{String, UnitRange{Int64}}; plot_pcs=(1,2), legend=:best)
     averages = normalizedcount(features, samples)
+    averages = log2.(averages .+ 0.00001)
+    M = fit(PCA, averages)
+    atrans = MultivariateStats.transform(M, averages)
+    p = plot()
+    for (n, r) in sort(conditions, by=x->first(last(x)))
+        scatter!(atrans[first(plot_pcs),r], atrans[last(plot_pcs),r], label=n)
+    end
+    ratios = principalvars(M) ./ tvar(M)
+    ratio1 = round(ratios[first(plot_pcs)] * 100, digits=1)
+    ratio2 = round(ratios[last(plot_pcs)] * 100, digits=1)
+    plot(p, xlabel="PC$(first(plot_pcs)) ($ratio1%)", ylabel="PC$(last(plot_pcs)) ($ratio2%)", legend=legend)
+end
+
+function expressionpca(counts_file::String, conditions::Dict{String, UnitRange{Int64}}; plot_pcs=(1,2), legend=:best)
+    averages = CSV.read(counts_file, DataFrame; header=1, delim=',') |> Matrix{Float64}
+    averages .+= 0.1 
+    (nfeatures, nsamples) = size(averages)
+    avg_sample::Vector{Float32} = [geomean(averages[i, :]) for i in 1:nfeatures]
+    norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:nsamples]
+    averages ./= norm_factors'
+    averages = log2.(averages)
     M = fit(PCA, averages)
     atrans = MultivariateStats.transform(M, averages)
     p = plot()
