@@ -527,18 +527,15 @@ function annotate!(alns::PairedAlignments, features::Features; prioritize_type=n
     end
 end
 
-function conservedfeatures(features::Features, feature_alignments::Alignments{String}; key_gen=typenamekey)
-    my_features = Vector{Interval{Annotation}}()
+function annotate!(features::Features, feature_alignments::Alignments{String}; key_gen=typenamekey)
     for feature in features
         key = key_gen(feature)
+        push!(params(feature), "Count"=>"0")
+        push!(params(feature), "Key"=>key)
         if key in keys(feature_alignments)
             refs = Set(refname(aln) for aln in feature_alignments[key])
-            para = Dict(ref=>join(("$(readinterval(aln))" for aln in feature_alignments[key] if refname(aln)==ref), ",") for ref in refs)
-            push!(para, "Count"=>"$(length(refs))")
-            push!(para, "Name"=>key)
-            annot = Annotation("ALN", key, para)
-            push!(my_features, Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), annot))
+            merge!(params(feature), Dict(ref=>join(("$(readinterval(aln))" for aln in feature_alignments[key] if refname(aln)==ref), ",") for ref in refs))
+            push!(params(feature), "Count"=>"$(length(refs))")
         end
     end
-    return Features(my_features)
 end
