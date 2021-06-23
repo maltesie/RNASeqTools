@@ -117,7 +117,7 @@ function Base.write(file::String, features::Features)
 end
 
 function maxsignalposition(coverage::Coverage, from::Int, to::Int, strand::Strand)
-    maxsignal::Float32 = 0.0
+    maxsignal::Float64 = 0.0
     pos::Int = -1
     for term in eachoverlap(coverage, Interval(refname(feature), from, to, strand, Annotation()))
         value(term) > maxsignal && (maxsignal=value(term); pos=rightposition(term))
@@ -145,7 +145,7 @@ function addutrs!(features::Features, tss_coverage::Union{Coverage,Nothing}, ter
             feature, next_feature = base_features[i], base_features[i+1]
             threeref, fiveref, threename, fivename = refname(feature), refname(next_feature), name(feature), name(next_feature)
             stop, start = leftposition(next_feature), rightposition(feature)
-            threestart::Int, threestop::Int, fivestart::Int, fivestop::Int, maxsignal::Float32  = 0, 0, 0, 0, 0.0
+            threestart::Int, threestop::Int, fivestart::Int, fivestop::Int, maxsignal::Float64  = 0, 0, 0, 0, 0.0
             if refname(feature) != refname(next_feature)
                 threestart, threestop = start+1, start+utr_length
                 fivestart, fivestop = max(1, stop-utr_length), stop-1
@@ -219,17 +219,22 @@ function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
 end
 
 function annotate!(features::Features, from_reps::Vector{Coverage}, to_reps::Vector{Coverage})
-    averages = zeros(Float32, length(features), length(from_reps)+length(to_reps))
-    ps = zeros(Float32, length(features))
-    fc = zeros(Float32, length(features))
+    averages = zeros(Float64, length(features), length(from_reps)+length(to_reps))
+    ps = zeros(Float64, length(features))
+    fc = zeros(Float64, length(features))
     stop_from = length(from_reps)
     start_to = stop_from + 1
     stop_to = stop_from + length(to_reps)
     averages[:,1:stop_from] = normalizedcount(features, from_reps)
     averages[:,start_to:stop_to] = normalizedcount(features, to_reps)
+    noise = rand!(similar(averages)) .* 0.0000001
+    averages += noise
+    replace!(averages, NaN=>0.0)
     avf = mean(@view(averages[:,1:stop_from]), dims=2)
     avt = mean(@view(averages[:,start_to:stop_to]), dims=2)
     for i in 1:length(features)
+        #println("from vals ", @view(averages[i,1:stop_from]))
+        #println("to vals ", @view(averages[i,start_to:stop_to]))
         t = UnequalVarianceTTest(@view(averages[i,1:stop_from]), @view(averages[i,start_to:stop_to]))
         ps[i] = pvalue(t)
         isnan(ps[i]) && (ps[i] = 1.0) 
@@ -264,16 +269,17 @@ end
 
 function normalizedcount(features::Features, samples::Vector{Coverage})
     vals = [values(coverage) for coverage in samples]
-    averages = zeros(Float32, length(features), length(samples))
+    averages = zeros(Float64, length(features), length(samples))
     for (i,feature) in enumerate(features)
         for (j,rep) in enumerate(vals)
             strand_vals = strand(feature) === STRAND_NEG ? last(rep[refname(feature)]) : first(rep[refname(feature)])
             averages[i,j] = mean(strand_vals[leftposition(feature):rightposition(feature)])
         end
     end
-    avg_sample::Vector{Float32} = [geomean(averages[i, :]) for i in 1:length(features)] .+ 0.000001
+    avg_sample::Vector{Float64} = [geomean(averages[i, :]) for i in 1:length(features)] .+ 0.000000001
     norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:length(samples)]
     averages ./= norm_factors'
+    #println("norm factors ", norm_factors)
     return averages
 end
 

@@ -76,7 +76,7 @@ function expressionpca(counts_file::String, conditions::Dict{String, UnitRange{I
     averages = CSV.read(counts_file, DataFrame; header=1, delim=',') |> Matrix{Float64}
     averages .+= 0.1 
     (nfeatures, nsamples) = size(averages)
-    avg_sample::Vector{Float32} = [geomean(averages[i, :]) for i in 1:nfeatures]
+    avg_sample::Vector{Float64} = [geomean(averages[i, :]) for i in 1:nfeatures]
     norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:nsamples]
     averages ./= norm_factors'
     averages = averages[sortperm(vec(var(averages; dims=2)); rev=true)[1:topcut],:]

@@ -4,7 +4,7 @@ function Base.write(filename::String, content::String)
     end
 end
 
-struct SingleTypeFiles <: FileCollection
+mutable struct SingleTypeFiles <: FileCollection
     list::Vector{String}
     type::String
 end
@@ -33,7 +33,7 @@ function Base.dirname(files::SingleTypeFiles)
     return dirname(files.list[1])
 end
 
-struct PairedSingleTypeFiles <: FileCollection
+mutable struct PairedSingleTypeFiles <: FileCollection
     list::Vector{Tuple{String,String}}
     type::String
     suffix1::String
@@ -78,6 +78,18 @@ function Base.dirname(files::PairedSingleTypeFiles)
     return dirname(files.list[1][1])
 end
 
+function Base.write(fname::String, files::SingleTypeFiles)
+    @assert file.type in (".csv")
+    if files.type == ".csv"
+        for (i,file) in enumerate(files)
+            sheetname = basename(file)[1:end-length(files.type)]
+            dataframe = DataFrame(CSV.File(file))
+            XLSX.writetable(fname, dataframe, overwrite=true, sheetname=sheetname, anchor_cell="A1")
+        end
+    end
+end
+
+CsvFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".csv"; prefix=prefix)
 FastqFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fastq"; prefix=prefix)
 FastqgzFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fastq.gz"; prefix=prefix)
 FastaFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fasta"; prefix=prefix)

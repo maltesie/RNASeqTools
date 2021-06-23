@@ -146,11 +146,12 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
     params = []
     skip_quality_filtering && push!(params, "--disable_quality_filtering")
     !skip_quality_filtering && !isnothing(average_window_quality) && push!(params, "--cut_mean_quality=$average_window_quality")
-    !skip_quality_filtering && !isnothing(filter_complexity) && append!(params, ["-y" "--complexity_threshold=$filter_complexity"])
-    !skip_quality_filtering && !isnothing(trim_poly_x) && append!(params, ["-x", "--poly_x_min_len=$trim_poly_x"])
-    !skip_quality_filtering && !isnothing(trim_poly_g) ? append!(params, ["-g", "--poly_g_min_len=$trim_poly_g"]) : push!(params,"-G")
     !skip_quality_filtering && cut_tail && push!(params, "--cut_tail")
     !skip_quality_filtering && cut_front && push!(params, "--cut_front")
+
+    !isnothing(filter_complexity) && append!(params, ["-y" "--complexity_threshold=$filter_complexity"])
+    !isnothing(trim_poly_x) && append!(params, ["-x", "--poly_x_min_len=$trim_poly_x"])
+    !isnothing(trim_poly_g) ? append!(params, ["-g", "--poly_g_min_len=$trim_poly_g"]) : push!(params,"-G")
     !isnothing(min_length) && push!(params, "--length_required=$min_length")
     !isnothing(umi) && append!(params, ["-U", "--umi_loc=$(String(umi_loc))", "--umi_len=$umi"])
     !isnothing(adapter) && push!(params, "--adapter_sequence=$adapter")
@@ -162,7 +163,6 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
         out_file1 = joinpath(dirname(in_file1), prefix * basename(in_file1))
         (isfile(out_file1) && !overwrite_existing) && continue
         out_file2 = !isnothing(in_file2) ? joinpath(dirname(in_file2), prefix * basename(in_file2)) : nothing
-        push!(out_files, (out_file1, out_file2))
         file_params = ["--in1=$in_file1", "--out1=$out_file1", "--html=$(html_file)", "--json=$(json_file)"]
         !isnothing(in_file2) && append!(file_params, ["--in2=$in_file2", "--out2=$out_file2"])
         cmd = `$fastp_bin $file_params $params`

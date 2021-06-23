@@ -19,8 +19,8 @@ function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=t
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     chromosome_list = [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))]
-    vals_f = CoverageValues(chr=>zeros(Float32, len) for (chr, len) in chromosome_list)
-    vals_r = CoverageValues(chr=>zeros(Float32, len) for (chr, len) in chromosome_list)
+    vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
+    vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     invert1 = invert_reads in (:both, :read1)
     invert2 = invert_reads in (:both, :read2)
     count = 0
@@ -161,7 +161,7 @@ end
 
 function Base.values(coverage::Coverage, interval::Interval)
     len = interval.last - interval.first + 1
-    vals = zeros(Float32, len)
+    vals = zeros(Float64, len)
     offset = interval.first-1
     start = interval.first
     stop = interval.last
@@ -172,7 +172,7 @@ function Base.values(coverage::Coverage, interval::Interval)
 end
 
 function Base.values(coverage::Coverage)
-    vals = Dict{String,Tuple{Vector{Float32},Vector{Float32}}}()
+    vals = Dict{String,Tuple{Vector{Float64},Vector{Float64}}}()
     for (chr, len) in coverage.chroms
         interval_f = Interval(chr, 1, len, STRAND_POS)
         interval_r = Interval(chr, 1, len, STRAND_NEG)
@@ -183,8 +183,8 @@ end
 
 function Base.merge(coverages::Coverage ...)
     @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
-    vals_f = Dict(chr=>zeros(Float32, len) for (chr,len) in coverages[1].chroms)
-    vals_r = Dict(chr=>zeros(Float32, len) for (chr,len) in coverages[1].chroms)
+    vals_f = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
+    vals_r = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
     for cv in coverages
         for interval in cv
             strand(interval) == STRAND_POS ? 
@@ -206,9 +206,9 @@ function rolling_sum(a, n::Int)
     return out
 end
 
-function diff(coverage::Vector{Float32}, invert::Bool, window_size::Int, min_background_increase::Float64)
-    d = zeros(Float32,length(coverage))
-    filtered_d = zeros(Float32,length(coverage))
+function diff(coverage::Vector{Float64}, invert::Bool, window_size::Int, min_background_increase::Float64)
+    d = zeros(Float64,length(coverage))
+    filtered_d = zeros(Float64,length(coverage))
     invert ? d[1:end-1] = @view(coverage[1:end-1]) .- @view(coverage[2:end])  : d[2:end] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
     half_window_size = floor(Int, window_size/2)
     filtered_d[half_window_size:end-half_window_size] = rolling_sum(d,window_size)

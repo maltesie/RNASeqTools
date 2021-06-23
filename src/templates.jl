@@ -5,9 +5,8 @@ function prepare_data(data_path::String, genome::Genome; files=FastqgzFiles)
     compute_coverage(bams)
 end
 
-function de_genes(features::Features, coverage_files::PairedSingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; add_keys=["BaseValueFrom", "BaseValueTo", "LogFoldChange", "PValue", "AdjustedPValue"])
-    coverages = [Coverage(file1, file2) for (file1, file2) in coverage_files]
-    for ((name1, range1), (name2, range2)) in combinations(conditions, 2)
+function de_genes(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; add_keys=["BaseValueFrom", "BaseValueTo", "LogFoldChange", "PValue", "AdjustedPValue"])
+    for ((name1, range1), (name2, range2)) in combinations(collect(conditions), 2)
         annotate!(features, coverages[range1], coverages[range2])
         write(joinpath(results_path, name1 * "_vs_" * name2 * ".csv"), asdataframe(features, add_keys=add_keys))
     end
