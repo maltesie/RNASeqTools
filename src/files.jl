@@ -59,7 +59,10 @@ type(files::T) where {T<:FileCollection} = files.type
 Base.length(files::T) where {T<:FileCollection} = length(files.list)
 Base.iterate(files::T) where {T<:FileCollection} = iterate(files.list)
 Base.iterate(files::T, state::Int) where {T<:FileCollection} = iterate(files.list, state)
+Base.copy(files::SingleTypeFiles) = SingleTypeFiles(files.list, files.type)
+Base.copy(files::PairedSingleTypeFiles) = PairedSingleTypeFiles(files.list, files.type, files.suffix1, files.suffix2)
 Base.getindex(files::T, i::Int) where {T<:FileCollection} = files.list[i]
+Base.getindex(files::T, u::UnitRange{Int}) where {T<:FileCollection} = files.list[u]
 function Base.:*(filesa::PairedSingleTypeFiles, filesb::PairedSingleTypeFiles)
     @assert type(filesa) == type(filesb)
     suffix1 = filesa.suffix1 == filesb.suffix1 ? filesa.suffix1 : ""

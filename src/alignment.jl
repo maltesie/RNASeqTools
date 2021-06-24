@@ -471,21 +471,23 @@ function read_bam(bam_file::String; min_templength=nothing, only_unique=true, in
     return reads1, reads2
 end
 
-function annotate!(features::Features, bam_file::String; only_unique=true, invert_strand=:none, count_key="Count")
+function annotate!(features::Features, bam_files::SingleTypeFiles; only_unique=true, invert_strand=:none, count_key="Count")
     @assert invert_strand in [:read1, :read2, :both, :none]
-    reader = BAM.Reader(open(bam_file); index=bam_file*".bai")
-    for feature in features
-        c = 0
-        for record in eachoverlap(reader, feature)
-            BAM.ismapped(record) || continue
-            hasxatag(record) && only_unique && continue
-            invert = isread2(record) && ispaired(record) ? invert_strand in (:read2, :both) : invert_strand in (:read1, :both)
-            (ispositivestrand(record) == (strand(feature) === STRAND_POS) == invert) && continue
-            c += 1
+    for (i,bam_file) in enumerate(bam_files)
+        reader = BAM.Reader(open(bam_file); index=bam_file*".bai")
+        for feature in features
+            c = 0
+            for record in eachoverlap(reader, feature)
+                BAM.ismapped(record) || continue
+                hasxatag(record) && only_unique && continue
+                invert = isread2(record) && ispaired(record) ? invert_strand in (:read2, :both) : invert_strand in (:read1, :both)
+                (ispositivestrand(record) == (strand(feature) === STRAND_POS) == invert) && continue
+                c += 1
+            end
+            params(feature)["$count_key$i"] = "$c"
         end
-        params(feature)[count_key] = "$c"
+        close(reader)
     end
-    close(reader)
 end
 
 function annotate!(aln::AlignedPart, feature_interval::Interval{Annotation}; prioritize_type=nothing, overwrite_type=nothing)

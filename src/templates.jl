@@ -13,22 +13,39 @@ function de_genes(features::Features, coverages::Vector{Coverage}, conditions::D
     end
 end
 
-function raw_counts(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_file::String)
+function raw_counts(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_file::String; between_conditions=nothing)
     expnames = String[]
     for (name, range) in conditions
         annotate!(features, coverages[range]; count_key="$name")
         append!(expnames, ["$name$i" for i in 1:length(range)])
     end
-    write(results_file, asdataframe(features; add_keys=expnames))
+    if isnothing(between_conditions) 
+        write(results_file, asdataframe(features; add_keys=expnames))
+    else
+        for (cond1, cond2) in between_conditions
+            exps = [expnames[conditions[cond1]]...,expnames[conditions[cond2]]...]
+            write(join(results_file, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
+        end
+    end
 end
 
-function raw_counts(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_file::String)
+function raw_counts(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_file::String; between_conditions=nothing)
     expnames = String[]
+    mybams = copy(bams)
     for (name, range) in conditions
-        annotate!(features, bams[range]; count_key="$name")
+        mybams.list = bams[range]
+        annotate!(features, mybams; count_key="$name")
         append!(expnames, ["$name$i" for i in 1:length(range)])
     end
-    write(results_file, asdataframe(features; add_keys=expnames))
+    if isnothing(between_conditions)
+        write(results_file, asdataframe(features; add_keys=expnames))
+    else
+        for (cond1, cond2) in between_conditions
+            exps = [expnames[conditions[cond1]]...,expnames[conditions[cond2]]...]
+            write(join(results_file, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
+        end
+    end
+
 end
 
 function feature_ratio(features::Features, coverage_files::PairedSingleTypeFiles, results_file::String)
