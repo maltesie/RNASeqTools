@@ -254,6 +254,8 @@ alignments(alnread::AlignedRead) = alnread.alns
 count(alnread::AlignedRead) = length(alnread.alns)
 merge!(alnread1::AlignedRead, alnread2::AlignedRead) = append!(alnread1.alns, alnread2.alns)
 hasannotation(alnread::AlignedRead) = any(hasannotation(alnpart) for alnpart in alnread)
+annotatedcount(alnread::AlignedRead) = sum(hasannotation(alnpart) for alnpart in alnread)
+annotationcount(alnread::AlignedRead) = length(Set(name(part) for part in alnread))
 isfullyannotated(alnread::AlignedRead) = all(hasannotation(alnpart) for alnpart in alnread)
 
 Base.length(alnread::AlignedRead) = length(alnread.alns)
@@ -301,7 +303,8 @@ function countconcordant(alnread1::AlignedRead, alnread2::AlignedRead; min_dista
     return c
 end
 
-function ischimeric(alnread::AlignedRead)
+function ischimeric(alnread::AlignedRead; check_annotation=true)
+    check_annotation && (annotationcount(alnread) == 1) && (annotatedcount(alnread) > 1) && (return false)
     return count(alnread) > 1 ? true : false
 end
 

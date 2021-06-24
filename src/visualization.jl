@@ -58,6 +58,7 @@ end
 
 function expressionpca(features::Features, samples::Vector{Coverage}, conditions::Dict{String, UnitRange{Int64}}; plot_pcs=(1,2), legend=:best, topcut=500)
     averages = normalizedcount(features, samples)
+    topcut = min(size(averages, 1), topcut)
     averages = averages[sortperm(vec(var(averages; dims=2)); rev=true)[1:topcut],:]
     averages = log2.(averages .+ 0.00001)
     M = fit(PCA, averages)
@@ -74,6 +75,7 @@ end
 
 function expressionpca(counts_file::String, conditions::Dict{String, UnitRange{Int64}}; plot_pcs=(1,2), legend=:best, topcut=500)
     averages = CSV.read(counts_file, DataFrame; header=1, delim=',') |> Matrix{Float64}
+    topcut = min(nrow(averages), topcut)
     averages .+= 0.1 
     (nfeatures, nsamples) = size(averages)
     avg_sample::Vector{Float64} = [geomean(averages[i, :]) for i in 1:nfeatures]

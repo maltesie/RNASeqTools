@@ -79,13 +79,15 @@ function Base.dirname(files::PairedSingleTypeFiles)
 end
 
 function Base.write(fname::String, files::SingleTypeFiles)
-    @assert file.type in (".csv")
+    @assert files.type in (".csv",)
     if files.type == ".csv"
-        for (i,file) in enumerate(files)
+        tables = Vector{Tuple{String,Vector{Any},Vector{String}}}()
+        for file in files
             sheetname = basename(file)[1:end-length(files.type)]
             dataframe = DataFrame(CSV.File(file))
-            XLSX.writetable(fname, dataframe, overwrite=true, sheetname=sheetname, anchor_cell="A1")
+            push!(tables,(sheetname,collect(eachcol(dataframe)), DataFrames.names(dataframe)))
         end
+        XLSX.writetable(fname, tables; overwrite=true)
     end
 end
 

@@ -31,22 +31,27 @@ type(annot::T) where {T<:AnnotationStyle} = annot.type
 
 struct Features{T} <: AnnotationContainer
     list::IntervalCollection{T}
+    types::Vector{String}
 end
 
-function Features(feature_list::Vector{Interval{Annotation}})
-    return Features(IntervalCollection(feature_list, true))
+function Features(feature_list::Vector{Interval{Annotation}}, types::Vector{String})
+    return Features(IntervalCollection(feature_list, true), types)
 end
 
 function Features(gff_file::String, type::Vector{String}; name_key="Name")
     features = open(collect, GFF3.Reader, gff_file)
     intervals = Vector{Interval{Annotation}}()
+    names = Dict{String,Int}()
     for feature in features
         (GFF3.featuretype(feature) in type || isempty(type)) || continue
         seqn = GFF3.seqid(feature)
-        annot = Annotation(GFF3.featuretype(feature), join(GFF3.attributes(feature, name_key), ","), Dict(pair[1] => join(pair[2], ",") for pair in GFF3.attributes(feature)))
+        name = join(GFF3.attributes(feature, name_key), ",")
+        name in keys(names) ? (names[name]+=1) : (names[name]=1)
+        names[name] > 1 && (name = name * "$(names[name])")
+        annot = Annotation(GFF3.featuretype(feature), name, Dict(pair[1] => join(pair[2], ",") for pair in GFF3.attributes(feature)))
         push!(intervals, Interval(seqn, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annot))
     end
-    return Features(intervals)
+    return Features(intervals, type)
 end
 
 function Features(gff_file::String, type::String; name_key="Name")
@@ -78,6 +83,7 @@ end
 Base.iterate(features::Features) = iterate(features.list)
 Base.iterate(features::Features, state::Tuple{Int64,GenomicFeatures.ICTree{Annotation},GenomicFeatures.ICTreeIteratorState{Annotation}}) = iterate(features.list, state)
 Base.length(features::Features) = length(features.list)
+Base.split(features::Features) = [Features([feature for feature in features if type(feature)==t], [t]) for t in features.types]
 
 strand_filter(a::Interval, b::Interval)::Bool = strand(a) == strand(b)
 function GenomicFeatures.eachoverlap(features::I, feature::Interval{T}) where {I<:AnnotationContainer, T<:AnnotationStyle}
@@ -229,12 +235,9 @@ function annotate!(features::Features, from_reps::Vector{Coverage}, to_reps::Vec
     averages[:,start_to:stop_to] = normalizedcount(features, to_reps)
     noise = rand!(similar(averages)) .* 0.0000001
     averages += noise
-    replace!(averages, NaN=>0.0)
     avf = mean(@view(averages[:,1:stop_from]), dims=2)
     avt = mean(@view(averages[:,start_to:stop_to]), dims=2)
     for i in 1:length(features)
-        #println("from vals ", @view(averages[i,1:stop_from]))
-        #println("to vals ", @view(averages[i,start_to:stop_to]))
         t = UnequalVarianceTTest(@view(averages[i,1:stop_from]), @view(averages[i,start_to:stop_to]))
         ps[i] = pvalue(t)
         isnan(ps[i]) && (ps[i] = 1.0) 
@@ -249,6 +252,22 @@ function annotate!(features::Features, from_reps::Vector{Coverage}, to_reps::Vec
         params(feature)["AdjustedPValue"] = "$adj_p"
         params(feature)["BaseValueFrom"] = "$average_from"
         params(feature)["BaseValueTo"] = "$average_to"
+    end
+end
+
+function annotate!(features::Features, samples::Vector{Coverage}; count_key="Count")
+    vals = [values(coverage) for coverage in samples]
+    averages = zeros(Float64, length(features), length(samples))
+    for (i,feature) in enumerate(features)
+        for (j,rep) in enumerate(vals)
+            strand_vals = strand(feature) === STRAND_NEG ? last(rep[refname(feature)]) : first(rep[refname(feature)])
+            averages[i,j] = sum(strand_vals[leftposition(feature):rightposition(feature)])
+        end
+    end
+    for (feature, vals) in zip(features, eachrow(averages))
+        for (i,val) in enumerate(vals)
+            params(feature)["$count_key$i"] = "$val"
+        end
     end
 end
 
