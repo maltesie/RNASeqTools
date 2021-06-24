@@ -24,7 +24,7 @@ function raw_counts(features::Features, coverages::Vector{Coverage}, conditions:
     else
         for (cond1, cond2) in between_conditions
             exps = [expnames[conditions[cond1]]...,expnames[conditions[cond2]]...]
-            write(join(results_file, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
+            write(joinpath(results_file, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
         end
     end
 end
@@ -42,7 +42,7 @@ function raw_counts(features::Features, bams::SingleTypeFiles, conditions::Dict{
     else
         for (cond1, cond2) in between_conditions
             exps = [expnames[conditions[cond1]]...,expnames[conditions[cond2]]...]
-            write(join(results_file, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
+            write(joinpath(results_file, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
         end
     end
 
