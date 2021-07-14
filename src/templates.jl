@@ -13,36 +13,34 @@ function de_genes(features::Features, coverages::Vector{Coverage}, conditions::D
     end
 end
 
-function raw_counts(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_file::String; between_conditions=nothing)
-    expnames = String[]
+function raw_counts(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
+    expnames = Dict{String,Vector{String}}()
     for (name, range) in conditions
         annotate!(features, coverages[range]; count_key="$name")
-        append!(expnames, ["$name$i" for i in 1:length(range)])
+        expnames[name] = ["$name$i" for i in 1:length(range)]
     end
-    if isnothing(between_conditions) 
-        write(results_file, asdataframe(features; add_keys=expnames))
-    else
+    write(joinpath(results_path, "all_counts.csv"), asdataframe(features; add_keys=vcat([val for val in values(expnames)]...)))
+    if !isnothing(between_conditions)
         for (cond1, cond2) in between_conditions
-            exps = [expnames[conditions[cond1]]...,expnames[conditions[cond2]]...]
-            write(joinpath(results_file, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
+            exps = [expnames[cond1]...,expnames[cond2]...]
+            write(joinpath(results_path, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
         end
     end
 end
 
-function raw_counts(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_file::String; between_conditions=nothing)
-    expnames = String[]
+function raw_counts(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
+    expnames = Dict{String,Vector{String}}()
     mybams = copy(bams)
     for (name, range) in conditions
         mybams.list = bams[range]
         annotate!(features, mybams; count_key="$name")
-        append!(expnames, ["$name$i" for i in 1:length(range)])
+        expnames[name] = ["$name$i" for i in 1:length(range)]
     end
-    if isnothing(between_conditions)
-        write(results_file, asdataframe(features; add_keys=expnames))
-    else
+    write(joinpath(results_path, "all_counts.csv"), asdataframe(features; add_keys=vcat([val for val in values(expnames)]...)))
+    if !isnothing(between_conditions)
         for (cond1, cond2) in between_conditions
-            exps = [expnames[conditions[cond1]]...,expnames[conditions[cond2]]...]
-            write(joinpath(results_file, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
+            exps = [expnames[cond1]...,expnames[cond2]...]
+            write(joinpath(results_path, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
         end
     end
 
@@ -64,5 +62,15 @@ end
 function conserved_features(features::Features, genome::Genome, targets::SingleTypeFiles, results_file::String)
 end
 
-function interaction_graph(features::Features, bams::SingleTypeFiles, results_path::String)
+function interaction_graph(features::Features, bams::SingleTypeFiles, libs::Dict{String, UnitRange{Int}}, results_path::String; 
+                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", rev_comp=:read1)
+for (lib, r) in libs
+    interactions = Interactions()
+    for (i, bam) in enumerate(bams[r])
+        alignments = PairedAlignments(bam; only_unique=false, rev_comp=rev_comp)
+        annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type) 
+        append!(interactions, alignments; min_distance=min_distance, filter_types=filter_types)
+    end
+    write(joinpath(results_path, "$(lib)_$(i)_interactions.csv"), asdataframe(interactions; output=:edges))
+    write(joinpath(results_path, "$(lib)_$(i)_singles.csv"), asdataframe(interactions; output=:nodes))
 end

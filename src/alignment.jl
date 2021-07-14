@@ -253,10 +253,32 @@ end
 alignments(alnread::AlignedRead) = alnread.alns
 count(alnread::AlignedRead) = length(alnread.alns)
 merge!(alnread1::AlignedRead, alnread2::AlignedRead) = append!(alnread1.alns, alnread2.alns)
+typein(alnread::AlignedRead, types::Vector{String}) = any(type(alnpart) in types for alnpart in alnread)
+hastype(alnread::AlignedRead, t::String) = typein(alnread, [t])
+namein(alnread::AlignedRead, names::Vector{String}) = any(name(alnpart) in names for alnpart in alnread)
+hasname(alnread::AlignedRead, n::String) = namein(alnread, [n])
+typein(alnread1::AlignedRead, alnread2::AlignedRead, types::Vector{String}) = any(type(alnpart) in types for alnpart in alnread1) || any(type(alnpart) in types for alnpart in alnread2)
+hastype(alnread1::AlignedRead, alnread2::AlignedRead, t::String) = typein(alnread1, alnread2, [t])
+namein(alnread1::AlignedRead, alnread2::AlignedRead, names::Vector{String}) = any(name(alnpart) in names for alnpart in alnread1) || any(name(alnpart) in names for alnpart in alnread2)
+hasname(alnread1::AlignedRead, alnread2::AlignedRead, n::String) = namein(alnread1, alnread2, [n])
 hasannotation(alnread::AlignedRead) = any(hasannotation(alnpart) for alnpart in alnread)
 annotatedcount(alnread::AlignedRead) = sum(hasannotation(alnpart) for alnpart in alnread)
 annotationcount(alnread::AlignedRead) = length(Set(name(part) for part in alnread))
 isfullyannotated(alnread::AlignedRead) = all(hasannotation(alnpart) for alnpart in alnread)
+
+function name(alnread::AlignedRead)
+    names = Set(name(part) for part in alnread)
+    @assert length(names) == 1
+    for n in names
+        return n
+    end
+end
+function name(alnread1::AlignedRead, alnread2::AlignedRead)
+    name1 = name(alnread1)
+    name2 = name(alnread2)
+    @assert name1 === name2
+    return name1
+end
 
 Base.length(alnread::AlignedRead) = length(alnread.alns)
 Base.isempty(alnread::AlignedRead) = isempty(alnread.alns)
@@ -329,13 +351,13 @@ Base.values(alignments::Alignments) = values(alignments.dict)
 function Base.iterate(alignments::Alignments) 
     dictiteration = iterate(alignments.dict)
     isnothing(dictiteration) && (return nothing)
-    ((key, aln), state) = dictiteration
+    ((_, aln), state) = dictiteration
     return (aln, state)
 end
 function Base.iterate(alignments::Alignments, state::Int) 
     dictiteration = iterate(alignments.dict, state)
     isnothing(dictiteration) && (return nothing)
-    ((key, aln), state) = dictiteration
+    ((_, aln), state) = dictiteration
     return (aln, state)
 end
 
@@ -369,7 +391,7 @@ end
 
 function PairedAlignments(bam_file1::String, bam_file2::String; min_templength=nothing, only_unique=true, rev_comp=:none, hash_id=true)
     alignments1, alignments_e1 = read_bam(bam_file1; min_templength=min_templength, only_unique=only_unique, invertstrand=rev_comp, hash_id=hash_id)
-    alignments2, alignments_e2 = read_bam(bam_file2; min_templength=min_templength, only_unique=only_unique, invertstrand=rev_comp, hash_id=hash_id)
+    alignments2, alignments_e2 = read_bam(bam_file2; min_templength=min_templength, only_unique=only_unique, invertstrand=rev_comp in (:read2, :both) ? :read1 : :none, hash_id=hash_id)
     @assert isempty(alignments_e1) && isempty(alignments_e2)
     PairedAlignments(alignments1, alignments2, intersect(Set(keys(alignments1)), Set(keys(alignments2))))
 end
@@ -449,9 +471,10 @@ function read_bam(bam_file::String; min_templength=nothing, only_unique=true, in
             xastrings = split(xa, ";")[1:end-1]
             for (i,xapart) in enumerate(xastrings)
                 _, pos, _, nm = split(xapart, ",")
-                parse(UInt8, nm) > nms && continue
+                pnm = parse(UInt8, nm)
+                pnm > nms && continue
                 intpos = abs(parse(Int, pos))
-                intpos < leftestpos && (leftest = i; leftestpos=intpos; nms=nm)
+                intpos < leftestpos && (leftest = i; leftestpos=intpos; nms=pnm)
             end
             if leftest != 0 
                 alnpart = AlignedPart(xastrings[leftest]; invertstrand=invert)
@@ -471,22 +494,42 @@ function read_bam(bam_file::String; min_templength=nothing, only_unique=true, in
     return reads1, reads2
 end
 
-function annotate!(features::Features, bam_files::SingleTypeFiles; only_unique=true, invert_strand=:none, count_key="Count")
-    @assert invert_strand in [:read1, :read2, :both, :none]
-    for (i,bam_file) in enumerate(bam_files)
-        reader = BAM.Reader(open(bam_file); index=bam_file*".bai")
-        for feature in features
-            c = 0
-            for record in eachoverlap(reader, feature)
-                BAM.ismapped(record) || continue
-                hasxatag(record) && only_unique && continue
-                invert = isread2(record) && ispaired(record) ? invert_strand in (:read2, :both) : invert_strand in (:read1, :both)
-                (ispositivestrand(record) == (strand(feature) === STRAND_POS) == invert) && continue
-                c += 1
+function annotate!(features::Features, files::SingleTypeFiles; only_unique=true, invert_strand=:none, count_key="Count", abs_lfc_cut=1, pvalue_cut=0.05)
+    if files.type == ".bam"
+        
+        @assert invert_strand in [:read1, :read2, :both, :none]
+        for (i,bam_file) in enumerate(files)
+            reader = BAM.Reader(open(bam_file); index=bam_file*".bai")
+            for feature in features
+                c = 0
+                for record in eachoverlap(reader, feature)
+                    BAM.ismapped(record) || continue
+                    hasxatag(record) && only_unique && continue
+                    invert = isread2(record) && ispaired(record) ? invert_strand in (:read2, :both) : invert_strand in (:read1, :both)
+                    (ispositivestrand(record) == (strand(feature) === STRAND_POS) == invert) && continue
+                    c += 1
+                end
+                params(feature)["$count_key$i"] = "$c"
             end
-            params(feature)["$count_key$i"] = "$c"
+            close(reader)
         end
-        close(reader)
+
+    elseif files.type == ".csv"
+
+        for file in files
+            expname = basename(file)[1:end-4]
+            table = CSV.read(file, DataFrame; missingstring="NA")
+            replace!(table.padj, missing => 2.0)
+            replace!(table.log2FoldChange, missing => 0.0)
+            filter!(row->((row.padj <= pvalue_cut) && (abs(row.log2FoldChange) >= abs_lfc_cut)), table)
+            for feature in features
+                if name(feature) in table.Gene
+                    row = table[findfirst(table.Gene .== name(feature)), :]
+                    params(feature)["$(expname)_lfc"] = "$(row.log2FoldChange)"
+                    params(feature)["$(expname)_fdr"] = "$(row.padj)"
+                end
+            end
+        end
     end
 end
 
@@ -521,7 +564,7 @@ function annotate!(alns::PairedAlignments, features::Features; prioritize_type=n
         GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refn], Interval("", 1, 1, STRAND_NA, Annotation("", "", Dict{String, String}()))) for refn in refnames(features)) 
     for (alignment1, alignment2) in alns
         for alignedread in (alignment1, alignment2)
-            for aln in enumerate(alignedread)
+            for aln in alignedread
                 myiterator = myiterators[refname(aln)]
                 myiterator.query = refinterval(aln)
                 for feature_interval in myiterator

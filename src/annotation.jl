@@ -41,14 +41,14 @@ end
 function Features(gff_file::String, type::Vector{String}; name_key="Name")
     features = open(collect, GFF3.Reader, gff_file)
     intervals = Vector{Interval{Annotation}}()
-    names = Dict{String,Int}()
+    names = Dict{Tuple{String,String},Int}()
     for feature in features
         (GFF3.featuretype(feature) in type || isempty(type)) || continue
         seqn = GFF3.seqid(feature)
-        name = join(GFF3.attributes(feature, name_key), ",")
+        name = (GFF3.featuretype(feature), join(GFF3.attributes(feature, name_key), ","))
         name in keys(names) ? (names[name]+=1) : (names[name]=1)
-        names[name] > 1 && (name = name * "$(names[name])")
-        annot = Annotation(GFF3.featuretype(feature), name, Dict(pair[1] => join(pair[2], ",") for pair in GFF3.attributes(feature)))
+        names[name] > 1 ? (n = name[2] * "$(names[name])") : (n = name[2])
+        annot = Annotation(GFF3.featuretype(feature), n, Dict(pair[1] => join(pair[2], ",") for pair in GFF3.attributes(feature)))
         push!(intervals, Interval(seqn, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annot))
     end
     return Features(intervals, type)
@@ -323,24 +323,22 @@ mincorrelation(features::Features, coverages::Vector{Coverage}) = mincorrelation
 function asdataframe(features::Features; add_keys=:all)
     add_keys === :none && (add_keys = Set())
     add_keys === :all && (add_keys = Set(key for feature in features for key in keys(params(feature))))
-    df = DataFrame(name=String[], refname=String[], type=String[], left=Int[], right=Int[], strand=Char[])
-    add_row =  DataFrame(name="", refname="", type="", left=0, right=0, strand='+')
+    df = DataFrame(name=repeat([""], length(features)), refname=repeat([""], length(features)), type=repeat([""], length(features)), 
+                    left=repeat([-1], length(features)), right=repeat([-1], length(features)), strand=repeat(['*'], length(features)))
     for key in add_keys
-        df[!, Symbol(key)] = String[]
-        add_row[!, Symbol(key)] = [""]
+        df[!, Symbol(key)] = repeat([""], length(features))
     end
-    for feature in features
-        add_row[1, :name] = name(feature)
-        add_row[1, :refname] = refname(feature)
-        add_row[1, :type] = type(feature)
-        add_row[1, :left] = leftposition(feature)
-        add_row[1, :right] = rightposition(feature)
-        add_row[1, :strand] = strand(feature) === STRAND_NEG ? '-' : '+'
+    for (i,feature) in enumerate(features)
+        df[i, :name] = name(feature)
+        df[i, :refname] = refname(feature)
+        df[i, :type] = type(feature)
+        df[i, :left] = leftposition(feature)
+        df[i, :right] = rightposition(feature)
+        df[i, :strand] = strand(feature) === STRAND_NEG ? '-' : '+'
         pa = params(feature)
         for key in keys(pa)
-            (key in add_keys || add_keys === :all) && (add_row[1, Symbol(key)] = pa[key])
+            (key in add_keys || add_keys === :all) && (df[i, Symbol(key)] = pa[key])
         end
-        append!(df, add_row)
     end
     return df
 end
