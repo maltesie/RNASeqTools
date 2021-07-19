@@ -62,15 +62,20 @@ end
 function conserved_features(features::Features, genome::Genome, targets::SingleTypeFiles, results_file::String)
 end
 
-function interaction_graph(features::Features, bams::SingleTypeFiles, libs::Dict{String, UnitRange{Int}}, results_path::String; 
-                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", rev_comp=:read1)
-for (lib, r) in libs
-    interactions = Interactions()
-    for (i, bam) in enumerate(bams[r])
-        alignments = PairedAlignments(bam; only_unique=false, rev_comp=rev_comp)
-        annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type) 
-        append!(interactions, alignments; min_distance=min_distance, filter_types=filter_types)
+function interaction_graph(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; 
+                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", rev_comp=:read1, model=:fisher)
+    for (condition, r) in conditions
+        replicate_ids = Vector{Symbol}()
+        interactions = Interactions()
+        for (i, bam) in enumerate(bams[r])
+            replicate_id = Symbol("$condition$i")
+            push!(replicate_ids, replicate_id)
+            alignments = PairedAlignments(bam; only_unique=false, rev_comp=rev_comp)
+            annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type) 
+            append!(interactions, alignments; min_distance=min_distance, filter_types=filter_types, replicate_id=replicate_id)
+        end
+        annotate!(interactions; method=model)
+        write(joinpath(results_path, "$(condition)_interactions.csv"), asdataframe(interactions; output=:edges))
+        write(joinpath(results_path, "$(condition)_singles.csv"), asdataframe(interactions; output=:nodes))
     end
-    write(joinpath(results_path, "$(lib)_$(i)_interactions.csv"), asdataframe(interactions; output=:edges))
-    write(joinpath(results_path, "$(lib)_$(i)_singles.csv"), asdataframe(interactions; output=:nodes))
 end

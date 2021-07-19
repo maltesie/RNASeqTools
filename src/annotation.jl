@@ -38,14 +38,23 @@ function Features(feature_list::Vector{Interval{Annotation}}, types::Vector{Stri
     return Features(IntervalCollection(feature_list, true), types)
 end
 
-function Features(gff_file::String, type::Vector{String}; name_key="Name")
+function Features(gff_file::String, type::Vector{String}; name_key="Name", fallback_key=nothing)
     features = open(collect, GFF3.Reader, gff_file)
     intervals = Vector{Interval{Annotation}}()
     names = Dict{Tuple{String,String},Int}()
     for feature in features
         (GFF3.featuretype(feature) in type || isempty(type)) || continue
         seqn = GFF3.seqid(feature)
-        name = (GFF3.featuretype(feature), join(GFF3.attributes(feature, name_key), ","))
+        name = ("NA", "NA")
+        try
+            name = (GFF3.featuretype(feature), join(GFF3.attributes(feature, name_key), ","))
+        catch ex
+            if ex isa KeyError
+                isnothing(fallback_key) || (name = (GFF3.featuretype(feature), join(GFF3.attributes(feature, fallback_key), ","))) 
+            else
+              rethrow(ex)
+            end
+        end
         name in keys(names) ? (names[name]+=1) : (names[name]=1)
         names[name] > 1 ? (n = name[2] * "$(names[name])") : (n = name[2])
         annot = Annotation(GFF3.featuretype(feature), n, Dict(pair[1] => join(pair[2], ",") for pair in GFF3.attributes(feature)))
@@ -54,12 +63,12 @@ function Features(gff_file::String, type::Vector{String}; name_key="Name")
     return Features(intervals, type)
 end
 
-function Features(gff_file::String, type::String; name_key="Name")
-    return Features(gff_file, [type], name_key=name_key)
+function Features(gff_file::String, type::String; name_key="Name", fallback_key=nothing)
+    return Features(gff_file, [type], name_key=name_key, fallback_key=fallback_key)
 end
 
-function Features(gff_file::String; name_key="Name")
-    return Features(gff_file, String[], name_key=name_key)
+function Features(gff_file::String; name_key="Name", fallback_key=nothing)
+    return Features(gff_file, String[], name_key=name_key, fallback_key=fallback_key)
 end
 
 function Features(coverage::Coverage, type::String)
