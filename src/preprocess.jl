@@ -1,119 +1,71 @@
-function split_libs(infile1::String, prefixfile1::String, infile2::String, output_folder::String, barcodes::Dict{String,String}; report_file="demultiplexing_report.txt")
+function split_libs(infile1::String, prefixfile1::Union{String,Nothing}, infile2::Union{String,Nothing}, barcodes::Dict{String,String}, output_path::String; overwrite_existing=false)
 
     dplxr = Demultiplexer(LongDNASeq.(collect(values(barcodes))), n_max_errors=1, distance=:hamming)
-    output_files = [[abspath(output_folder, "$(name)_1.fastq.gz"),
-                    abspath(output_folder, "$(name)_2.fastq.gz")] for name in keys(barcodes)]
+    bc_len = [length(v) for v in values(barcodes)][1]
+    output_files = isnothing(infile2) ? 
+    [joinpath(output_path, "$(name).fastq.gz") for name in keys(barcodes)] :
+    [[joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")] for name in keys(barcodes)]
+    for file in output_files
+        isnothing(infile2) ?
+        (isfile(file) && return) :
+        ((isfile(file[1]) || isfile(file[2])) && return)
+    end
     stats::Array{Int,1} = zeros(Int, length(barcodes))
     record1::FASTQ.Record = FASTQ.Record()
-    record2::FASTQ.Record = FASTQ.Record()
-    recordp::FASTQ.Record = FASTQ.Record()
+    isnothing(infile2) || (record2::FASTQ.Record = FASTQ.Record())
+    isnothing(prefixfile1) || (recordp::FASTQ.Record = FASTQ.Record())
     endswith(infile1, ".gz") ? reader1 = FASTQ.Reader(GzipDecompressorStream(open(infile1, "r"))) : reader1 = FASTQ.Reader(open(infile1, "r"))
-    endswith(infile2, ".gz") ? reader2 = FASTQ.Reader(GzipDecompressorStream(open(infile2, "r"))) : reader2 = FASTQ.Reader(open(infile2, "r"))
-    endswith(prefixfile1, ".gz") ? readerp = FASTQ.Reader(GzipDecompressorStream(open(prefixfile1, "r"))) : readerp = FASTQ.Reader(open(prefixfile1, "r"))
-    writers = [[FASTQ.Writer(GzipCompressorStream(open(outfile1, "w"), level=2)),
+    isnothing(infile2) || (endswith(infile2, ".gz") ? 
+                            reader2 = FASTQ.Reader(GzipDecompressorStream(open(infile2, "r"))) : 
+                            reader2 = FASTQ.Reader(open(infile2, "r")))
+    isnothing(prefixfile1) || (endswith(prefixfile1, ".gz") ? 
+                                readerp = FASTQ.Reader(GzipDecompressorStream(open(prefixfile1, "r"))) : 
+                                readerp = FASTQ.Reader(open(prefixfile1, "r")))
+    writers = isnothing(infile2) ?
+                [FASTQ.Writer(GzipCompressorStream(open(outfile1, "w"), level=2))
+                for outfile1 in output_files] :
+                [[FASTQ.Writer(GzipCompressorStream(open(outfile1, "w"), level=2)),
                 FASTQ.Writer(GzipCompressorStream(open(outfile2, "w"), level=2))] 
                 for (outfile1, outfile2) in output_files] 
-
-    sleep(0.01)
-
+    unidentified_writer = FASTQ.Writer(GzipCompressorStream(open(joinpath(output_path, "unidentified.fastq.gz"), "w"), level=2))
     c = 0
     while !eof(reader1)
         read!(reader1, record1)
-        read!(reader2, record2)
-        read!(readerp, recordp)
+        isnothing(infile2) || read!(reader2, record2)
+        isnothing(prefixfile1) || read!(readerp, recordp)
         c += 1
-        prefix = LongDNASeq(FASTQ.sequence(recordp))
-        (library_id, nb_errors) = demultiplex(dplxr, prefix)
+        nb_errors = -1
+        isnothing(prefixfile1) || (prefix = LongDNASeq(FASTQ.sequence(recordp)); (library_id, nb_errors) = demultiplex(dplxr, prefix))
         if (nb_errors == -1)
             read = LongDNASeq(FASTQ.sequence(record1))
-            (library_id, nb_errors) = demultiplex(dplxr, read)
-            (nb_errors == -1) && continue
+            (library_id, nb_errors) = demultiplex(dplxr, read[1:bc_len])
+            (nb_errors == -1) && (write(unidentified_writer, record1); isnothing(infile2) || write(unidentified_writer, record2); continue)
         end
         stats[library_id] += 1
-        write(writers[library_id][1], record1)
-        write(writers[library_id][2], record2)
-    end
-
-    for (writer1, writer2) in writers
-        close(writer1)
-        close(writer2)
-    end
-
-    close(reader1)
-    close(reader2)
-
-    count_string = join(["$(name) - $(stat)\n" for (name, stat) in zip(barcodes, stats)])
-    count_string *= "not identifyable - $(c-sum(stats))\n"
-    count_string = "Counted $c entries in total\n\n$count_string\n"
-    write(abspath(output_folder, report_file), count_string)
-
-end
-
-function split_libs(infile1::String, infile2::String, output_folder::String, barcodes::Dict{String,String}; report_file="demultiplexing_report.txt")
-    dplxr = Demultiplexer(LongDNASeq.(collect(values(barcodes))), n_max_errors=1, distance=:hamming)
-    output_files = [[abspath(output_folder, "$(name)_1.fastq.gz"),
-                    abspath(output_folder, "$(name)_2.fastq.gz")] for name in keys(barcodes)]
-    stats::Array{Int,1} = zeros(Int, length(barcodes))
-    record1::FASTQ.Record = FASTQ.Record()
-    record2::FASTQ.Record = FASTQ.Record()
-    endswith(infile1, ".gz") ? reader1 = FASTQ.Reader(GzipDecompressorStream(open(infile1, "r"))) : reader1 = FASTQ.Reader(open(infile1, "r"))
-    endswith(infile2, ".gz") ? reader2 = FASTQ.Reader(GzipDecompressorStream(open(infile2, "r"))) : reader2 = FASTQ.Reader(open(infile2, "r"))
-    writers = [[FASTQ.Writer(GzipCompressorStream(open(outfile1, "w"), level=2)),
-                FASTQ.Writer(GzipCompressorStream(open(outfile2, "w"), level=2))] 
-                for (outfile1, outfile2) in output_files] 
-    sleep(0.01)
-    c = 0
-    while !eof(reader1)
-        read!(reader1, record1)
-        read!(reader2, record2)
-        c += 1
-        read = LongDNASeq(FASTQ.sequence(record1))
-        (library_id, nb_errors) = demultiplex(dplxr, read)
-        nb_errors == -1 && continue
-        stats[library_id] += 1
-        write(writers[library_id][1], record1)
-        write(writers[library_id][2], record2)
-    end
-
-    for (writer1, writer2) in writers
-        close(writer1)
-        close(writer2)
+        isnothing(infile2) ?
+        write(writers[library_id], record1) :
+        (write(writers[library_id][1], record1); write(writers[library_id][2], record2))
     end
     close(reader1)
-    close(reader2)
+    isnothing(infile2) || close(reader2)
+    close(unidentified_writer)
+    for w in writers
+        isnothing(infile2) ?
+        close(w) :
+        (close(w[1]);close(w[2]))
+    end
     count_string = join(["$(name) - $(stat)\n" for (name, stat) in zip(barcodes, stats)])
-    count_string *= "not identifyable - $(c-sum(stats))\n"
+    count_string *= "\nnot identifyable - $(c-sum(stats))\n"
     count_string = "Counted $c entries in total\n\n$count_string\n"
-    write(joinpath(output_folder, report_file), count_string)
+    write(infile1 * ".log", count_string)
 end
 
-function split_libs(infile::String, output_folder::String, barcodes::Dict{String,String}; report_file="demultiplexing_report.txt")
-    dplxr = Demultiplexer(LongDNASeq.(collect(values(barcodes))), n_max_errors=1, distance=:hamming)
-    output_files = [abspath(output_folder, "$(name).fastq.gz") for name in keys(barcodes)]
-    stats::Array{Int,1} = zeros(Int, length(barcodes))
-    record::FASTQ.Record = FASTQ.Record()
-    endswith(infile, ".gz") ? reader = FASTQ.Reader(GzipDecompressorStream(open(infile, "r"))) : reader = FASTQ.Reader(open(infile, "r"))
-    writers = [FASTQ.Writer(GzipCompressorStream(open(outfile, "w"), level=2)) for outfile in output_files] 
-    sleep(0.01)
-    c = 0
-    while !eof(reader)
-        read!(reader, record)
-        c += 1
-        read = LongDNASeq(FASTQ.sequence(record))
-        (library_id, nb_errors) = demultiplex(dplxr, read)
-        nb_errors == -1 && continue
-        stats[library_id] += 1
-        write(writers[library_id], record)
-    end
+function split_libs(infile1::String, infile2::String, barcodes::Dict{String,String}, output_path::String)
+    split_libs(infile1, nothing, infile2, barcodes, output_path)
+end
 
-    for writer in writers
-        close(writer)
-    end
-    close(reader)
-    count_string = join(["$(name) - $(stat)\n" for (name, stat) in zip(values(barcodes), stats)])
-    count_string *= "not identifyable - $(c-sum(stats))\n"
-    count_string = "Counted $c entries in total\n\n$count_string\n"
-    write(joinpath(output_folder, report_file), count_string)
+function split_libs(infile::String, barcodes::Dict{String,String}, output_path::String)
+    split_libs(infile, nothing, nothing, barcodes, output_path)
 end
 
 function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}}; 

@@ -1,5 +1,5 @@
 function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::String, genome_file::String; 
-    min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, 
+    min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, reseeding_factor=1.5,
     bwa_bin="bwa-mem2", sam_bin="samtools")
 
     tmp_bwa = tempname()
@@ -7,7 +7,7 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
 
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
-    params = ["-A", match, "-B", mismatch, "-O", gap_open, "-E", gap_extend, "-T", min_score, "-L", clipping_penalty]
+    params = ["-A", match, "-B", mismatch, "-O", gap_open, "-E", gap_extend, "-T", min_score, "-L", clipping_penalty, "-r", reseeding_factor]
     isnothing(in_file2) || append!(params, ["-U", unpair_penalty])
     unpair_rescue && push!(params, "-P")
     fileparams = isnothing(in_file2) ? [genome_file, in_file1] : [genome_file, in_file1, in_file2]
@@ -27,11 +27,12 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
     rm(tmp_view)
 end
 align_mem(in_file::String, out_file::String, genome_file::String; 
-    min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, bwa_bin="bwa-mem2", sam_bin="samtools") = 
+    min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, reseeding_factor=1.5, bwa_bin="bwa-mem2", sam_bin="samtools") = 
     align_mem(in_file, nothing, out_file::String, genome_file::String; 
-        min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, bwa_bin=bwa_bin, sam_bin=sam_bin)
+        min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, reseeding_factor=reseeding_factor, 
+        bwa_bin=bwa_bin, sam_bin=sam_bin)
 
-function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, 
+function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, reseeding_factor=1.5,
                 unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
     tmp_genome = tempname()
     write(tmp_genome, genome)
@@ -43,10 +44,10 @@ function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatc
         isa(read_files, SingleTypeFiles) ?
         align_mem(file, out_file, tmp_genome; 
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, 
-                gap_extend=gap_extend, clipping_penalty=clipping_penalty, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+                gap_extend=gap_extend, clipping_penalty=clipping_penalty, reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin) :
         align_mem(first(file), last(file), out_file, tmp_genome; 
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, 
-                clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin)
+                clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
@@ -104,8 +105,7 @@ align_mem(reads::T, genome::Genome, out_file::String;
             unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
 function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)
-    res = pairalign(LocalAlignment(), query_sequence, reference_sequence, scoremodel)
-    return res
+    return pairalign(LocalAlignment(), query_sequence, reference_sequence, scoremodel)
 end
 
 struct AlignedPart
@@ -495,6 +495,16 @@ function read_bam(bam_file::String; min_templength=nothing, only_unique=true, in
     close(reader)
     return reads1, reads2
 end
+
+function occurences(test_sequence::LongDNASeq, bam_file::String, similarity_cut::Float64; score_model=nothing)
+    record = BAM.Record()
+    reader = BAM.Reader(open(bam_file))
+    c = 0
+    while !eof(reader)
+        read!(reader, record)
+        c += similarity(test_sequence, BAM.sequence(record), score_model=score_model) > similarity_cut
+    end
+end 
 
 function annotate!(features::Features, files::SingleTypeFiles; only_unique=true, invert_strand=:none, count_key="Count", abs_lfc_cut=1, pvalue_cut=0.05)
     if files.type == ".bam"

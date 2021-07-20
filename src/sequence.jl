@@ -368,12 +368,14 @@ function Base.filter!(f, reads::PairedSequences; logic=:or)
     end
 end
 
+occurences(test_sequence::LongDNASeq, seqs::Sequences{T}, similarity_cut::Float64; score_model=nothing) where T = 
+    sum(similarity(test_sequence, seq; score_model=score_model) > similarity_cut for seq in seqs)
+
 function similarity(read1::LongDNASeq, read2::LongDNASeq; score_model=nothing)
     isnothing(score_model) && (score_model = AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1))
     (length(read1) > length(read2)) ? ((short_seq, long_seq) = (read2, read1)) : ((short_seq, long_seq) = (read1, read2))
     aln = local_alignment(long_seq, short_seq, score_model)
-    hasalignment(aln) || (return 0.0) 
-    return count_matches(alignment(aln))/length(short_seq)
+    return max(BioAlignments.score(aln), 0.0)/length(short_seq)
 end
 
 function similarity(reads::PairedSequences{T}; window_size=10, step_size=2) where T
