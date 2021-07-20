@@ -504,6 +504,7 @@ function occurences(test_sequence::LongDNASeq, bam_file::String, similarity_cut:
         read!(reader, record)
         c += similarity(test_sequence, BAM.sequence(record), score_model=score_model) > similarity_cut
     end
+    return c
 end 
 
 function annotate!(features::Features, files::SingleTypeFiles; only_unique=true, invert_strand=:none, count_key="Count", abs_lfc_cut=1, pvalue_cut=0.05)
