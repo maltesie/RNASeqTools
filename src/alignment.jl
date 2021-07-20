@@ -453,6 +453,8 @@ function read_bam(bam_file::String; min_templength=nothing, only_unique=true, in
     reader = BAM.Reader(open(bam_file))
     is_bitstring = is_bitstring_bam(bam_file)
     check_templen = isnothing(min_templength) ? false : 0 < min_templength
+    cc = 0
+    ccc = 0
     c = 0
     while !eof(reader)
         read!(reader, record)

@@ -5,6 +5,9 @@ end
 
 function integrate!(alignments::PairedAlignments, graph::MetaGraph; replicate_id=:first, min_distance=200, filter_types=[])
     trans = Dict{Tuple{String,String}, Int}()
+    for node in vertices(graph)
+        trans[(get_prop(graph, node, :name), get_prop(graph, node, :type))] = node
+    end
     for (alignment1, alignment2) in alignments
         if hasannotation(alignment1) && hasannotation(alignment2)
             !isempty(filter_types) && typein(alignment1, alignment2, filter_types) && continue
@@ -83,7 +86,7 @@ function annotate!(interactions::Interactions; method=:disparity)
     return interactions
 end
 
-function asdataframe(interactions::Interactions; output=:edges)
+function asdataframe(interactions::Interactions; output=:edges, min_interactions=5)
     if output === :edges
         frame = DataFrame(name1=repeat([""], ne(interactions.graph)), type1=repeat([""], ne(interactions.graph)), name2=repeat([""], ne(interactions.graph)), 
                         type2=repeat([""], ne(interactions.graph)), nb_chimeras=repeat([0], ne(interactions.graph)), nb_multi=repeat([0], ne(interactions.graph)),
@@ -99,7 +102,7 @@ function asdataframe(interactions::Interactions; output=:edges)
             has_prop(interactions.graph, edge, :p_value) && (frame[i, :p_value] = get_prop(interactions.graph, edge, :p_value))
             has_prop(interactions.graph, edge, :fdr) && (frame[i, :fdr] = get_prop(interactions.graph, edge, :fdr))
         end
-        return sort(frame, :nb_chimeras; rev=true)
+        return filter(:nb_chimeras => >=(min_interactions), sort(frame, :nb_chimeras; rev=true))
     elseif output === :nodes
         frame = DataFrame(name=repeat([""], nv(interactions.graph)), type=repeat([""], nv(interactions.graph)), nb_single=repeat([0], nv(interactions.graph)))
         for (i,node) in enumerate(vertices(interactions.graph))

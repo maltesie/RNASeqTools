@@ -56,6 +56,21 @@ function feature_ratio(features::Features, coverage_files::PairedSingleTypeFiles
     write(results_file, result_string)
 end
 
+function unmapped_reads(bams::SingleTypeFiles)
+    for bam_file in bams
+        record = BAM.Record()
+        reader = BAM.Reader(open(bam_file))
+        writer = GzipCompressorStream(open(joinpath(dirname(bam_file), "unmapped_" * basename(bam_file)[1:end-3] * "fasta.gz"), "w"))
+        while !eof(reader)
+            read!(reader, record)
+            BAM.ismapped(record) && continue
+            write(writer, ">$(BAM.tempname(record))\n$(BAM.sequence(record))\n")
+        end
+        close(writer)
+        close(reader)
+    end
+end
+
 function annotated_utrs(features::Features, results_file::String; tex=nothing, notex=nothing, term=nothing)
 end
 
