@@ -104,10 +104,6 @@ align_mem(reads::T, genome::Genome, out_file::String;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty, 
             unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
-function local_alignment(reference_sequence::LongDNASeq, query_sequence::LongDNASeq, scoremodel::AffineGapScoreModel)
-    return pairalign(LocalAlignment(), query_sequence, reference_sequence, scoremodel)
-end
-
 struct AlignedPart
     ref::Interval{AlignmentAnnotation}
     seq::UnitRange{Int}
@@ -445,6 +441,15 @@ function is_bitstring_bam(file::String)
     return false
 end
 
+function Base.push!(l::Vector{AlignedPart}, item::AlignedPart)
+    for (i, part) in enumerate(l)
+        if first(item.seq) < first(part.seq)
+            return insert!(l, i, item)
+        end
+    end
+    insert!(l, length(l)+1, item)
+end
+
 function read_bam(bam_file::String; min_templength=nothing, only_unique=true, invertstrand=:none, hash_id=true)
     @assert invertstrand in [:read1, :read2, :both, :none]
     reads1 = Dict{hash_id ? UInt : String, AlignedRead}()
@@ -496,12 +501,13 @@ function read_bam(bam_file::String; min_templength=nothing, only_unique=true, in
     return reads1, reads2
 end
 
-function occurences(test_sequence::LongDNASeq, bam_file::String, similarity_cut::Float64; score_model=nothing)
+function occurences(test_sequence::LongDNASeq, bam_file::String, similarity_cut::Float64; score_model=nothing, ignore_mapped=true)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     c = 0
     while !eof(reader)
         read!(reader, record)
+        (ignore_mapped && BAM.ismapped(record)) && continue
         c += similarity(test_sequence, BAM.sequence(record), score_model=score_model) > similarity_cut
     end
     return c

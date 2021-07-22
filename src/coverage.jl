@@ -14,15 +14,15 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=true, invert_reads=:none)
-    @assert invert_reads in (:none, :both, :read1, :read2)
+function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=true, invert=:none)
+    @assert invert in (:none, :both, :read1, :read2)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
     chromosome_list = [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))]
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
-    invert1 = invert_reads in (:both, :read1)
-    invert2 = invert_reads in (:both, :read2)
+    invert1 = invert in (:both, :read1)
+    invert2 = invert in (:both, :read2)
     count = 0
     while !eof(reader)
         read!(reader, record)
@@ -50,15 +50,15 @@ function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=t
     close(writer_r)
 end
 
-function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_only=true, skip_existing_files=true, invert_reads=:none)
+function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_only=true, overwrite_existing=false, invert=:none)
     @assert files.type == ".bam"
     bw_files = Vector{Tuple{String, String}}()
     for file in files
         filename_f = file[1:end-4] * "_forward.bw"
         filename_r = file[1:end-4] * "_reverse.bw"
         push!(bw_files, (filename_f, filename_r))
-        (skip_existing_files && isfile(filename_f) && isfile(filename_r)) && continue
-        compute_coverage(file; norm=norm, unique_mappings_only=unique_mappings_only, invert_reads=invert_reads)
+        (!overwrite_existing && isfile(filename_f) && isfile(filename_r)) && continue
+        compute_coverage(file; norm=norm, unique_mappings_only=unique_mappings_only, invert=invert)
     end
     return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
 end
