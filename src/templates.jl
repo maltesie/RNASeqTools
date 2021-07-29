@@ -43,7 +43,6 @@ function feature_count(features::Features, bams::SingleTypeFiles, conditions::Di
             write(joinpath(results_path, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
         end
     end
-
 end
 
 function feature_ratio(features::Features, coverage_files::PairedSingleTypeFiles, results_file::String)
@@ -71,13 +70,36 @@ function unmapped_reads(bams::SingleTypeFiles)
     end
 end
 
-function annotated_utrs(features::Features, results_gff::String; tex=nothing, notex=nothing, term=nothing)
+function transcriptional_startsites(texreps::SingleTypeFiles, notexreps::SingleTypeFiles, results_gff::String)
+    tex_coverage = Coverage(texreps)
+    notex_coverage = Coverage(notexreps)
+    tss_pos = tsss(tex_coverage, notex_coverage)
+    tss_features = Features(tss_pos)
+    write(tss_features, results_gff)
 end
 
-function conserved_features(features::Features, genome::Genome, targets::SingleTypeFiles, results_file::String)
+function full_annotation(features::Features, texreps::SingleTypeFiles, notexreps::SingleTypeFiles, termreps::SingleTypeFiles, results_gff::String; 
+                            cds_type="CDS", five_type="5UTR", three_type="3UTR", igr_type="IGR")
+    tex_coverage = Coverage(texreps)
+    notex_coverage = Coverage(notexreps)
+    term_coverage = Coverage(termreps)
+    tss_pos = tsss(tex_coverage, notex_coverage)
+    term_pos = terms(term_coverage)
+    addutrs!(features, tss_pos, term_pos; cds_type=cds_type, five_type=five_type, three_type=three_type)
+    addigrs!(features; igr_type=igr_type)
+    write(features, results_gff)
 end
 
-function interaction_graph(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; 
+function conserved_features(features::Features, source_genome::Genome, targets::SingleTypeFiles, results_path::String)
+    target_genomes = [Genome(genome_file) for genome_file in targets]
+    seqs = featureseqs(features, source_genome)
+    align_mem(seqs, target_genomes, joinpath(results_path, "utrs.bam"))
+    alignments = Alignments(joinpath(results_path, "utrs.bam"); hash_id=false)
+    annotate!(features, alignments)
+    write(joinpath(results_path, "features.gff"), features)
+end
+
+function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; 
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", rev_comp=:read1, model=:fisher)
     for (condition, r) in conditions
         replicate_ids = Vector{Symbol}()

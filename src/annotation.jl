@@ -1,4 +1,4 @@
-struct Annotation <: AnnotationStyle
+mutable struct Annotation <: AnnotationStyle
     type::String
     name::String
     params::Dict{String, String}
@@ -140,18 +140,19 @@ function maxsignalposition(coverage::Coverage, from::Int, to::Int, strand::Stran
     return maxsignal, pos
 end
 
-function addutrs!(features::Features, tss_coverage::Union{Coverage,Nothing}, term_coverage::Union{Coverage,Nothing}; cds_typ="CDS", max_utr_length=150, min_utr_length=25, guess_missing=true)
+function addutrs!(features::Features, tss_positions::Union{Coverage,Nothing}, term_positions::Union{Coverage,Nothing}; 
+                    cds_type="CDS", five_type="5UTR", three_type="3UTR", max_utr_length=150, min_utr_length=25, guess_missing=true)
     new_features = Vector{Interval{Annotation}}()
-    base_features_pos = [feature for feature in features if (type(feature)==cds_typ) && (feature.strand == STRAND_POS)]
-    base_features_neg = [feature for feature in features if (type(feature)==cds_typ) && (feature.strand == STRAND_NEG)]
+    base_features_pos = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_POS)]
+    base_features_neg = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_NEG)]
     first_feature, last_feature = base_features_pos[1], base_features_pos[end]
     stop, start = leftposition(first_feature), rightposition(last_feature)
-    push!(new_features, Interval(refname(last_feature), start+1, start+max_utr_length, STRAND_POS, Annotation("3UTR", name(last_feature), Dict{String,String}())))
-    push!(new_features, Interval(refname(first_feature), max(1, stop-max_utr_length), stop-1, STRAND_POS, Annotation("5UTR", name(first_feature), Dict{String,String}())))
+    push!(new_features, Interval(refname(last_feature), start+1, start+max_utr_length, STRAND_POS, Annotation(three_type, name(last_feature), Dict{String,String}())))
+    push!(new_features, Interval(refname(first_feature), max(1, stop-max_utr_length), stop-1, STRAND_POS, Annotation(five_type, name(first_feature), Dict{String,String}())))
     first_feature, last_feature = base_features_neg[1], base_features_neg[end]
     stop, start = leftposition(first_feature), rightposition(last_feature)
-    push!(new_features, Interval(refname(last_feature), start+1, start+max_utr_length, STRAND_NEG, Annotation("5UTR", name(last_feature), Dict{String,String}())))
-    push!(new_features, Interval(refname(first_feature), max(1, stop-max_utr_length), stop-1, STRAND_NEG, Annotation("3UTR", name(first_feature), Dict{String,String}())))
+    push!(new_features, Interval(refname(last_feature), start+1, start+max_utr_length, STRAND_NEG, Annotation(five_type, name(last_feature), Dict{String,String}())))
+    push!(new_features, Interval(refname(first_feature), max(1, stop-max_utr_length), stop-1, STRAND_NEG, Annotation(three_type, name(first_feature), Dict{String,String}())))
     
     for base_features in (base_features_pos, base_features_neg)
         nb_features = length(base_features)
@@ -175,11 +176,11 @@ function addutrs!(features::Features, tss_coverage::Union{Coverage,Nothing}, ter
                 continue
             end
             base_features === base_features_neg && ((threestart, fivestart, threestop, fivestop) = (fivestart, threestart, fivestop, threestop))
-            isnothing(tss_coverage) || (maxsignal, fivestop = maxsignalposition(tss_coverage, fivestart, fivestop, STRAND_POS))
-            isnothing(term_coverage) || (maxsignal, threestop = maxsignalposition(term_coverage, threestart, threestop, STRAND_POS))
+            isnothing(tss_positions) || (maxsignal, fivestop = maxsignalposition(tss_positions, fivestart, fivestop, STRAND_POS))
+            isnothing(term_positions) || (maxsignal, threestop = maxsignalposition(term_positions, threestart, threestop, STRAND_POS))
             if guess_missing || max_signal != 0.0
-                push!(new_features, Interval(threeref, threestart, threestop, stran, Annotation("3UTR", threename, Dict{String,String}())))
-                push!(new_features, Interval(fiveref, fivestart, fivestop, stran, Annotation("5UTR", fivename, Dict{String,String}())))
+                push!(new_features, Interval(threeref, threestart, threestop, stran, Annotation(three_type, threename, Dict{String,String}())))
+                push!(new_features, Interval(fiveref, fivestart, fivestop, stran, Annotation(five_type, fivename, Dict{String,String}())))
             end
         end
     end
@@ -188,24 +189,20 @@ function addutrs!(features::Features, tss_coverage::Union{Coverage,Nothing}, ter
     end
 end
 
-function addigrs!(features::Features; fiveutr_type="5UTR", threeutr_type="3UTR")
+function addigrs!(features::Features; igr_type="IGR")
     new_features = Vector{Interval{Annotation}}()
-    base_features_pos = [feature for feature in features if (type(feature) in [fiveutr_type, threeutr_type]) && (feature.strand == STRAND_POS)]
-    base_features_neg = [feature for feature in features if (type(feature) in [fiveutr_type, threeutr_type]) && (feature.strand == STRAND_NEG)]
+    base_features_pos = [feature for feature in features if (feature.strand == STRAND_POS)]
+    base_features_neg = [feature for feature in features if (feature.strand == STRAND_NEG)]
     nb_features_pos = length(base_features_pos)
     nb_features_neg = length(base_features_neg)
     for base_features in (base_features_pos, base_features_neg)
         nb_features = base_features === base_features_pos ? nb_features_pos : nb_features_neg
         for i in 1:nb_features-1
             feature, next_feature = base_features[i], base_features[i+1]
-            
-            base_features === base_features_pos ? 
-            type(feature) == threeutr_type && type(next_feature) == fiveutr_type && refname(feature) == refname(next_feature) || continue :
-            type(feature) == fiveutr_type && type(next_feature) == threeutr_type && refname(feature) == refname(next_feature) || continue
-            
+            refname(feature) == refname(next_feature) || continue
             stop, start = leftposition(next_feature), rightposition(feature)
             (start + 1) < (stop-1) || continue
-            igr = Interval(refname(feature), start+1, stop-1, base_features === base_features_pos ? STRAND_POS : STRAND_NEG, Annotation("IGR", name(feature)*":"*name(next_feature), Dict{String,String}()))
+            igr = Interval(refname(feature), start+1, stop-1, base_features === base_features_pos ? STRAND_POS : STRAND_NEG, Annotation(igr_type, name(feature)*":"*name(next_feature), Dict{String,String}()))
             push!(new_features, igr)
         end
     end
