@@ -146,12 +146,12 @@ function addutrs!(features::Features, tss_coverage::Union{Coverage,Nothing}, ter
     base_features_neg = [feature for feature in features if (type(feature)==cds_typ) && (feature.strand == STRAND_NEG)]
     first_feature, last_feature = base_features_pos[1], base_features_pos[end]
     stop, start = leftposition(first_feature), rightposition(last_feature)
-    push!(new_features, Interval(refname(last_feature), start+1, start+utr_length, STRAND_POS, Annotation("3UTR", name(last_feature), Dict{String,String}())))
-    push!(new_features, Interval(refname(first_feature), max(1, stop-utr_length), stop-1, STRAND_POS, Annotation("5UTR", name(first_feature), Dict{String,String}())))
+    push!(new_features, Interval(refname(last_feature), start+1, start+max_utr_length, STRAND_POS, Annotation("3UTR", name(last_feature), Dict{String,String}())))
+    push!(new_features, Interval(refname(first_feature), max(1, stop-max_utr_length), stop-1, STRAND_POS, Annotation("5UTR", name(first_feature), Dict{String,String}())))
     first_feature, last_feature = base_features_neg[1], base_features_neg[end]
     stop, start = leftposition(first_feature), rightposition(last_feature)
-    push!(new_features, Interval(refname(last_feature), start+1, start+utr_length, STRAND_NEG, Annotation("5UTR", name(last_feature), Dict{String,String}())))
-    push!(new_features, Interval(refname(first_feature), max(1, stop-utr_length), stop-1, STRAND_NEG, Annotation("3UTR", name(first_feature), Dict{String,String}())))
+    push!(new_features, Interval(refname(last_feature), start+1, start+max_utr_length, STRAND_NEG, Annotation("5UTR", name(last_feature), Dict{String,String}())))
+    push!(new_features, Interval(refname(first_feature), max(1, stop-max_utr_length), stop-1, STRAND_NEG, Annotation("3UTR", name(first_feature), Dict{String,String}())))
     
     for base_features in (base_features_pos, base_features_neg)
         nb_features = length(base_features)
@@ -162,11 +162,11 @@ function addutrs!(features::Features, tss_coverage::Union{Coverage,Nothing}, ter
             stop, start = leftposition(next_feature), rightposition(feature)
             threestart::Int, threestop::Int, fivestart::Int, fivestop::Int, maxsignal::Float64  = 0, 0, 0, 0, 0.0
             if refname(feature) != refname(next_feature)
-                threestart, threestop = start+1, start+utr_length
-                fivestart, fivestop = max(1, stop-utr_length), stop-1
-            elseif  stop - start > 2 * utr_length + 1 
-                threestart, threestop = start+1, start+utr_length
-                fivestart, fivestop = stop-utr_length, stop-1
+                threestart, threestop = start+1, start+max_utr_length
+                fivestart, fivestop = max(1, stop-max_utr_length), stop-1
+            elseif  stop - start > 2 * max_utr_length + 1 
+                threestart, threestop = start+1, start+max_utr_length
+                fivestart, fivestop = stop-max_utr_length, stop-1
             elseif stop - start > 2 * min_utr_length
                 new_utr_length = floor(Int, (stop-start)/2)
                 threestart, threestop = start+1, start+new_utr_length
@@ -204,7 +204,7 @@ function addigrs!(features::Features; fiveutr_type="5UTR", threeutr_type="3UTR")
             type(feature) == fiveutr_type && type(next_feature) == threeutr_type && refname(feature) == refname(next_feature) || continue
             
             stop, start = leftposition(next_feature), rightposition(feature)
-            (start + 1) < stop || continue
+            (start + 1) < (stop-1) || continue
             igr = Interval(refname(feature), start+1, stop-1, base_features === base_features_pos ? STRAND_POS : STRAND_NEG, Annotation("IGR", name(feature)*":"*name(next_feature), Dict{String,String}()))
             push!(new_features, igr)
         end

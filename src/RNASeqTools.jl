@@ -16,7 +16,7 @@ export hasannotation, ischimeric, istriplet, refinterval, readinterval, annotati
 export values, addutrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, normalizedcount, covratio
 export similarity, tsss, terms, nucleotidecount, occurences
 export dashboard, lengthhist, similarityhist, nucleotidedist, expressionpca
-export feature_ratio, raw_counts, de_genes, prepare_data, interaction_graph, unmapped_reads
+export feature_ratio, feature_count, de_genes, prepare_data, interaction_graph, unmapped_reads
 
 include("types.jl")
 include("misc.jl")

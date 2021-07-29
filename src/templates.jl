@@ -13,7 +13,7 @@ function de_genes(features::Features, coverages::Vector{Coverage}, conditions::D
     end
 end
 
-function raw_counts(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
+function feature_count(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
     expnames = Dict{String,Vector{String}}()
     for (name, range) in conditions
         annotate!(features, coverages[range]; count_key="$name")
@@ -28,7 +28,7 @@ function raw_counts(features::Features, coverages::Vector{Coverage}, conditions:
     end
 end
 
-function raw_counts(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
+function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
     expnames = Dict{String,Vector{String}}()
     mybams = copy(bams)
     for (name, range) in conditions
@@ -71,7 +71,7 @@ function unmapped_reads(bams::SingleTypeFiles)
     end
 end
 
-function annotated_utrs(features::Features, results_file::String; tex=nothing, notex=nothing, term=nothing)
+function annotated_utrs(features::Features, results_gff::String; tex=nothing, notex=nothing, term=nothing)
 end
 
 function conserved_features(features::Features, genome::Genome, targets::SingleTypeFiles, results_file::String)
@@ -89,7 +89,7 @@ function interaction_graph(features::Features, bams::SingleTypeFiles, conditions
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type) 
             append!(interactions, alignments; min_distance=min_distance, filter_types=filter_types, replicate_id=replicate_id)
         end
-        annotate!(interactions; method=model)
+        annotate!(interactions, features; method=model)
         write(joinpath(results_path, "$(condition)_interactions.csv"), asdataframe(interactions; output=:edges))
         write(joinpath(results_path, "$(condition)_singles.csv"), asdataframe(interactions; output=:nodes))
     end
