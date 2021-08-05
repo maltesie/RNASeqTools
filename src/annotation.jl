@@ -143,7 +143,8 @@ end
 
 function paramstring(params::Dict{String,String};priority=("Name", "Count"))
     ps = join(("$key=$(params[key])" for key in priority if key in keys(params)), ";")
-    return ps * (isempty(ps) ? "" : ";") * join(("$key=$value" for (key,value) in params if !(key in priority)), ";")
+    os = join(("$key=$value" for (key,value) in params if !(key in priority)), ";")
+    return ps * ((isempty(ps) || isempty(os)) ? "" : ";") * os
 end
 
 function Base.write(file::String, features::Features)
@@ -173,7 +174,7 @@ function maxsignalposition(leftpos::Int, rightpos::Int, chr::String, st::Strand,
     end
 end
 
-function addutrs!(features::Features, tss_positions::Union{Dict{String,Coverage},Nothing}, term_positions::Union{Dict{String,Coverage},Nothing}; 
+function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage},Nothing}=nothing, term_positions::Union{Dict{String,Coverage},Nothing}=nothing,
                     cds_type="CDS", five_type="5UTR", three_type="3UTR", max_utr_length=250, min_utr_length=25, guess_missing=true)
     
     new_features = Vector{Interval{Annotation}}()
@@ -212,10 +213,14 @@ function addutrs!(features::Features, tss_positions::Union{Dict{String,Coverage}
             
             stran === STRAND_NEG && ((threestart, fivestart, threestop, fivestop, threename, threeref) = (fivestart, threestart, fivestop, threestop, fivename, fiveref))
 
-            isnothing(tss_positions) || ((fivestart, fivestop, found_five_in) = maxsignalposition(fivestart, fivestop, fiveref, stran, tss_positions, stran === STRAND_POS ? :left : :right))
-            isnothing(term_positions) || ((threestart, threestop, found_three_in) = maxsignalposition(threestart, threestop, threeref, stran, term_positions, stran === STRAND_POS ? :right : :left))
-            (guess_missing || fixed_five) && push!(new_features, Interval(fiveref, fivestart, fivestop, stran, Annotation(five_type, fivename, merge(Dict("source"=>found_five_in), copy(stran === STRAND_NEG ? params(feature) : params(next_feature))))))
-            (guess_missing || fixed_three) && push!(new_features, Interval(threeref, threestart, threestop, stran, Annotation(three_type, threename, merge(Dict("source"=>found_three_in), copy(stran === STRAND_NEG ? params(next_feature) : params(feature))))))
+            isnothing(tss_positions) ? (found_five_in="guess") : 
+            ((fivestart, fivestop, found_five_in) = maxsignalposition(fivestart, fivestop, fiveref, stran, tss_positions, stran === STRAND_POS ? :left : :right))
+            isnothing(term_positions) ? (found_three_in="guess") : 
+            ((threestart, threestop, found_three_in) = maxsignalposition(threestart, threestop, threeref, stran, term_positions, stran === STRAND_POS ? :right : :left))
+            (guess_missing || fixed_five) && push!(new_features, Interval(fiveref, fivestart, fivestop, stran, 
+                Annotation(five_type, fivename, merge(Dict("source"=>found_five_in), copy(stran === STRAND_NEG ? params(feature) : params(next_feature))))))
+            (guess_missing || fixed_three) && push!(new_features, Interval(threeref, threestart, threestop, stran, 
+                Annotation(three_type, threename, merge(Dict("source"=>found_three_in), copy(stran === STRAND_NEG ? params(next_feature) : params(feature))))))
         end
     end
     for feature in new_features
