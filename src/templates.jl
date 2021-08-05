@@ -75,19 +75,17 @@ function transcriptional_startsites(texreps::SingleTypeFiles, notexreps::SingleT
     notex_coverage = Coverage(notexreps)
     tss_pos = tsss(tex_coverage, notex_coverage)
     tss_features = Features(tss_pos)
-    write(tss_features, results_gff)
+    write(results_gff, tss_features)
 end
 
-function full_annotation(features::Features, texreps::SingleTypeFiles, notexreps::SingleTypeFiles, termreps::SingleTypeFiles, results_gff::String; 
-                            cds_type="CDS", five_type="5UTR", three_type="3UTR", igr_type="IGR")
-    tex_coverage = Coverage(texreps)
-    notex_coverage = Coverage(notexreps)
-    term_coverage = Coverage(termreps)
-    tss_pos = tsss(tex_coverage, notex_coverage)
-    term_pos = terms(term_coverage)
+function full_annotation(features::Features, texdict::Dict{String,Coverage}, notexdict::Dict{String,Coverage}, termdict::Dict{String,Coverage}, results_gff::String; 
+                            cds_type="CDS", five_type="5UTR", three_type="3UTR", igr_type="IGR", min_tex_ratio=1.3, min_step=10, min_background_ratio=1.2, window_size=10)
+    @assert keys(texdict) == keys(notexdict)
+    tss_pos = Dict(key=>tsss(notexdict[key], texdict[key]; min_tex_ratio=min_tex_ratio, min_step=min_step, min_background_ratio=min_background_ratio, window_size=window_size) for key in keys(texdict))
+    term_pos = Dict(key=>terms(termdict[key], min_step=min_step, min_background_ratio=min_background_ratio, window_size=window_size) for key in keys(termdict))
     addutrs!(features, tss_pos, term_pos; cds_type=cds_type, five_type=five_type, three_type=three_type)
     addigrs!(features; igr_type=igr_type)
-    write(features, results_gff)
+    write(results_gff, features)
 end
 
 function conserved_features(features::Features, source_genome::Genome, targets::SingleTypeFiles, results_path::String)

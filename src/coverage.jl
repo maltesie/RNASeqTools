@@ -64,7 +64,7 @@ function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_
 end
 
 struct Coverage <: AnnotationContainer
-    list::IntervalCollection{Float32}
+    list::IntervalCollection{Float64}
     chroms::Vector{Tuple{String, Int}}
 end
 
@@ -73,7 +73,7 @@ function Coverage(bigwig_file::String, direction::Symbol)
     reader = open(BigWig.Reader, bigwig_file)
     stran = direction==:forward ? Strand('+') : Strand('-')
     chrlist = BigWig.chromlist(reader)
-    intervals = Vector{Interval{Float32}}()
+    intervals = Vector{Interval{Float64}}()
     for record in reader
         push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), stran, BigWig.value(record)))
     end
@@ -87,12 +87,12 @@ function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String)
     chrlist_f = BigWig.chromlist(reader_f)
     chrlist_r = BigWig.chromlist(reader_r)
     @assert chrlist_f == chrlist_r
-    intervals = Vector{Interval{Float32}}()
+    intervals = Vector{Interval{Float64}}()
     for record in reader_f
-        push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), STRAND_POS, BigWig.value(record)))
+        push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), STRAND_POS, convert(Float64, BigWig.value(record))))
     end
     for record in reader_r
-        push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), STRAND_NEG, BigWig.value(record)))
+        push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), STRAND_NEG, convert(Float64, BigWig.value(record))))
     end
     close(reader_f)
     close(reader_r)
@@ -100,7 +100,7 @@ function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String)
 end
 
 function Coverage(values_f::CoverageValues, values_r::CoverageValues, chroms::Vector{Tuple{String, Int}})
-    new_intervals = Vector{Interval{Float32}}()
+    new_intervals = Vector{Interval{Float64}}()
     for vals in (values_f, values_r)
         current_pos = 1
         current_end = 1
@@ -134,14 +134,11 @@ end
 
 function Coverage(paired_files::PairedSingleTypeFiles)
     @assert paired_files.type == ".bw"
-    coverages = Vector{Coverage}()
-    for (file_forward, file_reverse) in paired_files
-        push!(coverages, Coverage(file_forward, file_reverse))
-    end
+    coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in paired_files]
     return merge(coverages...)
 end
 
-value(interval::Interval{Float32}) = interval.metadata
+value(interval::Interval{Float64}) = interval.metadata
 Base.length(coverage::Coverage) = length(coverage.list)
 Base.iterate(coverage::Coverage) = iterate(coverage.list)
 Base.iterate(coverage::Coverage, state) =iterate(coverage.list, state)
@@ -183,13 +180,14 @@ end
 
 function Base.merge(coverages::Coverage ...)
     @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
+    n = length(coverages)
     vals_f = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
     vals_r = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
     for cv in coverages
         for interval in cv
             strand(interval) == STRAND_POS ? 
-            vals_f[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata :
-            vals_r[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata
+            vals_f[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata/n :
+            vals_r[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata/n
         end
     end
     return Coverage(vals_f, vals_r, coverages[1].chroms)
@@ -227,19 +225,20 @@ function diff(coverage::Vector{Float64}, invert::Bool, window_size::Int, min_bac
     return filtered_d
 end
 
-function tsss(notex::Coverage, tex::Coverage; min_step=10, min_ratio=1.3, min_background_increase=0.2, window_size=10)
+function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, min_background_ratio=1.2, window_size=10)
     @assert notex.chroms == tex.chroms
+    min_background_increase = min_background_ratio - 1.0
     chrs = [chr[1] for chr in notex.chroms]
     vals_notex = values(notex)
     vals_tex = values(tex)
-    intervals = Vector{Interval{Float32}}()
+    intervals = Vector{Interval{Float64}}()
     for chr in chrs
         notex_f, notex_r = vals_notex[chr]
         tex_f, tex_r = vals_tex[chr]
         d_forward = diff(tex_f, false, window_size, min_background_increase)
         d_reverse = diff(tex_r, true, window_size, min_background_increase)
-        check_forward = ((tex_f ./ notex_f) .>= min_ratio) .& (d_forward .>= min_step)
-        check_reverse = ((tex_r ./ notex_r) .>= min_ratio) .& (d_reverse .>= min_step)
+        check_forward = ((tex_f ./ notex_f) .>= min_tex_ratio) .& (d_forward .>= min_step)
+        check_reverse = ((tex_r ./ notex_r) .>= min_tex_ratio) .& (d_reverse .>= min_step)
         for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
             push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
         end
@@ -250,9 +249,10 @@ function tsss(notex::Coverage, tex::Coverage; min_step=10, min_ratio=1.3, min_ba
     return Coverage(IntervalCollection(intervals, true), tex.chroms)
 end
 
-function terms(coverage::Coverage; min_step=10, window_size=10, min_background_increase=0.1)
+function terms(coverage::Coverage; min_step=10, window_size=10, min_background_ratio=1.2)
+    min_background_increase = min_background_ratio - 1.0 
     vals = values(coverage)
-    intervals = Vector{Interval{Float32}}()
+    intervals = Vector{Interval{Float64}}()
     chrs = [chr[1] for chr in coverage.chroms]
     for chr in chrs
         f, r = vals[chr]

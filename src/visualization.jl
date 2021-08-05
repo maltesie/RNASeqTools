@@ -94,3 +94,6 @@ function expressionpca(counts_file::String, conditions::Dict{String, UnitRange{I
     ratio2 = round(ratios[last(plot_pcs)] * 100, digits=1)
     plot(p, xlabel="PC$(first(plot_pcs)) ($ratio1%)", ylabel="PC$(last(plot_pcs)) ($ratio2%)", legend=legend)
 end
+
+function kronaplot(taxonomy_file::String; krona_bin="ktImportTaxonomy")
+end

@@ -14,9 +14,9 @@ export FastaFiles, PairedFastaFiles, FastagzFiles, PairedFastagzFiles, FastqFile
 export cut!, rev_comp!, rev_comp, approxoccursin, annotate!, featureseqs, conservedfeatures, asdataframe
 export hasannotation, ischimeric, istriplet, refinterval, readinterval, annotation, hasannotation, name, type, overlap, count, alignments, refname, params, param, hastype, hasname, typein, namein
 export values, addutrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, normalizedcount, covratio
-export similarity, tsss, terms, nucleotidecount, occurences
+export similarity, tsss, terms, nucleotidecount, occurences, hasannotationkey
 export dashboard, lengthhist, similarityhist, nucleotidedist, expressionpca
-export feature_ratio, feature_count, de_genes, prepare_data, rilseq_analysis, unmapped_reads, transcriptional_startsites, full_anotation
+export feature_ratio, feature_count, de_genes, prepare_data, rilseq_analysis, unmapped_reads, transcriptional_startsites, full_annotation, prepare_data
 
 include("types.jl")
 include("misc.jl")

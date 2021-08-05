@@ -47,6 +47,13 @@ function PairedSingleTypeFiles(files1::Vector{String}, files2::Vector{String})
     PairedSingleTypeFiles(collect(zip(files1, files2)), endingsa[1], "", "")
 end
 
+function PairedSingleTypeFiles(list::Vector{Tuple{String,String}})
+    endingsa = [fname[1][findlast('.', fname[1]):end] for fname in list]
+    endingsb = [fname[2][findlast('.', fname[2]):end] for fname in list]
+    @assert (length(unique(endingsa)) == 1) && (unique(endingsa) == unique(endingsb))
+    PairedSingleTypeFiles(list, endingsa[1], "", "")
+end
+
 function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffix2="_2", prefix=nothing)
     type_files = [joinpath(folder, fname) for fname in readdir(folder) if isnothing(prefix) ? endswith(fname, type) : endswith(fname, type) && startswith(fname, prefix)]
     names1 = [f[1:end-(length(type)+length(suffix1))] for f in type_files if f[end-(length(type)+length(suffix1)-1):end-length(type)] == suffix1]
@@ -62,7 +69,7 @@ Base.iterate(files::T, state::Int) where {T<:FileCollection} = iterate(files.lis
 Base.copy(files::SingleTypeFiles) = SingleTypeFiles(files.list, files.type)
 Base.copy(files::PairedSingleTypeFiles) = PairedSingleTypeFiles(files.list, files.type, files.suffix1, files.suffix2)
 Base.getindex(files::T, i::Int) where {T<:FileCollection} = files.list[i]
-Base.getindex(files::T, u::UnitRange{Int}) where {T<:FileCollection} = files.list[u]
+Base.getindex(files::T, u::UnitRange{Int}) where {T<:FileCollection} = T(files.list[u])
 function Base.:*(filesa::PairedSingleTypeFiles, filesb::PairedSingleTypeFiles)
     @assert type(filesa) == type(filesb)
     suffix1 = filesa.suffix1 == filesb.suffix1 ? filesa.suffix1 : ""

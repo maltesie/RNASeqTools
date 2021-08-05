@@ -1,3 +1,6 @@
+function align_kraken2(; kraken_bin="kraken2")
+end
+
 function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::String, genome_file::String; 
     min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, reseeding_factor=1.5,
     bwa_bin="bwa-mem2", sam_bin="samtools")
