@@ -21,7 +21,7 @@ function order(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::Al
     end
 end
 
-function ordered(tu_set::Set{Tuple{String,String}}, alignment1::AlignedRead, alignment2::AlignedRead)
+function ordered(tu_set::AbstractSet, alignment1::AlignedRead, alignment2::AlignedRead)
     c = collect(tu_set)
     i = sortperm([order(tu, alignment1, alignment2) for tu in c])
     return c[i]
@@ -57,6 +57,11 @@ function nodestrand(tu::Tuple{String,String}, alignment1::AlignedRead, alignment
     return 'o'
 end
 
+function info_dict(alignment1::Alignment, alignment2::Alignment)
+    for part in alignment
+    end
+end
+
 function integrate!(graph::MetaDiGraph, alignments::PairedAlignments; replicate_id=:first, min_distance=1000, filter_types=[])
     trans = Dict{Tuple{String,String}, Int}()
     for node in vertices(graph)
@@ -89,7 +94,8 @@ function integrate!(graph::MetaDiGraph, alignments::PairedAlignments; replicate_
                     left1, right1 = positions(tu1, alignment1, alignment2)
                     left2, right2 = positions(tu2, alignment1, alignment2)
                     if add_edge!(graph, a, b)
-                        set_props!(graph, a, b, Dict(:nb_ints=>1, :nb_multi=> (multi ? 1 : 0), replicate_id=>1, :left1=>left1, :right1=>right1, :left2=>left2, :right2=>right2))
+                        set_props!(graph, a, b, Dict(:nb_ints=>1, :nb_multi=> (multi ? 1 : 0), replicate_id=>1, :left1=>left1, :right1=>right1, 
+                                                        :left2=>left2, :right2=>right2))
                     else
                         set_prop!(graph, a, b, :nb_ints , get_prop(graph, a, b, :nb_ints) + 1)
                         set_prop!(graph, a, b, :nb_multi , get_prop(graph, a, b, :nb_multi) + (multi ? 1 : 0))
