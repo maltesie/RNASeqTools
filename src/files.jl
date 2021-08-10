@@ -101,6 +101,22 @@ function Base.write(fname::String, files::SingleTypeFiles)
     end
 end
 
+function Base.show(files::SingleTypeFiles)
+    s = "SingleTypeFiles with ending $(files.type) and $(length(files)) entries:\n\n"
+    for (i,file) in enumerate(files)
+        s *= "$i:\t$file\n"
+    end
+    println(s)
+end
+
+function Base.show(files::PairedSingleTypeFiles)
+    s = "SingleTypeFiles with ending $(files.type) and $(length(files)) entries:\n\n"
+    for (i,(file1, file2)) in files
+        s *= "$i:\t$file1, $file2\n"
+    end
+    println(s)
+end
+
 CsvFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".csv"; prefix=prefix)
 FastqFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fastq"; prefix=prefix)
 FastqgzFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fastq.gz"; prefix=prefix)

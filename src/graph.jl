@@ -38,13 +38,14 @@ function refname(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::
 end
 
 function positions(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::AlignedRead)
+    lp, rp = -1, -1
     for part in alignment1
         (name(part), type(part)) == tu && (return leftposition(part), rightposition(part))
     end
     for part in alignment2
         (name(part), type(part)) == tu && (return leftposition(part), rightposition(part))
     end
-    return (-1,-1)
+    return (lp,rp)
 end
 
 function nodestrand(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::AlignedRead)
@@ -57,21 +58,35 @@ function nodestrand(tu::Tuple{String,String}, alignment1::AlignedRead, alignment
     return 'o'
 end
 
+mutable struct AlignmentInfo
+    name::String
+    type::String
+    left::Int
+end
+
 function info_dict(alignment1::Alignment, alignment2::Alignment)
-    for part in alignment
+    d = Dict{String, Tuple{}}
+    for part in alignment1
+        hasannotation(part) || continue
+        n = name(part)
+        if n in keys(d)
+        end
     end
 end
 
-function integrate!(graph::MetaDiGraph, alignments::PairedAlignments; replicate_id=:first, min_distance=1000, filter_types=[])
+function integrate!(graph::MetaDiGraph, alignments::PairedAlignments; replicate_id=:first, min_distance=1000, filter_types=[], max_read_length=150, nb_length_bins=30)
     trans = Dict{Tuple{String,String}, Int}()
     for node in vertices(graph)
         trans[(get_prop(graph, node, :name), get_prop(graph, node, :type))] = node
     end
+    length_bin_size = Int(floor(max_read_length/nb_length_bins))
+    l1_offset, l2_offset = 0, nb_length_bins
+    stats_length = 2*nb_length_bins
+    lenstats = Dict{LightGraphs.SimpleGraphs.SimpleEdge, Vector}()
     for (alignment1, alignment2) in alignments
         if hasannotation(alignment1) && hasannotation(alignment2)
             !isempty(filter_types) && typein(alignment1, alignment2, filter_types) && continue
             chimeric = ischimeric(alignment1, alignment2; min_distance=min_distance)
-            
             tu_set = union(Set((name(part),type(part)) for part in alignment1 if hasannotation(part)), Set((name(part),type(part)) for part in alignment2 if hasannotation(part)))
             tus = ordered(tu_set, alignment1, alignment2)
             nb_diff = length(Set(tu[1] for tu in tus))
@@ -93,21 +108,32 @@ function integrate!(graph::MetaDiGraph, alignments::PairedAlignments; replicate_
                     get_prop(graph, a, :name) == get_prop(graph, b, :name) && continue
                     left1, right1 = positions(tu1, alignment1, alignment2)
                     left2, right2 = positions(tu2, alignment1, alignment2)
-                    if add_edge!(graph, a, b)
-                        set_props!(graph, a, b, Dict(:nb_ints=>1, :nb_multi=> (multi ? 1 : 0), replicate_id=>1, :left1=>left1, :right1=>right1, 
+                    e = LightGraphs.SimpleGraphs.SimpleEdge(a,b)
+                    e in keys(lenstats) || (lenstats[e] = zeros(stats_length))
+                    lenstats[e][l1_offset + Int(floor((right1-left1)/length_bin_size)) + 1] += 1
+                    lenstats[e][l2_offset + Int(floor((right2-left2)/length_bin_size)) + 1] += 1
+
+                    if add_edge!(graph, e)
+                        set_props!(graph, e, Dict(:nb_ints=>1, :nb_multi=> (multi ? 1 : 0), replicate_id=>1, :left1=>left1, :right1=>right1, 
                                                         :left2=>left2, :right2=>right2))
                     else
-                        set_prop!(graph, a, b, :nb_ints , get_prop(graph, a, b, :nb_ints) + 1)
-                        set_prop!(graph, a, b, :nb_multi , get_prop(graph, a, b, :nb_multi) + (multi ? 1 : 0))
-                        set_prop!(graph, a, b, :left1 , min(get_prop(graph, a, b, :left1), left1))
-                        set_prop!(graph, a, b, :right1 , max(get_prop(graph, a, b, :right1), right1))
-                        set_prop!(graph, a, b, :left2 , min(get_prop(graph, a, b, :left2), left2))
-                        set_prop!(graph, a, b, :right2 , max(get_prop(graph, a, b, :right2), right2))
+                        set_prop!(graph, e, :nb_ints , get_prop(graph, e, :nb_ints) + 1)
+                        set_prop!(graph, e, :nb_multi , get_prop(graph, e, :nb_multi) + (multi ? 1 : 0))
+                        set_prop!(graph, e, :left1 , min(get_prop(graph, e, :left1), left1))
+                        set_prop!(graph, e, :right1 , max(get_prop(graph, e, :right1), right1))
+                        set_prop!(graph, e, :left2 , min(get_prop(graph, e, :left2), left2))
+                        set_prop!(graph, e, :right2 , max(get_prop(graph, e, :right2), right2))
                     end
-                    has_prop(graph, a, b, replicate_id) || set_prop!(graph, a, b, replicate_id, 1)
+                    has_prop(graph, e, replicate_id) || set_prop!(graph, e, replicate_id, 1)
                 end
             end
         end
+    end
+    for (e, vals) in lenstats
+        l1s = has_prop(graph, e, :length1) ? get_prop(graph, e, :length1) : Vector{Int}()
+        l2s = has_prop(graph, e, :length2) ? get_prop(graph, e, :length2) : Vector{Int}()
+        set_prop!(graph, e, :length1, push!(l1s, findmax(vals[l1_offset+1:l2_offset])[2]*length_bin_size))
+        set_prop!(graph, e, :length2, push!(l2s, findmax(vals[l2_offset+1:l2_offset+nb_length_bins])[2]*length_bin_size))
     end
 end
 
@@ -172,7 +198,7 @@ function asdataframe(interactions::Interactions; output=:edges, min_interactions
                         fdr=repeat([1.], ne(interactions.graph)), in_libs=repeat([0], ne(interactions.graph)), strand1=repeat(['o'], ne(interactions.graph)),
                         left1=repeat([-1], ne(interactions.graph)), right1=repeat([-1], ne(interactions.graph)), left2=repeat([-1], ne(interactions.graph)), 
                         right2=repeat([-1], ne(interactions.graph)), strand2=repeat(['o'], ne(interactions.graph)), relpos1=repeat([-1.0], ne(interactions.graph)),
-                        relpos2=repeat([-1.0], ne(interactions.graph)),)
+                        relpos2=repeat([-1.0], ne(interactions.graph)), length1=repeat([0.0], ne(interactions.graph)), length2=repeat([0.0], ne(interactions.graph)))
         for (i,edge) in enumerate(edges(interactions.graph))
             if has_prop(interactions.graph, edge, :fdr) 
                 fdr = get_prop(interactions.graph, edge, :fdr)
@@ -197,6 +223,8 @@ function asdataframe(interactions::Interactions; output=:edges, min_interactions
             frame[i, :nb_chimeras] = get_prop(interactions.graph, edge, :nb_ints)
             frame[i, :nb_multi] = get_prop(interactions.graph, edge, :nb_multi)
             frame[i, :in_libs] = sum(has_prop(interactions.graph, edge, replicate_id) for replicate_id in interactions.replicate_ids)
+            frame[i, :length1] = mean(get_prop(interactions.graph, edge, :length1))
+            frame[i, :length2] = mean(get_prop(interactions.graph, edge, :length2))
         end
         return filter(:nb_chimeras => >=(min_interactions), sort(frame, :nb_chimeras; rev=true))
     elseif output === :nodes
