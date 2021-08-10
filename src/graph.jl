@@ -10,68 +10,32 @@ function order(tu::Tuple{String,String}, alignment::AlignedRead)
     return -1
 end
 
-function order(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::AlignedRead)
-    o1 = order(tu, alignment1)
-    if o1 == -1 
-        o2 = order(tu, alignment2)
-        o2 == -1 && error("$tu not found in any alignment!")
-        return o2 + length(alignment1)
-    else
-        return o1
-    end
-end
-
-function ordered(tu_set::AbstractSet, alignment1::AlignedRead, alignment2::AlignedRead)
+function ordered(tu_set::AbstractSet, alignment::AlignedRead)
     c = collect(tu_set)
-    i = sortperm([order(tu, alignment1, alignment2) for tu in c])
+    i = sortperm([order(tu, alignment) for tu in c])
     return c[i]
 end
 
-function refname(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::AlignedRead)
-    for part in alignment1
-        (name(part), type(part)) == tu && (return refname(part))
-    end
-    for part in alignment2
+function refname(tu::Tuple{String,String}, alignment::AlignedRead)
+    for part in alignment
         (name(part), type(part)) == tu && (return refname(part))
     end
     return "NA"
 end
 
-function positions(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::AlignedRead)
+function positions(tu::Tuple{String,String}, alignment::AlignedRead)
     lp, rp = 2^63-1, -1
-    for part in alignment1
-        (name(part), type(part)) == tu && (lp = min(lp,leftposition(part)); rp = max(rp,rightposition(part)))
-    end
-    for part in alignment2
+    for part in alignment
         (name(part), type(part)) == tu && (lp = min(lp,leftposition(part)); rp = max(rp,rightposition(part)))
     end
     return (lp, rp)
 end
 
-function nodestrand(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::AlignedRead)
-    for part in alignment1
-        (name(part), type(part)) == tu && (return strand(part))
-    end
-    for part in alignment2
+function nodestrand(tu::Tuple{String,String}, alignment::AlignedRead)
+    for part in alignment
         (name(part), type(part)) == tu && (return strand(part))
     end
     return 'o'
-end
-
-mutable struct AlignmentInfo
-    name::String
-    type::String
-    left::Int
-end
-
-function info_dict(alignment1::Alignment, alignment2::Alignment)
-    d = Dict{String, Tuple{}}
-    for part in alignment1
-        hasannotation(part) || continue
-        n = name(part)
-        if n in keys(d)
-        end
-    end
 end
 
 function update_stats!(stats::NTuple{6, Dict{Int64, Int64}}, l1::Int, r1::Int, l2::Int, r2::Int)
@@ -81,54 +45,53 @@ function update_stats!(stats::NTuple{6, Dict{Int64, Int64}}, l1::Int, r1::Int, l
     end
 end
 
-function integrate!(graph::MetaDiGraph, alignments::PairedAlignments; replicate_id=:first, min_distance=1000, filter_types=[])
+function integrate!(graph::MetaDiGraph, alignments::Alignments; replicate_id=:first, min_distance=1000, filter_types=[])
     trans = Dict{Tuple{String,String}, Int}()
     for node in vertices(graph)
         trans[(get_prop(graph, node, :name), get_prop(graph, node, :type))] = node
     end
     stats = Dict{LightGraphs.SimpleGraphs.SimpleEdge, NTuple{6, Dict{Int64, Int64}}}()
-    for (alignment1, alignment2) in alignments
-        if hasannotation(alignment1) && hasannotation(alignment2)
-            !isempty(filter_types) && typein(alignment1, alignment2, filter_types) && continue
-            chimeric = ischimeric(alignment1, alignment2; min_distance=min_distance)
-            tu_set = union(Set((name(part),type(part)) for part in alignment1 if hasannotation(part)), Set((name(part),type(part)) for part in alignment2 if hasannotation(part)))
-            tus = ordered(tu_set, alignment1, alignment2)
-            nb_diff = length(Set(tu[1] for tu in tus))
-            for tu in tus
-                if !(tu in keys(trans))
-                    trans[tu] = length(trans) + 1
-                    add_vertex!(graph)
-                    set_props!(graph, nv(graph), Dict(:name=>first(tu), :type=>last(tu), :refname=>refname(tu, alignment1, alignment2), 
-                                                        :nb_ints=>0, :nb_single=>0, :strand=>nodestrand(tu, alignment1, alignment2)))
-                end
-                chimeric ?
-                set_prop!(graph, trans[tu], :nb_ints, get_prop(graph, trans[tu], :nb_ints)+nb_diff-1) :
-                set_prop!(graph, trans[tu], :nb_single, get_prop(graph, trans[tu], :nb_single)+1)
+    for alignment in alignments
+        hasannotation(alignment) || continue
+        !isempty(filter_types) && typein(alignment, filter_types) && continue
+        chimeric = ischimeric(alignment; min_distance=min_distance)
+        tu_set = Set((name(part),type(part)) for part in alignment if hasannotation(part))
+        tus = ordered(tu_set, alignment)
+        nb_diff = length(Set(tu[1] for tu in tus))
+        for tu in tus
+            if !(tu in keys(trans))
+                trans[tu] = length(trans) + 1
+                add_vertex!(graph)
+                set_props!(graph, nv(graph), Dict(:name=>first(tu), :type=>last(tu), :refname=>refname(tu, alignment), 
+                                                    :nb_ints=>0, :nb_single=>0, :strand=>nodestrand(tu, alignment)))
             end
+            chimeric ?
+            set_prop!(graph, trans[tu], :nb_ints, get_prop(graph, trans[tu], :nb_ints)+nb_diff-1) :
+            set_prop!(graph, trans[tu], :nb_single, get_prop(graph, trans[tu], :nb_single)+1)
+        end
 
-            if chimeric
-                multi = nb_diff > 2
-                for ((a, tu1), (b,tu2)) in combinations([(trans[tu], tu) for tu in tus], 2)
-                    get_prop(graph, a, :name) == get_prop(graph, b, :name) && continue
-                    left1, right1 = positions(tu1, alignment1, alignment2)
-                    left2, right2 = positions(tu2, alignment1, alignment2)
-                    e = LightGraphs.SimpleGraphs.SimpleEdge(a,b)
-                    e in keys(stats) || (stats[e] = Tuple(Dict{Int,Int}() for _ in 1:6))
-                    update_stats!(stats[e], left1, right1, left2, right2)
-                    
-                    if add_edge!(graph, e)
-                        set_props!(graph, e, Dict(:nb_ints=>1, :nb_multi=> (multi ? 1 : 0), replicate_id=>1, :minleft1=>left1, :maxright1=>right1, 
-                                                        :minleft2=>left2, :maxright2=>right2))
-                    else
-                        set_prop!(graph, e, :nb_ints , get_prop(graph, e, :nb_ints) + 1)
-                        set_prop!(graph, e, :nb_multi , get_prop(graph, e, :nb_multi) + (multi ? 1 : 0))
-                        set_prop!(graph, e, :minleft1 , min(get_prop(graph, e, :minleft1), left1))
-                        set_prop!(graph, e, :maxright1 , max(get_prop(graph, e, :maxright1), right1))
-                        set_prop!(graph, e, :minleft2 , min(get_prop(graph, e, :minleft2), left2))
-                        set_prop!(graph, e, :maxright2 , max(get_prop(graph, e, :maxright2), right2))
-                    end
-                    has_prop(graph, e, replicate_id) || set_prop!(graph, e, replicate_id, 1)
+        if chimeric
+            multi = nb_diff > 2
+            for ((a, tu1), (b,tu2)) in combinations([(trans[tu], tu) for tu in tus], 2)
+                tu1[1] == tu2[1] && continue
+                left1, right1 = positions(tu1, alignment)
+                left2, right2 = positions(tu2, alignment)
+                e = LightGraphs.SimpleGraphs.SimpleEdge(a,b)
+                e in keys(stats) || (stats[e] = Tuple(Dict{Int,Int}() for _ in 1:6))
+                update_stats!(stats[e], left1, right1, left2, right2)
+                
+                if add_edge!(graph, e)
+                    set_props!(graph, e, Dict(:nb_ints=>1, :nb_multi=> (multi ? 1 : 0), replicate_id=>1, :minleft1=>left1, :maxright1=>right1, 
+                                                    :minleft2=>left2, :maxright2=>right2))
+                else
+                    set_prop!(graph, e, :nb_ints , get_prop(graph, e, :nb_ints) + 1)
+                    set_prop!(graph, e, :nb_multi , get_prop(graph, e, :nb_multi) + (multi ? 1 : 0))
+                    set_prop!(graph, e, :minleft1 , min(get_prop(graph, e, :minleft1), left1))
+                    set_prop!(graph, e, :maxright1 , max(get_prop(graph, e, :maxright1), right1))
+                    set_prop!(graph, e, :minleft2 , min(get_prop(graph, e, :minleft2), left2))
+                    set_prop!(graph, e, :maxright2 , max(get_prop(graph, e, :maxright2), right2))
                 end
+                has_prop(graph, e, replicate_id) || set_prop!(graph, e, replicate_id, 1)
             end
         end
     end
@@ -144,13 +107,13 @@ function Interactions()
     return Interactions(MetaDiGraph(), [])
 end
 
-function Interactions(alignments::PairedAlignments; replicate_id=:first, min_distance=1000, filter_types=[])
+function Interactions(alignments::Alignments; replicate_id=:first, min_distance=1000, filter_types=[])
     graph = MetaDiGraph()
     integrate!(graph, alignments; replicate_id=replicate_id, min_distance=min_distance, filter_types=filter_types)
     return Interactions(graph, [replicate_id])
 end
 
-function Base.append!(interactions::Interactions, alignments::PairedAlignments; replicate_id=:second, min_distance=1000, filter_types=[])
+function Base.append!(interactions::Interactions, alignments::Alignments; replicate_id=:second, min_distance=1000, filter_types=[])
     integrate!(interactions.graph, alignments; replicate_id=replicate_id, min_distance=min_distance, filter_types=filter_types)
     push!(interactions.replicate_ids, replicate_id)
 end
