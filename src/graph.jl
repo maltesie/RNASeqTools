@@ -38,14 +38,14 @@ function refname(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::
 end
 
 function positions(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::AlignedRead)
-    lp, rp = -1, -1
+    lp, rp = 2^63-1, -1
     for part in alignment1
-        (name(part), type(part)) == tu && (return leftposition(part), rightposition(part))
+        (name(part), type(part)) == tu && (lp = min(lp,leftposition(part)); rp = max(rp,rightposition(part)))
     end
     for part in alignment2
-        (name(part), type(part)) == tu && (return leftposition(part), rightposition(part))
+        (name(part), type(part)) == tu && (lp = min(lp,leftposition(part)); rp = max(rp,rightposition(part)))
     end
-    return (lp,rp)
+    return (lp, rp)
 end
 
 function nodestrand(tu::Tuple{String,String}, alignment1::AlignedRead, alignment2::AlignedRead)
@@ -74,15 +74,19 @@ function info_dict(alignment1::Alignment, alignment2::Alignment)
     end
 end
 
-function integrate!(graph::MetaDiGraph, alignments::PairedAlignments; replicate_id=:first, min_distance=1000, filter_types=[], max_read_length=150, nb_length_bins=30)
+function update_stats!(stats::NTuple{6, Dict{Int64, Int64}}, l1::Int, r1::Int, l2::Int, r2::Int)
+    d1, d2 = r1-l1+1, r2-l2+1
+    for (i, x) in enumerate((d1,d2,l1,l2,r1,r2))
+        x in keys(stats[i]) ? stats[i][x] += 1 : stats[i][x] = 1
+    end
+end
+
+function integrate!(graph::MetaDiGraph, alignments::PairedAlignments; replicate_id=:first, min_distance=1000, filter_types=[])
     trans = Dict{Tuple{String,String}, Int}()
     for node in vertices(graph)
         trans[(get_prop(graph, node, :name), get_prop(graph, node, :type))] = node
     end
-    length_bin_size = Int(floor(max_read_length/nb_length_bins))
-    l1_offset, l2_offset = 0, nb_length_bins
-    stats_length = 2*nb_length_bins
-    lenstats = Dict{LightGraphs.SimpleGraphs.SimpleEdge, Vector}()
+    stats = Dict{LightGraphs.SimpleGraphs.SimpleEdge, NTuple{6, Dict{Int64, Int64}}}()
     for (alignment1, alignment2) in alignments
         if hasannotation(alignment1) && hasannotation(alignment2)
             !isempty(filter_types) && typein(alignment1, alignment2, filter_types) && continue
@@ -109,31 +113,30 @@ function integrate!(graph::MetaDiGraph, alignments::PairedAlignments; replicate_
                     left1, right1 = positions(tu1, alignment1, alignment2)
                     left2, right2 = positions(tu2, alignment1, alignment2)
                     e = LightGraphs.SimpleGraphs.SimpleEdge(a,b)
-                    e in keys(lenstats) || (lenstats[e] = zeros(stats_length))
-                    lenstats[e][l1_offset + Int(floor((right1-left1)/length_bin_size)) + 1] += 1
-                    lenstats[e][l2_offset + Int(floor((right2-left2)/length_bin_size)) + 1] += 1
-
+                    e in keys(stats) || (stats[e] = Tuple(Dict{Int,Int}() for _ in 1:6))
+                    update_stats!(stats[e], left1, right1, left2, right2)
+                    
                     if add_edge!(graph, e)
-                        set_props!(graph, e, Dict(:nb_ints=>1, :nb_multi=> (multi ? 1 : 0), replicate_id=>1, :left1=>left1, :right1=>right1, 
-                                                        :left2=>left2, :right2=>right2))
+                        set_props!(graph, e, Dict(:nb_ints=>1, :nb_multi=> (multi ? 1 : 0), replicate_id=>1, :minleft1=>left1, :maxright1=>right1, 
+                                                        :minleft2=>left2, :maxright2=>right2))
                     else
                         set_prop!(graph, e, :nb_ints , get_prop(graph, e, :nb_ints) + 1)
                         set_prop!(graph, e, :nb_multi , get_prop(graph, e, :nb_multi) + (multi ? 1 : 0))
-                        set_prop!(graph, e, :left1 , min(get_prop(graph, e, :left1), left1))
-                        set_prop!(graph, e, :right1 , max(get_prop(graph, e, :right1), right1))
-                        set_prop!(graph, e, :left2 , min(get_prop(graph, e, :left2), left2))
-                        set_prop!(graph, e, :right2 , max(get_prop(graph, e, :right2), right2))
+                        set_prop!(graph, e, :minleft1 , min(get_prop(graph, e, :minleft1), left1))
+                        set_prop!(graph, e, :maxright1 , max(get_prop(graph, e, :maxright1), right1))
+                        set_prop!(graph, e, :minleft2 , min(get_prop(graph, e, :minleft2), left2))
+                        set_prop!(graph, e, :maxright2 , max(get_prop(graph, e, :maxright2), right2))
                     end
                     has_prop(graph, e, replicate_id) || set_prop!(graph, e, replicate_id, 1)
                 end
             end
         end
     end
-    for (e, vals) in lenstats
-        l1s = has_prop(graph, e, :length1) ? get_prop(graph, e, :length1) : Vector{Int}()
-        l2s = has_prop(graph, e, :length2) ? get_prop(graph, e, :length2) : Vector{Int}()
-        set_prop!(graph, e, :length1, push!(l1s, findmax(vals[l1_offset+1:l2_offset])[2]*length_bin_size))
-        set_prop!(graph, e, :length2, push!(l2s, findmax(vals[l2_offset+1:l2_offset+nb_length_bins])[2]*length_bin_size))
+    for (e, distributions) in stats
+        for (key_symbol, distribution) in zip((:length1, :length2, :modeleft1, :modeleft2, :moderight1, :moderight2), distributions)
+            vs = has_prop(graph, e, key_symbol) ? get_prop(graph, e, key_symbol) : Vector{Int}()
+            set_prop!(graph, e, key_symbol, push!(vs, argmax(distribution)))
+        end
     end
 end
 
@@ -178,8 +181,8 @@ function annotate!(interactions::Interactions, features::Features; method=:dispa
         set_prop!(interactions.graph, edge, :fdr, adjp[i])
         ispositive1 = get_prop(interactions.graph, src(edge), :strand) === STRAND_POS
         ispositive2 = get_prop(interactions.graph, dst(edge), :strand) === STRAND_POS
-        rna1_pos = get_prop(interactions.graph, edge, ispositive1 ? :right1 : :left1)
-        rna2_pos = get_prop(interactions.graph, edge, ispositive2 ? :left2 : :right2)
+        rna1_pos = mean(get_prop(interactions.graph, edge, ispositive1 ? :moderight1 : :modeleft1))
+        rna2_pos = mean(get_prop(interactions.graph, edge, ispositive2 ? :modeleft2 : :moderight2))
         (feature1_left, feature1_right) = tus[(get_prop(interactions.graph, src(edge), :name), get_prop(interactions.graph, src(edge), :type))]
         (feature2_left, feature2_right)  = tus[(get_prop(interactions.graph, dst(edge), :name), get_prop(interactions.graph, dst(edge), :type))]
         relpos1 = ispositive1 ? min(1.0, max(0.0, (rna1_pos - feature1_left)/(feature1_right - feature1_left))) : min(1.0, max(0.0, (feature1_right - rna1_pos)/(feature1_right - feature1_left)))
@@ -196,9 +199,11 @@ function asdataframe(interactions::Interactions; output=:edges, min_interactions
                         name2=repeat([""], ne(interactions.graph)), type2=repeat([""], ne(interactions.graph)), ref2=repeat([""], ne(interactions.graph)), 
                         nb_chimeras=repeat([0], ne(interactions.graph)), nb_multi=repeat([0], ne(interactions.graph)), p_value=repeat([1.], ne(interactions.graph)),
                         fdr=repeat([1.], ne(interactions.graph)), in_libs=repeat([0], ne(interactions.graph)), strand1=repeat(['o'], ne(interactions.graph)),
-                        left1=repeat([-1], ne(interactions.graph)), right1=repeat([-1], ne(interactions.graph)), left2=repeat([-1], ne(interactions.graph)), 
-                        right2=repeat([-1], ne(interactions.graph)), strand2=repeat(['o'], ne(interactions.graph)), relpos1=repeat([-1.0], ne(interactions.graph)),
-                        relpos2=repeat([-1.0], ne(interactions.graph)), length1=repeat([0.0], ne(interactions.graph)), length2=repeat([0.0], ne(interactions.graph)))
+                        modeleft1=repeat([-1], ne(interactions.graph)), moderight1=repeat([-1], ne(interactions.graph)), modeleft2=repeat([-1], ne(interactions.graph)), 
+                        moderight2=repeat([-1], ne(interactions.graph)), strand2=repeat(['o'], ne(interactions.graph)), 
+                        relpos1=repeat([-1.0], ne(interactions.graph)), relpos2=repeat([-1.0], ne(interactions.graph)), length1=repeat([0.0], ne(interactions.graph)), 
+                        length2=repeat([0.0], ne(interactions.graph)), minleft1=repeat([-1], ne(interactions.graph)), maxright1=repeat([-1], ne(interactions.graph)),
+                        minleft2=repeat([-1], ne(interactions.graph)), maxright2=repeat([-1], ne(interactions.graph)))
         for (i,edge) in enumerate(edges(interactions.graph))
             if has_prop(interactions.graph, edge, :fdr) 
                 fdr = get_prop(interactions.graph, edge, :fdr)
@@ -212,10 +217,14 @@ function asdataframe(interactions::Interactions; output=:edges, min_interactions
             frame[i, :name2] = get_prop(interactions.graph, dst(edge), :name)
             frame[i, :type2] = get_prop(interactions.graph, dst(edge), :type)
             frame[i, :ref2] = get_prop(interactions.graph, dst(edge), :refname)
-            frame[i, :left1] = get_prop(interactions.graph, edge, :left1)
-            frame[i, :right1] = get_prop(interactions.graph, edge, :right1)
-            frame[i, :left2] = get_prop(interactions.graph, edge, :left2)
-            frame[i, :right2] = get_prop(interactions.graph, edge, :right2)
+            frame[i, :minleft1] = get_prop(interactions.graph, edge, :minleft1)
+            frame[i, :maxright1] = get_prop(interactions.graph, edge, :maxright1)
+            frame[i, :minleft2] = get_prop(interactions.graph, edge, :minleft2)
+            frame[i, :maxright2] = get_prop(interactions.graph, edge, :maxright2)
+            frame[i, :modeleft1] = floor(mean(get_prop(interactions.graph, edge, :modeleft1)))
+            frame[i, :moderight1] = floor(mean(get_prop(interactions.graph, edge, :moderight1)))
+            frame[i, :modeleft2] = floor(mean(get_prop(interactions.graph, edge, :modeleft2)))
+            frame[i, :moderight2] = floor(mean(get_prop(interactions.graph, edge, :moderight2)))
             frame[i, :strand1] = get_prop(interactions.graph, src(edge), :strand)
             frame[i, :strand2] = get_prop(interactions.graph, dst(edge), :strand)
             frame[i, :relpos1] = get_prop(interactions.graph, edge, :relpos1)
