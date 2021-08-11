@@ -98,7 +98,7 @@ function conserved_features(features::Features, source_genome::Genome, targets::
 end
 
 function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; 
-                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", rev_comp=:read1, model=:fisher)
+                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", invert_strand=:read1, model=:fisher)
     for (condition, r) in conditions
         replicate_ids = Vector{Symbol}()
         interactions = Interactions()
@@ -106,7 +106,7 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
             replicate_id = Symbol("$(condition)_$i")
             push!(replicate_ids, replicate_id)
             println("Reading $bam")
-            alignments = Alignments(bam; only_unique=false, rev_comp=rev_comp)
+            alignments = Alignments(bam; only_unique=false, invert_strand=invert_strand)
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type) 
             println("Building graph for replicate $replicate_id...")

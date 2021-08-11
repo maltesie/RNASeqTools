@@ -406,7 +406,7 @@ function Base.show(features::Features)
         nb_neg += strand(f) === STRAND_NEG
     end
     dt = Int(floor(maximum(length(t) for t in ts)/8))+1
-    printstring = "$(nb_pos+nb_neg) features in total with $nb_pos on + strand and $nb_neg on - strand:\n\n"
+    printstring = "\n$(nb_pos+nb_neg) features in total with $nb_pos on + strand and $nb_neg on - strand:\n\n"
     printstring *= "type$(repeat("\t",dt))$(join([chr*repeat(" ", 9-length(chr)) for chr in chrs], "\t"))\n\n"
     for t in ts
         printstring *= "$(t)$(repeat("\t",dt-Int(floor(length(t)/8))))$(join([stats[chr][t] for chr in chrs], "\t\t"))\n"
