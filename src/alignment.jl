@@ -333,6 +333,7 @@ struct Alignments{T} <: AlignmentContainer
     dict::Dict{T, AlignedRead}
 end
 
+Base.empty!(alignments::Alignments) = empty!(alignments.dict)
 Base.getindex(alignments::Alignments, key::Union{String,UInt}) = alignments.dict[key]
 Base.length(alignments::Alignments) = length(alignments.dict)
 Base.keys(alignments::Alignments) = keys(alignments.dict)

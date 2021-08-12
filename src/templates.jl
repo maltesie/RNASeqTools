@@ -115,6 +115,7 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type) 
             println("Building graph for replicate $replicate_id...")
             append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types)
+            empty!(alignments)
         end
         println("Computing significance levels and filtering...")
         annotate!(interactions, features; method=model)
