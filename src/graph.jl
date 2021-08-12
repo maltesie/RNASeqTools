@@ -129,6 +129,12 @@ function asdataframe(interactions::Interactions; output=:edges, min_interactions
         out_df = copy(interactions.edges)
         :fdr in names(out_df) && filter!(:fdr => <=(max_fdr), out_df)
         filter!(:nb_ints => >=(min_interactions), out_df)
+        out_df[:, :meanleft1] = Int.(floor.(out_df[!, :meanleft1]))
+        out_df[:, :meanright1] = Int.(floor.(out_df[!, :meanright1]))
+        out_df[:, :meanleft2] = Int.(floor.(out_df[!, :meanleft2]))
+        out_df[:, :meanright2] = Int.(floor.(out_df[!, :meanright2]))
+        out_df[:, :length1] = Int.(floor.(out_df[!, :length1]))
+        out_df[:, :length2] = Int.(floor.(out_df[!, :length2]))
         out_df[:, :name1] = interactions.nodes[out_df[!,:src], :name]
         out_df[:, :name2] = interactions.nodes[out_df[!,:dst], :name]
         out_df[:, :ref1] = interactions.nodes[out_df[!,:src], :ref]

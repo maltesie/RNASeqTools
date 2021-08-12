@@ -99,6 +99,8 @@ end
 
 function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; 
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", invert_strand=:read1, model=:fisher)
+    isdir(joinpath(results_path, "interactions")) || mkdir(joinpath(results_path, "interactions"))
+    isdir(joinpath(results_path, "singles")) || mkdir(joinpath(results_path, "singles"))
     for (condition, r) in conditions
         isfile(joinpath(results_path, "$(condition)_interactions.csv")) && isfile(joinpath(results_path, "$(condition)_singles.csv")) && continue
         replicate_ids = Vector{Symbol}()
@@ -115,7 +117,11 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
         end
         println("Computing significance levels and filtering...")
         annotate!(interactions, features; method=model)
-        write(joinpath(results_path, "$(condition)_interactions.csv"), asdataframe(interactions; output=:edges))
-        write(joinpath(results_path, "$(condition)_singles.csv"), asdataframe(interactions; output=:nodes))
+        write(joinpath(results_path, "interactions", "$(condition).csv"), asdataframe(interactions; output=:edges))
+        write(joinpath(results_path, "singles", "$(condition).csv"), asdataframe(interactions; output=:nodes))
     end
+    singles = CsvFiles(joinpath(results_path, "singles"))
+	ints = CsvFiles(joinpath(results_path, "interactions"))
+	write(joinpath(results_path, "singles.xlsx"), singles)
+	write(joinpath(results_path, "interactions.xlsx"), ints)
 end
