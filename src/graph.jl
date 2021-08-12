@@ -5,18 +5,12 @@ mutable struct Interactions <: InteractionContainer
     replicate_ids::Vector{Symbol}
 end
 
-function leftpos(aln::AlignedPart, alnread::AlignedRead)
-    i = findfirst(x->x===aln, alnread.alns)
-    i > 1 && sameannotation(alnread[i-1], aln) && (return leftposition(alnread[i-1]))
-    i > 2 && sameannotation(alnread[i-2], aln) && (return leftposition(alnread[i-2]))
-    leftposition(aln)
+function leftpos(alnpart::AlignedPart, alnread::AlignedRead)
+    minimum(leftposition(p) for p in alnread if sameannotation(p, alnpart))
 end
 
-function rightpos(aln::AlignedPart, alnread::AlignedRead)
-    i = findfirst(x->x===aln, alnread.alns)
-    i < length(alnread) && sameannotation(alnread[i+1], aln) && (return rightposition(alnread[i+1]))
-    i < length(alnread)-1 && sameannotation(alnread[i+2], aln) && (return rightposition(alnread[i+2]))
-    rightposition(aln)
+function rightpos(alnpart::AlignedPart, alnread::AlignedRead)
+    maximum(rightposition(p) for p in alnread if sameannotation(p, alnpart))
 end
 
 function append!(interactions::Interactions, alignments::Alignments, replicate_id::Symbol; min_distance=1000, filter_types=[])
@@ -127,14 +121,14 @@ end
 function asdataframe(interactions::Interactions; output=:edges, min_interactions=5, max_fdr=0.05)
     if output === :edges
         out_df = copy(interactions.edges)
-        :fdr in names(out_df) && filter!(:fdr => <=(max_fdr), out_df)
+        "fdr" in names(out_df) && filter!(:fdr => <=(max_fdr), out_df)
         filter!(:nb_ints => >=(min_interactions), out_df)
-        out_df[:, :meanleft1] = Int.(floor.(out_df[!, :meanleft1]))
-        out_df[:, :meanright1] = Int.(floor.(out_df[!, :meanright1]))
-        out_df[:, :meanleft2] = Int.(floor.(out_df[!, :meanleft2]))
-        out_df[:, :meanright2] = Int.(floor.(out_df[!, :meanright2]))
-        out_df[:, :length1] = Int.(floor.(out_df[!, :length1]))
-        out_df[:, :length2] = Int.(floor.(out_df[!, :length2]))
+        out_df[!, :meanleft1] = Int.(floor.(out_df[!, :meanleft1]))
+        out_df[!, :meanright1] = Int.(floor.(out_df[!, :meanright1]))
+        out_df[!, :meanleft2] = Int.(floor.(out_df[!, :meanleft2]))
+        out_df[!, :meanright2] = Int.(floor.(out_df[!, :meanright2]))
+        out_df[!, :length1] = Int.(floor.(out_df[!, :length1]))
+        out_df[!, :length2] = Int.(floor.(out_df[!, :length2]))
         out_df[:, :name1] = interactions.nodes[out_df[!,:src], :name]
         out_df[:, :name2] = interactions.nodes[out_df[!,:dst], :name]
         out_df[:, :ref1] = interactions.nodes[out_df[!,:src], :ref]
