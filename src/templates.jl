@@ -100,6 +100,7 @@ end
 function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; 
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", invert_strand=:read1, model=:fisher)
     for (condition, r) in conditions
+        isfile(joinpath(results_path, "$(condition)_interactions.csv")) && isfile(joinpath(results_path, "$(condition)_singles.csv")) && continue
         replicate_ids = Vector{Symbol}()
         interactions = Interactions()
         for (i, bam) in enumerate(bams[r])
@@ -110,7 +111,7 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type) 
             println("Building graph for replicate $replicate_id...")
-            append!(interactions, alignments; min_distance=min_distance, filter_types=filter_types, replicate_id=replicate_id)
+            append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types)
         end
         println("Computing significance levels and filtering...")
         annotate!(interactions, features; method=model)

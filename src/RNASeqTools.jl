@@ -3,7 +3,7 @@ module RNASeqTools
 using XAM, FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 using Plots, Measures, Statistics, HypothesisTests, MultipleTesting, DataFrames, StatsBase, MultivariateStats, Combinatorics, Random
-using MetaGraphs, LightGraphs
+using LightGraphs
 using Dash, DashHtmlComponents, DashCoreComponents, DashTable
 import IntervalTrees.IntervalBTree, IntervalTrees.IntervalBTreeIteratorState
 
