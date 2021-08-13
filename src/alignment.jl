@@ -351,14 +351,14 @@ function Base.iterate(alignments::Alignments, state::Int)
     return (aln, state)
 end
 
-function Alignments(bam_file::String; min_templength=nothing, only_unique=true, invert_strand=:none, hash_id=true)
-    alignments= read_bam(bam_file; min_templength=min_templength, only_unique=only_unique, invert_strand=invert_strand, hash_id=hash_id)
+function Alignments(bam_file::String; min_templength=nothing, only_unique=true, invert_strand=:none, reverse_order=false, hash_id=true)
+    alignments= read_bam(bam_file; min_templength=min_templength, only_unique=only_unique, invert_strand=invert_strand, reverse_order=reverse_order, hash_id=hash_id)
     Alignments(alignments)
 end
 
-function Alignments(bam_file1::String, bam_file2::String; min_templength=nothing, only_unique=true, invert_strand=:none, hash_id=true)
-    alignments = read_bam(bam_file1; min_templength=min_templength, only_unique=only_unique, invert_strand=invert_strand, hash_id=hash_id)
-    read_bam!(alignments, bam_file2; min_templength=min_templength, only_unique=only_unique, invert_strand=invert_strand in (:read2, :both) ? :read1 : :none)
+function Alignments(bam_file1::String, bam_file2::String; min_templength=nothing, only_unique=true, invert_strand=:none, reverse_order=false, hash_id=true)
+    alignments = read_bam(bam_file1; min_templength=min_templength, only_unique=only_unique, invert_strand=invert_strand, reverse_order=reverse_order, hash_id=hash_id)
+    read_bam!(alignments, bam_file2; min_templength=min_templength, only_unique=only_unique, invert_strand=invert_strand in (:read2, :both) ? :read1 : :none, reverse_order=reverse_order)
     Alignments(alignments)
 end
 
@@ -406,18 +406,18 @@ function is_bitstring_bam(file::String)
     return false
 end
 
-function Base.push!(l::Vector{AlignedPart}, item::AlignedPart)
+function Base.push!(l::Vector{AlignedPart}, item::AlignedPart; reverse_order=false)
     for (i, part) in enumerate(l)
         if item.read === part.read
             first(item.seq) < first(part.seq) && (return insert!(l, i, item))
-        elseif item.read === :read1
+        elseif (item.read === :read1) != reverse_order
             return insert!(l, i, item)
         end
     end
     insert!(l, length(l)+1, item)
 end
 
-function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength=nothing, only_unique=true, invert_strand=:none) where T<:Union{UInt, String}
+function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength=nothing, only_unique=true, invert_strand=:none, reverse_order=false) where T<:Union{UInt, String}
     @assert invert_strand in [:read1, :read2, :both, :none]
     hash_id = T <: UInt
     record = BAM.Record()
@@ -457,14 +457,14 @@ function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength
             ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), st, AlignmentAnnotation())
             alnpart = AlignedPart(ref_interval, seq_interval, nms, current_read)
         end
-        id in keys(reads) ? push!(reads[id].alns, alnpart) : push!(reads, id=>AlignedRead([alnpart]))
+        id in keys(reads) ? push!(reads[id].alns, alnpart; reverse_order=reverse_order) : push!(reads, id=>AlignedRead([alnpart]))
     end
     close(reader)
     return reads
 end
-function read_bam(bam_file::String; min_templength=nothing, only_unique=true, invert_strand=:none, hash_id=true)
+function read_bam(bam_file::String; min_templength=nothing, only_unique=true, invert_strand=:none, reverse_order=false, hash_id=true)
     reads = Dict{hash_id ? UInt : String, AlignedRead}()
-    read_bam!(reads, bam_file; min_templength=min_templength, only_unique=only_unique, invert_strand=invert_strand)
+    read_bam!(reads, bam_file; min_templength=min_templength, only_unique=only_unique, invert_strand=invert_strand, reverse_order=reverse_order)
     return reads
 end
 

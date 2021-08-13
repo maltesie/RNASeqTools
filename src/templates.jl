@@ -99,7 +99,7 @@ end
 
 function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; 
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", 
-                            invert_strand=:read1, model=:fisher, overwrite_existing=false)
+                            invert_strand=:read1, reverse_order=true, model=:fisher, overwrite_existing=false)
     isdir(joinpath(results_path, "interactions")) || mkdir(joinpath(results_path, "interactions"))
     isdir(joinpath(results_path, "singles")) || mkdir(joinpath(results_path, "singles"))
     for (condition, r) in conditions
@@ -110,7 +110,7 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
             replicate_id = Symbol("$(condition)_$i")
             push!(replicate_ids, replicate_id)
             println("Reading $bam")
-            alignments = Alignments(bam; only_unique=false, invert_strand=invert_strand)
+            alignments = Alignments(bam; only_unique=false, invert_strand=invert_strand, reverse_order=reverse_order)
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type) 
             println("Building graph for replicate $replicate_id...")

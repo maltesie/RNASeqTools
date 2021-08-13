@@ -142,6 +142,6 @@ function asdataframe(interactions::Interactions; output=:edges, min_interactions
                             :meanleft1, :meanright1, :meanleft2, :meanright2, :strand2, :relpos1, :relpos2, :length1, :length2,
                             :minleft1, :maxright1, :minleft2, :maxright2]], :nb_ints; rev=true)
     elseif output === :nodes
-        return sort(interactions.nodes, :nb_single; rev=true)
+        return sort(interactions.nodes[!, [:name,:type,:ref,:nb_single, :nb_ints]], :nb_single; rev=true)
     end     
 end
