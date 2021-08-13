@@ -5,7 +5,7 @@ function prepare_data(data_path::String, genome::Genome; files=FastqgzFiles)
     compute_coverage(bams)
 end
 
-function de_genes(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}; results_path=@__DIR__, between_conditions=nothing, add_keys=["BaseValueFrom", "BaseValueTo", "LogFoldChange", "PValue", "AdjustedPValue"])
+function de_genes(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, add_keys=["BaseValueFrom", "BaseValueTo", "LogFoldChange", "PValue", "AdjustedPValue"])
     between_conditions = isnothing(between_conditions) ? combinations(collect(conditions), 2) : [((a,conditions[a]), (b,conditions[b])) for (a,b) in between_conditions]
     for ((name1, range1), (name2, range2)) in between_conditions
         annotate!(features, coverages[range1], coverages[range2])
@@ -13,7 +13,7 @@ function de_genes(features::Features, coverages::Vector{Coverage}, conditions::D
     end
 end
 
-function feature_count(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}; results_path=@__DIR__, between_conditions=nothing)
+function feature_count(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
     expnames = Dict{String,Vector{String}}()
     for (name, range) in conditions
         annotate!(features, coverages[range]; count_key="$name")
@@ -28,7 +28,7 @@ function feature_count(features::Features, coverages::Vector{Coverage}, conditio
     end
 end
 
-function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}; results_path=@__DIR__, between_conditions=nothing)
+function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
     expnames = Dict{String,Vector{String}}()
     mybams = copy(bams)
     for (name, range) in conditions
@@ -88,7 +88,7 @@ function full_annotation(features::Features, texdict::Dict{String,Coverage}, not
     write(results_gff, features)
 end
 
-function conserved_features(features::Features, source_genome::Genome, targets::SingleTypeFiles; results_path=@__DIR__)
+function conserved_features(features::Features, source_genome::Genome, targets::SingleTypeFiles, results_path::String)
     target_genomes = [Genome(genome_file) for genome_file in targets]
     seqs = featureseqs(features, source_genome)
     align_mem(seqs, target_genomes, joinpath(results_path, "utrs.bam"))
@@ -97,7 +97,7 @@ function conserved_features(features::Features, source_genome::Genome, targets::
     write(joinpath(results_path, "features.gff"), features)
 end
 
-function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}; results_path=@__DIR__,
+function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String;
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", 
                             invert_strand=:read1, reverse_order=true, model=:fisher, overwrite_existing=false)
     isdir(joinpath(results_path, "interactions")) || mkdir(joinpath(results_path, "interactions"))
