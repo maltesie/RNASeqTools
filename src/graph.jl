@@ -33,7 +33,7 @@ function append!(interactions::Interactions, alignments::Alignments, replicate_i
                 add_vertex!(interactions.graph)
                 push!(interactions.nodes, (name(part), type(part), refname(part), 0, 0, strand(part), h))
             end
-            is_chimeric || (interactions.nodes[end, :nb_single] += 1)
+            is_chimeric || (interactions.nodes[trans[h], :nb_single] += 1)
         end
 
         for (part1, part2) in combinations(alignment.alns[collect(!any(sameannotation(alignment[i], formerpart) for formerpart in alignment.alns[1:i-1]) for i in 1:length(alignment))], 2)
