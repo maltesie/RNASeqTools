@@ -122,6 +122,7 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
         write(joinpath(results_path, "interactions", "$(condition).csv"), asdataframe(interactions; output=:edges))
         write(joinpath(results_path, "singles", "$(condition).csv"), asdataframe(interactions; output=:nodes))
     end
+    (!overwrite_existing && isfile(joinpath(results_path, "singles.xlsx")) && isfile(joinpath(results_path, "interactions.xlsx"))) && return
     singles = CsvFiles(joinpath(results_path, "singles"))
 	ints = CsvFiles(joinpath(results_path, "interactions"))
 	write(joinpath(results_path, "singles.xlsx"), singles)

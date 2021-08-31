@@ -13,8 +13,8 @@ function rightpos(alnpart::AlignedPart, alnread::AlignedRead)
     maximum(rightposition(p) for p in alnread if sameannotation(p, alnpart))
 end
 
-function append!(interactions::Interactions, alignments::Alignments, replicate_id::Symbol; min_distance=1000, filter_types=[])
-    myhash(part::AlignedPart) = xor(hash(name(part)), hash(type(part)))
+function Base.append!(interactions::Interactions, alignments::Alignments, replicate_id::Symbol; min_distance=1000, filter_types=[])
+    myhash(part::AlignedPart) = hash(name(part))
     interactions.edges[:, replicate_id] = repeat([0], nrow(interactions.edges))
     push!(interactions.replicate_ids, replicate_id)
     trans = Dict{UInt, Int}(interactions.nodes[i, :hash]=>i for i in 1:nrow(interactions.nodes))
@@ -25,18 +25,18 @@ function append!(interactions::Interactions, alignments::Alignments, replicate_i
         is_multi = is_chimeric ? ismulti(alignment) : false
 
         for (i,part) in enumerate(alignment)
-            any(sameannotation(part, formerpart) for formerpart in alignment.alns[1:i-1]) && continue
             hasannotation(part) || continue
+            any(samename(part, formerpart) for formerpart in alignment.alns[1:i-1]) && continue
             h = myhash(part)
             if !(h in keys(trans))
                 trans[h] = length(trans) + 1
                 add_vertex!(interactions.graph)
-                push!(interactions.nodes, (name(part), type(part), refname(part), 0, 0, strand(part), h))
+                push!(interactions.nodes, (name(part), type(part) in ("5UTR", "3UTR") ? "CDS" : type(part), refname(part), 0, 0, strand(part), h))
             end
             is_chimeric || (interactions.nodes[trans[h], :nb_single] += 1)
         end
 
-        for (part1, part2) in combinations(alignment.alns[collect(!any(sameannotation(alignment[i], formerpart) for formerpart in alignment.alns[1:i-1]) for i in 1:length(alignment))], 2)
+        for (part1, part2) in combinations(alignment.alns[collect(!any(samename(alignment[i], formerpart) for formerpart in alignment.alns[1:i-1]) for i in 1:length(alignment))], 2)
             (hasannotation(part1) && hasannotation(part2)) || continue
             ischimeric(part1, part2; min_distance=min_distance) || continue
             a, b = trans[myhash(part1)], trans[myhash(part2)]
@@ -81,14 +81,15 @@ end
 function annotate!(interactions::Interactions, features::Features; method=:disparity)
     @assert method in (:disparity, :fisher)
     pvalues = ones(ne(interactions.graph))
-    all_interactions = sum(interactions.edges[!, :nb_ints])
+    all_interactions = sum(interactions.edges[!, :nb_ints])+1
 
     if method === :fisher
         ints_between = interactions.edges[!,:nb_ints]
         ints_other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between
         ints_other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between
-        test = FisherExactTest.(ints_between, ints_other_target, ints_other_source, all_interactions .- ints_between .- ints_other_source .- ints_other_target)
-        pvalues = pvalue.(test; tail=:right)
+        ints_other = all_interactions .- ints_between .- ints_other_source .- ints_other_target
+        tests = FisherExactTest.(ints_between, ints_other_target, ints_other_source, ints_other)
+        pvalues = pvalue.(tests; tail=:right)
     elseif method === :disparity
         degrees = [degree(interactions.graph, i) - 1 for i in 1:nv(interactions.graph)]
         p_source = (1 .- interactions.edges[!,:nb_ints] ./ interactions.nodes[interactions.edges[!, :src], :nb_ints]).^degrees[interactions.edges[!, :src]]
@@ -97,23 +98,21 @@ function annotate!(interactions::Interactions, features::Features; method=:dispa
     end
 
     adjp = adjust(PValues(pvalues), BenjaminiHochberg())
-
     interactions.edges[:, :p_value] = pvalues
     interactions.edges[:, :fdr] = adjp
-    interactions.edges[:, :relpos1] = repeat([-Inf], nrow(interactions.edges))
-    interactions.edges[:, :relpos2] = repeat([-Inf], nrow(interactions.edges))
-    tus = Dict((name(feature), type(feature))=>(leftposition(feature), rightposition(feature)) for feature in features)
+    interactions.edges = hcat(interactions.edges, DataFrame(repeat([-Inf -Inf -Inf -Inf -Inf -Inf], nrow(interactions.edges)), 
+                                                            [:relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2]))
+    tus = Dict(name(feature)=>(leftposition(feature), rightposition(feature)) for feature in features if !(type(feature) in ("5UTR", "3UTR")))
     for edge_row in eachrow(interactions.edges)
-        ispositive1 = interactions.nodes[edge_row[:src], :strand] === STRAND_POS
-        ispositive2 = interactions.nodes[edge_row[:dst], :strand] === STRAND_POS
-        rna1_pos = ispositive1 ? edge_row[:meanright1] : edge_row[:meanleft1]
-        rna2_pos = ispositive2 ? edge_row[:meanleft2] : edge_row[:meanright2]
-        (feature1_left, feature1_right) = tus[(interactions.nodes[edge_row[:src], :name], interactions.nodes[edge_row[:src], :type])]
-        (feature2_left, feature2_right)  = tus[(interactions.nodes[edge_row[:dst], :name], interactions.nodes[edge_row[:dst], :type])]
-        relpos1 = ispositive1 ? min(1.0, max(0.0, (rna1_pos - feature1_left)/(feature1_right - feature1_left))) : min(1.0, max(0.0, (feature1_right - rna1_pos)/(feature1_right - feature1_left)))
-        relpos2 = ispositive2 ? min(1.0, max(0.0, (rna2_pos - feature2_left)/(feature2_right - feature2_left))) : min(1.0, max(0.0, (feature2_right - rna2_pos)/(feature2_right - feature2_left)))
-        edge_row[:relpos1] = round(relpos1; digits=4)
-        edge_row[:relpos2] = round(relpos2; digits=4)
+        (feature1_left, feature1_right) = tus[interactions.nodes[edge_row[:src], :name]]
+        (feature2_left, feature2_right) = tus[interactions.nodes[edge_row[:dst], :name]]
+        ispositive1 = interactions.nodes[edge_row[:src], :strand] === '+'
+        ispositive2 = interactions.nodes[edge_row[:dst], :strand] === '+'
+        p1 = collect(edge_row[[:meanright1, :minleft1, :maxright1]])
+        p2 = collect(edge_row[[:meanleft2, :minleft2, :maxright2]])
+        (relpos1, relmin1, relmax1) = min.(1.0, max.(0.0, (ispositive1 ? (p1 .- feature1_left) : (feature1_right .- p1)) ./ (feature1_right .- feature1_left)))
+        (relpos2, relmin2, relmax2) = min.(1.0, max.(0.0, (ispositive2 ? (p2 .- feature2_left) : (feature2_right .- p2)) ./ (feature2_right .- feature2_left)))
+        edge_row[[:relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2]] = round.((relpos1,relpos2, relmin1, relmin2, relmax1, relmax2); digits=4)
     end
     return interactions
 end
@@ -139,9 +138,9 @@ function asdataframe(interactions::Interactions; output=:edges, min_interactions
         out_df[:, :strand2] = interactions.nodes[out_df[!,:dst], :strand]
         out_df[:, :in_libs] = sum(eachcol(out_df[!, interactions.replicate_ids]))
         return sort(out_df[!, [:name1, :type1, :ref1, :name2, :type2, :ref2, :nb_ints, :nb_multi, :p_value, :fdr, :in_libs, :strand1, 
-                            :meanleft1, :meanright1, :meanleft2, :meanright2, :strand2, :relpos1, :relpos2, :length1, :length2,
-                            :minleft1, :maxright1, :minleft2, :maxright2]], :nb_ints; rev=true)
+                            :meanleft1, :meanright1, :meanleft2, :meanright2, :strand2, :length1, :length2, :minleft1, :maxright1,
+                            :minleft2, :maxright2, :relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2]], :nb_ints; rev=true)
     elseif output === :nodes
-        return sort(interactions.nodes[!, [:name,:type,:ref,:nb_single, :nb_ints]], :nb_single; rev=true)
+        return sort(interactions.nodes[!, [:name, :type, :ref, :nb_single, :nb_ints]], :nb_single; rev=true)
     end     
 end

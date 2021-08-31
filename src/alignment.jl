@@ -197,7 +197,9 @@ readinterval(aln::AlignedPart) = aln.seq
 BioGenerics.leftposition(rang::UnitRange) = first(rang)
 BioGenerics.rightposition(rang::UnitRange) = last(rang)
 hasannotation(aln::AlignedPart) = !isempty(annotation(aln))
-sameannotation(aln1::AlignedPart, aln2::AlignedPart) = (name(aln1) == name(aln2)) && (type(aln1) == type(aln2))
+sameannotation(aln1::AlignedPart, aln2::AlignedPart) = samename(aln1, aln2) && sametype(aln1, aln2)
+samename(aln1::AlignedPart, aln2::AlignedPart) = name(aln1) == name(aln2)
+sametype(aln1::AlignedPart, aln2::AlignedPart) = type(aln1) == type(aln2)
 #core(aln::AlignedPart) = aln.score
 #isprimary(aln::AlignedPart) = aln.isprimary
 
