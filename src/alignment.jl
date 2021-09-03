@@ -1,7 +1,28 @@
-function align_kraken2(; kraken_bin="kraken2")
+#!/usr/bin/env julia
+"""
+Wrapper function for kraken2 taxonomic sequence classifier that assigns taxonomic labels to DNA sequences.
+Outputs a five fields tab-delimited text file.
+"""
+function align_kraken2(
+        db_location::String, sequence_file::String;
+        kraken_bin="kraken2",
+        threads=false, quick=false, min_hit_groups=false, )
+
+    params = ["--db", db_location,
+              sequence_file,
+             ]
+
+    # append additional options
+    threads && append!(params, ["--threads", threads])
+    quick && push!(params, "--quick")
+    min_hit_groups && push!(params, "--minimum-hit-groups")
+
+    output_file = sequence_file * "_kraken2_results.txt" # or tsv?
+    cmd = pipeline(`$kraken_bin $params`, stdout=output_file)
+    run(cmd)
 end
 
-function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::String, genome_file::String; 
+function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::String, genome_file::String;
     min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, reseeding_factor=1.5,
     bwa_bin="bwa-mem2", sam_bin="samtools")
 
@@ -29,10 +50,10 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
     rm(tmp_bwa)
     rm(tmp_view)
 end
-align_mem(in_file::String, out_file::String, genome_file::String; 
-    min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, reseeding_factor=1.5, bwa_bin="bwa-mem2", sam_bin="samtools") = 
-    align_mem(in_file, nothing, out_file::String, genome_file::String; 
-        min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, reseeding_factor=reseeding_factor, 
+align_mem(in_file::String, out_file::String, genome_file::String;
+    min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, reseeding_factor=1.5, bwa_bin="bwa-mem2", sam_bin="samtools") =
+    align_mem(in_file, nothing, out_file::String, genome_file::String;
+        min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, reseeding_factor=reseeding_factor,
         bwa_bin=bwa_bin, sam_bin=sam_bin)
 
 function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, reseeding_factor=1.5,
@@ -45,11 +66,11 @@ function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatc
         push!(outfiles, out_file)
         (isfile(out_file) && !overwrite_existing) && continue
         isa(read_files, SingleTypeFiles) ?
-        align_mem(file, out_file, tmp_genome; 
-                min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, 
+        align_mem(file, out_file, tmp_genome;
+                min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open,
                 gap_extend=gap_extend, clipping_penalty=clipping_penalty, reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin) :
-        align_mem(first(file), last(file), out_file, tmp_genome; 
-                min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, 
+        align_mem(first(file), last(file), out_file, tmp_genome;
+                min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
                 clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
@@ -59,7 +80,7 @@ function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatc
     return SingleTypeFiles(outfiles)
 end
 
-function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, 
+function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5,
                 unpair_penalty=9, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where T<:SequenceContainer
     (isfile(out_file) && !overwrite_existing) && return
     tmp_reads = tempname()
@@ -70,15 +91,15 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_scor
         write(tmp_genome, genome)
         this_out_file = out_file
         length(genomes) > 1 && (this_out_file = joinpath(dirname(out_file), "$(i)_" * basename(out_file)))
-        
-        isa(reads, Sequences) ? 
-        align_mem(tmp_reads, this_out_file, tmp_genome; 
-            min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, 
+
+        isa(reads, Sequences) ?
+        align_mem(tmp_reads, this_out_file, tmp_genome;
+            min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, bwa_bin=bwa_bin, sam_bin=sam_bin) :
-        align_mem(tmp_reads, tmp_reads2, this_out_file, tmp_genome; 
-            min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, 
-            clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin) 
-        
+        align_mem(tmp_reads, tmp_reads2, this_out_file, tmp_genome;
+            min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
+            clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin)
+
         rm(tmp_genome)
     end
     rm(tmp_reads)
@@ -100,11 +121,11 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_scor
         end
     end
 end
-align_mem(reads::T, genome::Genome, out_file::String; 
-    min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, unpair_penalty=9, 
-    unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where T<:SequenceContainer = 
-        align_mem(reads, [genome], out_file; 
-            min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty, 
+align_mem(reads::T, genome::Genome, out_file::String;
+    min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, unpair_penalty=9,
+    unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where T<:SequenceContainer =
+        align_mem(reads, [genome], out_file;
+            min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty,
             unpair_rescue=unpair_rescue, bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
 struct AlignedPart
@@ -211,7 +232,7 @@ end
 
 @inline function xatag(data::SubArray{UInt8,1})
     for i in 1:length(data)-2
-        (0x00 == data[i]) & (0x58 == data[i+1]) & (0x41 == data[i+2]) && 
+        (0x00 == data[i]) & (0x58 == data[i+1]) & (0x41 == data[i+2]) &&
         (return translateddata(@view(data[i+4:end])))
     end
     return nothing
@@ -318,7 +339,7 @@ function ischimeric(part1::AlignedPart, part2::AlignedPart; min_distance=1000, c
 end
 
 function countchimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true)
-    length(alnread) > 1 ? 
+    length(alnread) > 1 ?
     sum(ischimeric(part, otherpart; min_distance=min_distance, check_annotation=check_annotation) for (part, otherpart) in combinations(alnread.alns, 2)) :
     0
 end
@@ -340,13 +361,13 @@ Base.getindex(alignments::Alignments, key::Union{String,UInt}) = alignments.dict
 Base.length(alignments::Alignments) = length(alignments.dict)
 Base.keys(alignments::Alignments) = keys(alignments.dict)
 Base.values(alignments::Alignments) = values(alignments.dict)
-function Base.iterate(alignments::Alignments) 
+function Base.iterate(alignments::Alignments)
     dictiteration = iterate(alignments.dict)
     isnothing(dictiteration) && (return nothing)
     ((_, aln), state) = dictiteration
     return (aln, state)
 end
-function Base.iterate(alignments::Alignments, state::Int) 
+function Base.iterate(alignments::Alignments, state::Int)
     dictiteration = iterate(alignments.dict, state)
     isnothing(dictiteration) && (return nothing)
     ((_, aln), state) = dictiteration
@@ -447,7 +468,7 @@ function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength
                 intpos = abs(parse(Int, pos))
                 intpos < leftestpos && (leftest = i; leftestpos=intpos; nms=pnm)
             end
-            if leftest != 0 
+            if leftest != 0
                 alnpart = AlignedPart(xastrings[leftest]; invert_strand=invert, read=current_read)
                 foundit = true
             end
@@ -480,11 +501,11 @@ function occurences(test_sequence::LongDNASeq, bam_file::String, similarity_cut:
         c += similarity(test_sequence, BAM.sequence(record), score_model=score_model) > similarity_cut
     end
     return c
-end 
+end
 
 function annotate!(features::Features, files::SingleTypeFiles; only_unique=true, invert_strand=:none, count_key="Count", abs_lfc_cut=1, pvalue_cut=0.05)
     if files.type == ".bam"
-        
+
         @assert invert_strand in [:read1, :read2, :both, :none]
         for (i,bam_file) in enumerate(files)
             reader = BAM.Reader(open(bam_file); index=bam_file*".bai")
@@ -534,8 +555,8 @@ function annotate!(aln::AlignedPart, feature_interval::Interval{Annotation}; pri
 end
 
 function annotate!(alns::Alignments, features::Features; prioritize_type=nothing, overwrite_type=nothing, remove_empty=false)
-    myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter, 
-        GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refn], Interval("", 1, 1, STRAND_NA, Annotation("", "", Dict{String,String}()))) for refn in refnames(features)) 
+    myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter,
+        GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refn], Interval("", 1, 1, STRAND_NA, Annotation("", "", Dict{String,String}()))) for refn in refnames(features))
     for alignedread in alns
         for aln in alignedread
             myiterator = myiterators[refname(aln)]

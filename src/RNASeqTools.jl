@@ -8,7 +8,7 @@ using Dash, DashHtmlComponents, DashCoreComponents, DashTable
 import IntervalTrees.IntervalBTree, IntervalTrees.IntervalBTreeIteratorState
 
 export align_mem, local_alignment
-export trim_fastp, split_libs 
+export trim_fastp, split_libs
 export Genome, Sequences, PairedSequences, Alignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage, Interactions
 export FastaFiles, PairedFastaFiles, FastagzFiles, PairedFastagzFiles, FastqFiles, PaireFastqFiles, FastqgzFiles, PairedFastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles
 export cut!, rev_comp!, rev_comp, approxoccursin, annotate!, featureseqs, conservedfeatures, asdataframe
