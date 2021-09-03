@@ -347,7 +347,6 @@ function normalizedcount(features::Features, samples::Vector{Coverage})
     avg_sample::Vector{Float64} = [geomean(averages[i, :]) for i in 1:length(features)] .+ 0.000000001
     norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:length(samples)]
     averages ./= norm_factors'
-    #println("norm factors ", norm_factors)
     return averages
 end
 
