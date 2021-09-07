@@ -1,23 +1,31 @@
 #!/usr/bin/env julia
 """
 Wrapper function for kraken2 taxonomic sequence classifier that assigns taxonomic labels to DNA sequences.
-Outputs a five fields tab-delimited text file.
+
+..._results.txt is a five fields tab-delimited text file.
+..._report.txt is kraken2's modified report format (--report-minimizer-data).
 """
 function align_kraken2(
         db_location::String, sequence_file::String;
-        kraken_bin="kraken2",
-        threads=false, quick=false, min_hit_groups=false, )
+        kraken_bin = "kraken2",
+        threads = 6, report = true, results = true,
+        quick = false, min_hit_groups = false, )
+
+    output_file = sequence_file * "_kraken2_results.txt"
+    report_file = sequence_file * "_report.txt"
 
     params = ["--db", db_location,
               sequence_file,
+              "--threads", threads,
              ]
 
     # append additional options
-    threads && append!(params, ["--threads", threads])
+    report && append!(params, ["--report", report_file, "--report-minimizer-data"])
     quick && push!(params, "--quick")
     min_hit_groups && push!(params, "--minimum-hit-groups")
+    # if results file is unwanted send stdout to /dev/null
+    !(results) && (output_file = devnull)
 
-    output_file = sequence_file * "_kraken2_results.txt" # or tsv?
     cmd = pipeline(`$kraken_bin $params`, stdout=output_file)
     run(cmd)
 end
