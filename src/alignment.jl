@@ -2,8 +2,9 @@
 """
 Wrapper function for kraken2 taxonomic sequence classifier that assigns taxonomic labels to DNA sequences.
 
-..._results.txt is a five fields tab-delimited text file.
-..._report.txt is kraken2's modified report format (--report-minimizer-data).
+*.results.txt is a five fields tab-delimited text file.
+*.report.txt is in kraken2's modified report format (--report-minimizer-data).
+Report file is used for KronaTools plot.
 """
 function align_kraken2(
         db_location::String, sequence_file::String;
@@ -11,8 +12,8 @@ function align_kraken2(
         threads = 6, report = true, results = true,
         quick = false, min_hit_groups = false, )
 
-    output_file = sequence_file * "_kraken2_results.txt"
-    report_file = sequence_file * "_report.txt"
+    output_file = split(sequence_file, ".")[1] * ".kraken2_results.txt"
+    report_file = split(sequence_file, ".")[1] * ".report.txt"
 
     params = ["--db", db_location,
               sequence_file,
