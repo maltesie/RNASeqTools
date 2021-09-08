@@ -41,7 +41,8 @@ function Features(feature_list::Vector{Interval{Annotation}})
     return Features(IntervalCollection(feature_list, true))
 end
 
-function Features(gff_file::String, type::Vector{String}; name_key="Name", fallback_key=nothing)
+function Features(gff_file::String, type::Vector{String}; name_key="Name", fallback_key=nothing, same_name_rule=:all)
+    @assert same_name_rule in (:first, :all, :none)
     features = open(collect, GFF3.Reader, gff_file)
     intervals = Vector{Interval{Annotation}}()
     names = Dict{Tuple{String,String},Int}()
@@ -63,10 +64,12 @@ function Features(gff_file::String, type::Vector{String}; name_key="Name", fallb
             end
         end
         name in keys(names) ? (names[name]+=1) : (names[name]=1)
+        (same_name_rule === :first && names[name] > 1) && continue
         names[name] > 1 ? (n = name[2] * "$(names[name])") : (n = name[2])
         annot = Annotation(GFF3.featuretype(feature), n, Dict(pair[1] => join(pair[2], ",") for pair in GFF3.attributes(feature)))
         push!(intervals, Interval(seqn, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annot))
     end
+    same_name_rule === :none && (return Features([i for i in intervals if ((type(i), name(i)) in names && names[(type(i), name(i))] == 1)]))
     return Features(intervals)
 end
 
