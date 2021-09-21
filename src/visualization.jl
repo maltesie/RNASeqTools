@@ -98,20 +98,29 @@ end
 """
 KronaTools wrapper function.
 Uses report file from kraken2 created by align_kraken2().
+
+Example use (using .report.txt file created by align_kraken2()):
+    kronaplot("notex_01_1.report.txt")
+
+Output:
+    notex_01_1.error.txt
+    notex_01_1.krona.html
 """
 function kronaplot(taxonomy_file::String;
-        krona_bin = "ktImportTaxonomy",
+        krona_bin="ktImportTaxonomy",
     )
-    # cut -f3,7 trimmed_notex_01_1.report.txt > krona.in
-    # ktImportTaxonomy krona.in -o krona.html -t 2 -m 1
 
     output_file = split(taxonomy_file, ".")[1] * ".krona.html"
     error_file = split(taxonomy_file, ".")[1] * ".error.txt"
+    tmp_file = tempname()
     params = [
               "-o", output_file,
               "-t", 2, "-m", 1
              ]
+    # cut taxonomy file to appropriate columns
+    run(pipeline(`cut -f3,7 $taxonomy_file`, stdout=tmp_file))
 
-    # cmd = pipeline(`$krona_bin $params cut -f3,7 $taxonomy_file`, stderr=error_file)
-    # run(cmd)
+    # ktImportTaxonomy krona.in -o krona.html -t 2 -m 1
+    cmd = pipeline(`$krona_bin $tmp_file $params`, stderr=error_file)
+    run(cmd)
 end

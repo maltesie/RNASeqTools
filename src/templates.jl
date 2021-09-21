@@ -129,6 +129,14 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
 	write(joinpath(results_path, "interactions.xlsx"), ints)
 end
 
+"""
+Pipeline to create krona plots from sequence files and DB.
+Creates 4 files:
+    *.kraken2_results.txt
+    *.report.txt
+    *.error.txt
+    *.krona.html
+"""
 function krona_plot_pipeline(
         db_location::String, sequence_file::String;
     )
