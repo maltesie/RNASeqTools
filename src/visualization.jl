@@ -2,20 +2,20 @@ function dashboard(reads::Sequences)
 
     app = dash(assets_folder=joinpath(@__DIR__, "assets"))
 
-    app.layout = html_div(id="root") do 
+    app.layout = html_div(id="root") do
         html_div(id="left-column") do
             html_h1("Conserved UTRs"),
             dcc_input(id = "my-id1", value="initial value", type = "text"),
             html_div(id = "my-div1")
         end,
         html_div(id="app-container") do
-            dcc_tabs(id ="tabs", value="data") do 
-                dcc_tab(id="data", label="Data", value="data") do 
+            dcc_tabs(id ="tabs", value="data") do
+                dcc_tab(id="data", label="Data", value="data") do
                     dash_datatable(id="my-data-table", columns=datatable_columns(show_table), data=datatabele_data(show_table), page_action="none",
                                     style_table=Dict("height"=>"600px", "overflowY"=>"auto")),
                     html_p("asdasdasdasdasdasdasdasda")
                 end,
-                dcc_tab(id="about", label="About", value="about") do 
+                dcc_tab(id="about", label="About", value="about") do
                     html_p("asdasdasdasd")
                 end
             end
@@ -76,7 +76,7 @@ end
 function expressionpca(counts_file::String, conditions::Dict{String, UnitRange{Int64}}; plot_pcs=(1,2), legend=:best, topcut=500)
     averages = CSV.read(counts_file, DataFrame; header=1, delim=',') |> Matrix{Float64}
     topcut = min(nrow(averages), topcut)
-    averages .+= 0.1 
+    averages .+= 0.1
     (nfeatures, nsamples) = size(averages)
     avg_sample::Vector{Float64} = [geomean(averages[i, :]) for i in 1:nfeatures]
     norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:nsamples]
@@ -95,5 +95,32 @@ function expressionpca(counts_file::String, conditions::Dict{String, UnitRange{I
     plot(p, xlabel="PC$(first(plot_pcs)) ($ratio1%)", ylabel="PC$(last(plot_pcs)) ($ratio2%)", legend=legend)
 end
 
-function kronaplot(taxonomy_file::String; krona_bin="ktImportTaxonomy")
+"""
+KronaTools wrapper function.
+Uses report file from kraken2 created by align_kraken2().
+
+Example use (using .report.txt file created by align_kraken2()):
+    kronaplot("notex_01_1.report.txt")
+
+Output:
+    notex_01_1.error.txt
+    notex_01_1.krona.html
+"""
+function kronaplot(taxonomy_file::String;
+        krona_bin="ktImportTaxonomy",
+    )
+
+    output_file = split(taxonomy_file, ".")[1] * ".krona.html"
+    error_file = split(taxonomy_file, ".")[1] * ".error.txt"
+    tmp_file = tempname()
+    params = [
+              "-o", output_file,
+              "-t", 2, "-m", 1
+             ]
+    # cut taxonomy file to appropriate columns
+    run(pipeline(`cut -f3,7 $taxonomy_file`, stdout=tmp_file))
+
+    # ktImportTaxonomy krona.in -o krona.html -t 2 -m 1
+    cmd = pipeline(`$krona_bin $tmp_file $params`, stderr=error_file)
+    run(cmd)
 end

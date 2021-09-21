@@ -78,7 +78,7 @@ function transcriptional_startsites(texreps::SingleTypeFiles, notexreps::SingleT
     write(results_gff, tss_features)
 end
 
-function full_annotation(features::Features, texdict::Dict{String,Coverage}, notexdict::Dict{String,Coverage}, termdict::Dict{String,Coverage}, results_gff::String; 
+function full_annotation(features::Features, texdict::Dict{String,Coverage}, notexdict::Dict{String,Coverage}, termdict::Dict{String,Coverage}, results_gff::String;
                             cds_type="CDS", five_type="5UTR", three_type="3UTR", igr_type="IGR", min_tex_ratio=1.3, min_step=5, min_background_ratio=1.2, window_size=10)
     @assert keys(texdict) == keys(notexdict)
     tss_pos = Dict(key=>tsss(notexdict[key], texdict[key]; min_tex_ratio=min_tex_ratio, min_step=min_step, min_background_ratio=min_background_ratio, window_size=window_size) for key in keys(texdict))
@@ -101,6 +101,7 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", 
                             invert_strand=:read1, reverse_order=true, model=:fisher, min_interactions=5, max_fdr=0.05,
                             overwrite_existing=false)
+      
     isdir(joinpath(results_path, "interactions")) || mkdir(joinpath(results_path, "interactions"))
     isdir(joinpath(results_path, "singles")) || mkdir(joinpath(results_path, "singles"))
     for (condition, r) in conditions
@@ -113,7 +114,7 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
             println("Reading $bam")
             alignments = Alignments(bam; only_unique=false, invert_strand=invert_strand, reverse_order=reverse_order)
             println("Annotating alignments...")
-            annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type) 
+            annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type)
             println("Building graph for replicate $replicate_id...")
             append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types)
             empty!(alignments)
@@ -131,4 +132,21 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
 	ints = CsvFiles(joinpath(results_path, "interactions"))
 	write(joinpath(results_path, "singles.xlsx"), singles)
 	write(joinpath(results_path, "interactions.xlsx"), ints)
+end
+
+"""
+Pipeline to create krona plots from sequence files and DB.
+Creates 4 files:
+    *.kraken2_results.txt
+    *.report.txt
+    *.error.txt
+    *.krona.html
+"""
+function krona_plot_pipeline(
+        db_location::String, sequence_file::String;
+    )
+    taxonomy_file = split(sequence_file, ".")[1] * ".report.txt"
+
+    align_kraken2(db_location, sequence_file)
+    kronaplot(taxonomy_file)
 end
