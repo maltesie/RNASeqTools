@@ -118,10 +118,10 @@ function annotate!(interactions::Interactions, features::Features; method=:dispa
 end
 
 function asdataframe(interactions::Interactions; output=:edges, min_interactions=5, max_fdr=0.05)
+    out_df = copy(interactions.edges)
+    "fdr" in names(out_df) && filter!(:fdr => <=(max_fdr), out_df)
+    filter!(:nb_ints => >=(min_interactions), out_df)
     if output === :edges
-        out_df = copy(interactions.edges)
-        "fdr" in names(out_df) && filter!(:fdr => <=(max_fdr), out_df)
-        filter!(:nb_ints => >=(min_interactions), out_df)
         out_df[!, :meanleft1] = Int.(floor.(out_df[!, :meanleft1]))
         out_df[!, :meanright1] = Int.(floor.(out_df[!, :meanright1]))
         out_df[!, :meanleft2] = Int.(floor.(out_df[!, :meanleft2]))
@@ -141,6 +141,10 @@ function asdataframe(interactions::Interactions; output=:edges, min_interactions
                             :meanleft1, :meanright1, :meanleft2, :meanright2, :strand2, :length1, :length2, :minleft1, :maxright1,
                             :minleft2, :maxright2, :relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2]], :nb_ints; rev=true)
     elseif output === :nodes
-        return sort(interactions.nodes[!, [:name, :type, :ref, :nb_single, :nb_ints]], :nb_single; rev=true)
+        out_nodes = copy(interactions.nodes)
+        for (i,row) in enumerate(eachrow(out_nodes))
+            row[:nb_ints] = sum(out_df[(out_df.src .== i) .| (out_df.dst .== i), :nb_ints])
+        end
+        return sort(out_nodes[!, [:name, :type, :ref, :nb_single, :nb_ints]], :nb_single; rev=true)
     end     
 end

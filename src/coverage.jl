@@ -14,7 +14,7 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=true, invert=:none)
+function compute_coverage(bam_file::String; norm=0, unique_mappings_only=true, invert=:none)
     @assert invert in (:none, :both, :read1, :read2)
     record::BAM.Record = BAM.Record()
     reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
@@ -36,7 +36,7 @@ function compute_coverage(bam_file::String; norm=1000000, unique_mappings_only=t
         ispositive ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
     end
     close(reader)
-    norm_factor = norm/count
+    norm_factor = norm > 0 ? norm/count : 1.0
     coverage = Coverage(vals_f, vals_r, chromosome_list)
     filename_f = bam_file[1:end-4] * "_forward.bw"
     filename_r = bam_file[1:end-4] * "_reverse.bw"
