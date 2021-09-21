@@ -99,7 +99,8 @@ end
 
 function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String;
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", 
-                            invert_strand=:read1, reverse_order=true, model=:fisher, overwrite_existing=false)
+                            invert_strand=:read1, reverse_order=true, model=:fisher, min_interactions=5, max_fdr=0.05,
+                            overwrite_existing=false)
     isdir(joinpath(results_path, "interactions")) || mkdir(joinpath(results_path, "interactions"))
     isdir(joinpath(results_path, "singles")) || mkdir(joinpath(results_path, "singles"))
     for (condition, r) in conditions
@@ -117,12 +118,15 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
             append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types)
             empty!(alignments)
         end
+        println("Found $(sum(interactions.edges[!, :nb_ints])) chimeras in $(nrow(interactions.edges)) interactions.")
         println("Computing significance levels and filtering...")
         annotate!(interactions, features; method=model)
-        write(joinpath(results_path, "interactions", "$(condition).csv"), asdataframe(interactions; output=:edges))
-        write(joinpath(results_path, "singles", "$(condition).csv"), asdataframe(interactions; output=:nodes))
+        println("Found $(sum(interactions.edges[interactions.edges.fdr .<= max_fdr, :nb_ints])) significant (level 0.95) chimeras in $(sum(interactions.edges.fdr .<= max_fdr)) interactions.")
+        write(joinpath(results_path, "interactions", "$(condition).csv"), asdataframe(interactions; output=:edges, min_interactions=min_interactions, max_fdr=max_fdr))
+        write(joinpath(results_path, "singles", "$(condition).csv"), asdataframe(interactions; output=:nodes, min_interactions=min_interactions, max_fdr=max_fdr))
     end
     (!overwrite_existing && isfile(joinpath(results_path, "singles.xlsx")) && isfile(joinpath(results_path, "interactions.xlsx"))) && return
+    println("Writing tables...")
     singles = CsvFiles(joinpath(results_path, "singles"))
 	ints = CsvFiles(joinpath(results_path, "interactions"))
 	write(joinpath(results_path, "singles.xlsx"), singles)
