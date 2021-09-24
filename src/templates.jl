@@ -148,6 +148,6 @@ function krona_plot_pipeline(
     )
     taxonomy_file = split(sequence_file, ".")[1] * ".report.txt"
 
-    align_kraken2(db_location, sequence_file, threads)
+    align_kraken2(db_location, sequence_file, threads = threads)
     kronaplot(taxonomy_file)
 end
