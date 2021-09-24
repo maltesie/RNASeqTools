@@ -55,7 +55,7 @@ function Features(gff_file::String, type::Vector{String}; name_key="Name", fallb
         catch ex
             if ex isa KeyError
                 try
-                    isnothing(fallback_key) || (name = (GFF3.featuretype(feature), join(GFF3.attributes(feature, fallback_key), ","))) 
+                    isnothing(fallback_key) || (name = (GFF3.featuretype(feature), join(GFF3.attributes(feature, fallback_key), ",")))
                 catch _
                     continue
                 end
@@ -85,21 +85,21 @@ function Features(coverage::Coverage, type::String)
     return Features([Interval(refname(i), leftposition(i), rightposition(i), strand(i), Annotation(type, "", Dict{String,String}("Value"=>"$(value(i))"))) for i in coverage])
 end
 
-type(features::Features) = Set(type(f) for f in features) 
+type(features::Features) = Set(type(f) for f in features)
 refnames(features::Features) = collect(keys(features.list.trees))
-function overlaps(alignmentinterval::Interval{AlignmentAnnotation}, feature::Interval{Annotation}) 
+function overlaps(alignmentinterval::Interval{AlignmentAnnotation}, feature::Interval{Annotation})
     seqname(feature) == seqname(alignmentinterval) || return false
     strand(feature) == strand(alignmentinterval) || return false
     return leftposition(feature) <= rightposition(alignmentinterval) && leftposition(alignmentinterval) <= rightposition(feature)
 end
 
 Base.push!(features::Features, interval::Interval) = push!(features.list, interval)
-function Base.merge!(features1::Features, features2::Features) 
+function Base.merge!(features1::Features, features2::Features)
     for feature in features2
         push!(features1, feature)
     end
 end
-function Base.merge(features1::Features, features2::Features) 
+function Base.merge(features1::Features, features2::Features)
     re = Features()
     for feature in features1
         push!(re, feature)
@@ -125,9 +125,9 @@ function GenomicFeatures.eachoverlap(features::I, feature::Interval{T}) where {I
         t = Float64
     end
     haskey(features.list.trees, refname(feature)) ?
-    (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), t}(strand_filter, 
+    (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), t}(strand_filter,
                 GenomicFeatures.ICTreeIntersection{t}(), features.list.trees[refname(feature)], feature)) :
-    (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), t}(strand_filter, 
+    (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), t}(strand_filter,
                 GenomicFeatures.ICTreeIntersection{t}(), GenomicFeatures.ICTree{t}(), feature))
 end
 
@@ -168,9 +168,9 @@ function maxsignalposition(leftpos::Int, rightpos::Int, chr::String, st::Strand,
         for signal in eachoverlap(coverage, Interval(chr, leftpos, rightpos, st, Annotation()))
             value(signal) > maxsignal && (maxsignal=value(signal); pos=rightposition(signal); l=lib)
         end
-        
+
     end
-    if maxsignal != 0.0 
+    if maxsignal != 0.0
         return modify === :left ? (pos, rightpos, l) : (leftpos, pos, l)
     else
         return (leftpos, rightpos, l)
@@ -179,7 +179,7 @@ end
 
 function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage},Nothing}=nothing, term_positions::Union{Dict{String,Coverage},Nothing}=nothing,
                     cds_type="CDS", five_type="5UTR", three_type="3UTR", max_utr_length=250, min_utr_length=25, guess_missing=true)
-    
+
     new_features = Vector{Interval{Annotation}}()
     base_features_pos = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_POS)]
     base_features_neg = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_NEG)]
@@ -191,7 +191,7 @@ function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage}
     stop, start = leftposition(first_feature), rightposition(last_feature)
     push!(new_features, Interval(refname(last_feature), start+1, start+max_utr_length, STRAND_NEG, Annotation(five_type, name(last_feature), params(last_feature))))
     push!(new_features, Interval(refname(first_feature), max(1, stop-max_utr_length), stop-1, STRAND_NEG, Annotation(three_type, name(first_feature), params(first_feature))))
-    
+
     for base_features in (base_features_pos, base_features_neg)
         nb_features = length(base_features)
         stran = base_features === base_features_pos ? STRAND_POS : STRAND_NEG
@@ -203,7 +203,7 @@ function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage}
             if refname(feature) != refname(next_feature)
                 threestart, threestop = start+1, start+max_utr_length
                 fivestart, fivestop = max(1, stop-max_utr_length), stop-1
-            elseif  stop - start > 2 * max_utr_length + 1 
+            elseif  stop - start > 2 * max_utr_length + 1
                 threestart, threestop = start+1, start+max_utr_length
                 fivestart, fivestop = stop-max_utr_length, stop-1
             elseif stop - start > 2 * min_utr_length
@@ -213,16 +213,16 @@ function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage}
             else
                 continue
             end
-            
+
             stran === STRAND_NEG && ((threestart, fivestart, threestop, fivestop, threename, threeref) = (fivestart, threestart, fivestop, threestop, fivename, fiveref))
 
-            isnothing(tss_positions) ? (found_five_in="guess") : 
+            isnothing(tss_positions) ? (found_five_in="guess") :
             ((fivestart, fivestop, found_five_in) = maxsignalposition(fivestart, fivestop, fiveref, stran, tss_positions, stran === STRAND_POS ? :left : :right))
-            isnothing(term_positions) ? (found_three_in="guess") : 
+            isnothing(term_positions) ? (found_three_in="guess") :
             ((threestart, threestop, found_three_in) = maxsignalposition(threestart, threestop, threeref, stran, term_positions, stran === STRAND_POS ? :right : :left))
-            (guess_missing || fixed_five) && push!(new_features, Interval(fiveref, fivestart, fivestop, stran, 
+            (guess_missing || fixed_five) && push!(new_features, Interval(fiveref, fivestart, fivestop, stran,
                 Annotation(five_type, fivename, merge(Dict("source"=>found_five_in), copy(stran === STRAND_NEG ? params(feature) : params(next_feature))))))
-            (guess_missing || fixed_three) && push!(new_features, Interval(threeref, threestart, threestop, stran, 
+            (guess_missing || fixed_three) && push!(new_features, Interval(threeref, threestart, threestop, stran,
                 Annotation(three_type, threename, merge(Dict("source"=>found_three_in), copy(stran === STRAND_NEG ? params(next_feature) : params(feature))))))
         end
     end
@@ -244,8 +244,8 @@ function addigrs!(features::Features; igr_type="IGR", min_igr_length=50)
             refname(feature) == refname(next_feature) || continue
             stop, start = leftposition(next_feature), rightposition(feature)
             (stop-1) - (start + 1) > min_igr_length || continue
-            igr = Interval(refname(feature), start+1, stop-1, base_features === base_features_pos ? STRAND_POS : STRAND_NEG, 
-                                        Annotation(igr_type, name(feature)*":"*name(next_feature), 
+            igr = Interval(refname(feature), start+1, stop-1, base_features === base_features_pos ? STRAND_POS : STRAND_NEG,
+                                        Annotation(igr_type, name(feature)*":"*name(next_feature),
                                         Dict(key=>param(feature, key)*":"*param(next_feature, key) for key in keys(params(feature)) if key in keys(params(next_feature)))))
             push!(new_features, igr)
         end
@@ -292,9 +292,9 @@ function annotate!(features::Features, from_reps::Vector{Coverage}, to_reps::Vec
     for i in 1:length(features)
         t = UnequalVarianceTTest(@view(averages[i,1:stop_from]), @view(averages[i,start_to:stop_to]))
         ps[i] = pvalue(t)
-        isnan(ps[i]) && (ps[i] = 1.0) 
+        isnan(ps[i]) && (ps[i] = 1.0)
         fc[i] = log2(mean(@view(averages[i,start_to:stop_to]))/mean(@view(averages[i,1:stop_from])))
-        isnan(fc[i]) && (fc[i] = 0.0) 
+        isnan(fc[i]) && (fc[i] = 0.0)
     end
     adjps = adjust(PValues(ps), BenjaminiHochberg())
     for (feature, p, adj_p, fold_change, average_from, average_to) in zip(features, ps, adjps, fc, avf, avt)
@@ -374,7 +374,7 @@ mincorrelation(features::Features, coverages::Vector{Coverage}) = mincorrelation
 function asdataframe(features::Features; add_keys=:all)
     add_keys === :none && (add_keys = Set())
     add_keys === :all && (add_keys = Set(key for feature in features for key in keys(params(feature))))
-    df = DataFrame(name=repeat([""], length(features)), refname=repeat([""], length(features)), type=repeat([""], length(features)), 
+    df = DataFrame(name=repeat([""], length(features)), refname=repeat([""], length(features)), type=repeat([""], length(features)),
                     left=repeat([-1], length(features)), right=repeat([-1], length(features)), strand=repeat(['*'], length(features)))
     for key in add_keys
         df[!, Symbol(key)] = repeat([""], length(features))
