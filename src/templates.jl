@@ -144,10 +144,12 @@ Creates 4 files:
 """
 function krona_plot_pipeline(
         db_location::String, sequence_file::String;
-        threads = 6,
+        threads = 6, report = false
     )
-    taxonomy_file = split(sequence_file, ".")[1] * ".report.txt"
+    taxonomy_report = split(sequence_file, ".")[1] * ".report.txt"
 
     align_kraken2(db_location, sequence_file, threads = threads)
-    kronaplot(taxonomy_file)
+    kronaplot(taxonomy_report)
+    # cleanup
+    !report && run(`rm $taxonomy_report`)
 end
