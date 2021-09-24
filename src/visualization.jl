@@ -111,16 +111,18 @@ function kronaplot(taxonomy_file::String;
     )
 
     output_file = split(taxonomy_file, ".")[1] * ".krona.html"
-    error_file = split(taxonomy_file, ".")[1] * ".error.txt"
-    tmp_file = tempname()
+    # error_file = split(taxonomy_file, ".")[1] * ".error.txt"
     params = [
               "-o", output_file,
               "-t", 2, "-m", 1
              ]
+
+    tmp_file = tempname()
+    taxonomy_file = readdlm(taxonomy_file, '\t')
     # cut taxonomy file to appropriate columns
-    run(pipeline(`cut -f3,7 $taxonomy_file`, stdout=tmp_file))
+    writedlm(tmp_file, hcat(taxonomy_file[:, 3], taxonomy_file[:, 7]), '\t')
 
     # ktImportTaxonomy krona.in -o krona.html -t 2 -m 1
-    cmd = pipeline(`$krona_bin $tmp_file $params`, stderr=error_file)
+    cmd = pipeline(`$krona_bin $tmp_file $params`)# , stderr=error_file)
     run(cmd)
 end

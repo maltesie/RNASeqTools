@@ -9,7 +9,7 @@ Report file is used for KronaTools plot.
 function align_kraken2(
         db_location::String, sequence_file::String;
         kraken_bin = "kraken2",
-        threads = 6, report = false, results = false,
+        threads = 6, report = true, results = false,
         quick = false, min_hit_groups = false, )
 
     output_file = split(sequence_file, ".")[1] * ".kraken2_results.txt"
