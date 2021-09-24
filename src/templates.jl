@@ -98,10 +98,10 @@ function conserved_features(features::Features, source_genome::Genome, targets::
 end
 
 function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String;
-                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", 
+                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR",
                             invert_strand=:read1, reverse_order=true, model=:fisher, min_interactions=5, max_fdr=0.05,
                             overwrite_existing=false)
-      
+
     isdir(joinpath(results_path, "interactions")) || mkdir(joinpath(results_path, "interactions"))
     isdir(joinpath(results_path, "singles")) || mkdir(joinpath(results_path, "singles"))
     for (condition, r) in conditions
@@ -144,9 +144,10 @@ Creates 4 files:
 """
 function krona_plot_pipeline(
         db_location::String, sequence_file::String;
+        threads = 6,
     )
     taxonomy_file = split(sequence_file, ".")[1] * ".report.txt"
 
-    align_kraken2(db_location, sequence_file)
+    align_kraken2(db_location, sequence_file, threads)
     kronaplot(taxonomy_file)
 end
