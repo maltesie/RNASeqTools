@@ -46,17 +46,17 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             iindex = trans_edges[(a, b)]
             left1, right1 = leftpos(part1, alignment), rightpos(part1, alignment)
             left2, right2 = leftpos(part2, alignment), rightpos(part2, alignment)
-            iindex > nrow(interactions.edges) && 
+            iindex > nrow(interactions.edges) &&
                 push!(interactions.edges, (a, b, 0, 0, left1, right1, left2, right2, 0, 0, 0, 0, 0, 0, (0 for i in 1:length(interactions.replicate_ids))...))
-            interactions.edges[iindex, :nb_ints] += 1 
-            is_multi && (interactions.edges[iindex, :nb_multi] += 1) 
+            interactions.edges[iindex, :nb_ints] += 1
+            is_multi && (interactions.edges[iindex, :nb_multi] += 1)
             interactions.edges[iindex, :minleft1] = min(interactions.edges[iindex, :minleft1], left1)
             interactions.edges[iindex, :maxright1] = max(interactions.edges[iindex, :maxright1], right1)
             interactions.edges[iindex, :minleft2] = min(interactions.edges[iindex, :minleft2], left2)
             interactions.edges[iindex, :maxright2] = max(interactions.edges[iindex, :maxright2], right2)
-            for (s,v) in zip((:meanleft1, :meanright1, :meanleft2, :meanright2, :length1, :length2), 
+            for (s,v) in zip((:meanleft1, :meanright1, :meanleft2, :meanright2, :length1, :length2),
                             (left1, right1, left2, right2, right1 - left1 + 1, right2 - left2 + 1))
-                interactions.edges[iindex, s] = 
+                interactions.edges[iindex, s] =
                 (interactions.edges[iindex, s] * (interactions.edges[iindex, :nb_ints] - 1) + v) / interactions.edges[iindex, :nb_ints]
             end
             interactions.edges[iindex, replicate_id] = 1
@@ -68,8 +68,8 @@ end
 
 function Interactions()
     nodes = DataFrame(:name=>String[], :type=>String[], :ref=>String[], :nb_single=>Int[], :nb_ints=>Int[], :strand=>Char[], :hash=>UInt[])
-    edges = DataFrame(:src=>Int[], :dst=>Int[], :nb_ints=>Int[], :nb_multi=>Int[], :minleft1=>Int[], :maxright1=>Int[], :minleft2=>Int[], 
-                        :maxright2=>Int[], :length1=>Float64[], :length2=>Float64[], :meanleft1=>Float64[], :meanleft2=>Float64[], 
+    edges = DataFrame(:src=>Int[], :dst=>Int[], :nb_ints=>Int[], :nb_multi=>Int[], :minleft1=>Int[], :maxright1=>Int[], :minleft2=>Int[],
+                        :maxright2=>Int[], :length1=>Float64[], :length2=>Float64[], :meanleft1=>Float64[], :meanleft2=>Float64[],
                         :meanright1=>Float64[], :meanright2=>Float64[])
     return Interactions(SimpleDiGraph(), nodes, edges, [])
 end
@@ -100,7 +100,7 @@ function annotate!(interactions::Interactions, features::Features; method=:dispa
     adjp = adjust(PValues(pvalues), BenjaminiHochberg())
     interactions.edges[:, :p_value] = pvalues
     interactions.edges[:, :fdr] = adjp
-    interactions.edges = hcat(interactions.edges, DataFrame(repeat([-Inf -Inf -Inf -Inf -Inf -Inf], nrow(interactions.edges)), 
+    interactions.edges = hcat(interactions.edges, DataFrame(repeat([-Inf -Inf -Inf -Inf -Inf -Inf], nrow(interactions.edges)),
                                                             [:relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2]))
     tus = Dict(name(feature)=>(leftposition(feature), rightposition(feature)) for feature in features if !(type(feature) in ("5UTR", "3UTR")))
     for edge_row in eachrow(interactions.edges)
@@ -137,7 +137,7 @@ function asdataframe(interactions::Interactions; output=:edges, min_interactions
         out_df[:, :strand1] = interactions.nodes[out_df[!,:src], :strand]
         out_df[:, :strand2] = interactions.nodes[out_df[!,:dst], :strand]
         out_df[:, :in_libs] = sum(eachcol(out_df[!, interactions.replicate_ids]))
-        return sort(out_df[!, [:name1, :type1, :ref1, :name2, :type2, :ref2, :nb_ints, :nb_multi, :p_value, :fdr, :in_libs, :strand1, 
+        return sort(out_df[!, [:name1, :type1, :ref1, :name2, :type2, :ref2, :nb_ints, :nb_multi, :p_value, :fdr, :in_libs, :strand1,
                             :meanleft1, :meanright1, :meanleft2, :meanright2, :strand2, :length1, :length2, :minleft1, :maxright1,
                             :minleft2, :maxright2, :relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2]], :nb_ints; rev=true)
     elseif output === :nodes
@@ -146,5 +146,5 @@ function asdataframe(interactions::Interactions; output=:edges, min_interactions
             row[:nb_ints] = sum(out_df[(out_df.src .== i) .| (out_df.dst .== i), :nb_ints])
         end
         return sort(out_nodes[!, [:name, :type, :ref, :nb_single, :nb_ints]], :nb_single; rev=true)
-    end     
+    end
 end
