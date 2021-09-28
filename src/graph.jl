@@ -6,13 +6,12 @@ mutable struct Interactions <: InteractionContainer
 end
 
 """
-Dispatch of Base write function which saves the Interactions struct in a jld file.
+Dispatch of Base write function which saves the Interactions struct in a jld2 file.
 """
 function Base.write(filepath::String, interactions::Interactions)
     if !endswith(filepath, ".jld2")
         throw(ArgumentError("Append '.jld2' to filepath"))
     end
-    # @assert endswith(filepath, ".jld") # handle incorrect argument
     save(filepath, "interactions", interactions)
 end
 
@@ -90,7 +89,7 @@ function Interactions(alignments::Alignments; replicate_id=:first, min_distance=
 end
 
 """
-Load Interactions struct from jld file.
+Load Interactions struct from jld2 file.
 """
 Interactions(filepath::String) = load(filepath, "interactions")
 
