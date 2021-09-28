@@ -13,7 +13,7 @@ function Base.write(filepath::String, interactions::Interactions)
         throw(ArgumentError("Append '.jld' to filepath"))
     end
     # @assert endswith(filepath, ".jld") # handle incorrect argument
-    @save(filepath, interactions)
+    save(filepath, "interactions", interactions)
 end
 
 function leftpos(alnpart::AlignedPart, alnread::AlignedRead)
