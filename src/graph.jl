@@ -92,10 +92,7 @@ end
 """
 Load Interactions struct from file.
 """
-function Interactions(filepath::String)
-    interactions = load(filepath)
-    return interactions
-end
+Interactions(filepath::String) = load(filepath, "interactions")
 
 function annotate!(interactions::Interactions, features::Features; method=:disparity)
     @assert method in (:disparity, :fisher)
