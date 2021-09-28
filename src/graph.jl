@@ -5,6 +5,17 @@ mutable struct Interactions <: InteractionContainer
     replicate_ids::Vector{Symbol}
 end
 
+"""
+Dispatch of Base write function which saves the Interactions struct in a jld file.
+"""
+function Base.write(filepath::String, interactions::Interactions)
+    if !endswith(filepath, ".jld")
+        throw(ArgumentError("Append '.jld' to filepath"))
+    end
+    # @assert endswith(filepath, ".jld") # handle incorrect argument
+    @save(filepath, interactions)
+end
+
 function leftpos(alnpart::AlignedPart, alnread::AlignedRead)
     minimum(leftposition(p) for p in alnread if sameannotation(p, alnpart))
 end
@@ -76,6 +87,14 @@ end
 
 function Interactions(alignments::Alignments; replicate_id=:first, min_distance=1000, filter_types=[])
     append!(Interactions(), alignments, replicate_id, min_distance=min_distance, filter_types=filter_types)
+end
+
+"""
+Load Interactions struct from file.
+"""
+function Interactions(filepath::String)
+    interactions = load(filepath)
+    return interactions
 end
 
 function annotate!(interactions::Interactions, features::Features; method=:disparity)
