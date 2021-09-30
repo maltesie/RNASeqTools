@@ -6,11 +6,7 @@ mutable struct Interactions <: InteractionContainer
 end
 
 """
-<<<<<<< HEAD
 Method of write function which saves the Interactions struct in a jld2 file.
-=======
-Dispatch of Base write function which saves the Interactions struct in a jld2 file.
->>>>>>> 24aa817496d9d29f5ef6d9dfc8ab808dd49f39aa
 """
 function Base.write(filepath::String, interactions::Interactions)
     if !endswith(filepath, ".jld2")
@@ -18,10 +14,6 @@ function Base.write(filepath::String, interactions::Interactions)
     else
         save(filepath, "interactions", interactions)
     end
-<<<<<<< HEAD
-=======
-    save(filepath, "interactions", interactions)
->>>>>>> 24aa817496d9d29f5ef6d9dfc8ab808dd49f39aa
 end
 
 function leftpos(alnpart::AlignedPart, alnread::AlignedRead)
