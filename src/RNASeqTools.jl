@@ -1,6 +1,6 @@
 module RNASeqTools
 
-using XAM, FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig, DelimitedFiles, JLD2
+using XAM, FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig, DelimitedFiles, JLD2, BGZFStreams
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 using Plots, Measures, Statistics, HypothesisTests, MultipleTesting, DataFrames, StatsBase, MultivariateStats, Combinatorics, Random
 using LightGraphs
@@ -16,7 +16,7 @@ export hasannotation, ischimeric, istriplet, refinterval, readinterval, annotati
 export values, addutrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, normalizedcount, covratio
 export similarity, tsss, terms, nucleotidecount, occurences, hasannotationkey
 export dashboard, lengthhist, similarityhist, nucleotidedist, expressionpca
-export feature_ratio, feature_count, de_genes, prepare_data, rilseq_analysis, unmapped_reads, transcriptional_startsites, full_annotation, prepare_data
+export feature_ratio, feature_count, de_genes, prepare_data, rilseq_analysis, remove_features, unmapped_reads, transcriptional_startsites, full_annotation, prepare_data
 
 include("types.jl")
 include("misc.jl")

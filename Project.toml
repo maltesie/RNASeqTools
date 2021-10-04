@@ -5,6 +5,7 @@ version = "0.2.0"
 
 [deps]
 BED = "8e4a8c10-cb6b-11e8-08d2-83478d609d67"
+BGZFStreams = "28d598bf-9b8f-59f1-b38c-5a06b4a0f5e6"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 BigWig = "9d649c22-cb6b-11e8-1fa9-f3896fced444"
 BioAlignments = "00701ae9-d1dc-5365-b64a-a3a3ebf5695e"

@@ -70,6 +70,24 @@ function unmapped_reads(bams::SingleTypeFiles)
     end
 end
 
+function remove_features(bams::SingleTypeFiles, features::Features)
+    for bam_file in bams
+        startswith(bam_file, "filtered_") && continue
+        record = BAM.Record()
+        reader = BAM.Reader(open(bam_file))
+        h = header(reader)
+        writer = BAM.Writer(BGZFStream(open(joinpath(dirname(bam_file), "filtered_" * basename(bam_file)), "w"), "w"), h)
+        while !eof(reader)
+            read!(reader, record)
+            BAM.ismapped(record) && hasoverlap(features, Interval(BAM.refname(record), leftposition(record), rightposition(record), ispositivestrand(record) ? STRAND_POS : STRAND_NEG, Annotation())) && continue
+            write(writer, record)
+        end
+        sleep(0.1)
+        close(writer)
+        close(reader)
+    end
+end
+
 function transcriptional_startsites(texreps::SingleTypeFiles, notexreps::SingleTypeFiles, results_gff::String)
     tex_coverage = Coverage(texreps)
     notex_coverage = Coverage(notexreps)
@@ -151,5 +169,5 @@ function krona_plot_pipeline(
     align_kraken2(db_location, sequence_file, threads = threads)
     kronaplot(taxonomy_report)
     # cleanup
-    !report && run(`rm $taxonomy_report`)
+    !report && rm(taxonomy_report)
 end

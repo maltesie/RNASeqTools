@@ -132,7 +132,7 @@ function GenomicFeatures.eachoverlap(features::I, feature::Interval{T}) where {I
 end
 
 function hasoverlap(features::Features, feature::Interval)
-    for int in eachoverlap(features, feature)
+    for _ in eachoverlap(features, feature)
         return true
     end
     return false
