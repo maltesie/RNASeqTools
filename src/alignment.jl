@@ -459,13 +459,15 @@ function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
+        is_unique = !hasxatag(record)
+        !is_unique && only_unique && continue
         (check_templen && (0 < abs(BAM.templength(record)) < min_templength) && paironsamestrand(record, invert_strand) && isproperpair(record)) && continue
         id = hash_id ? (is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(@view(record.data[1:BAM.seqname_length(record)]))) : BAM.tempname(record)
         current_read = isread2(record) && ispaired(record) ? :read2 : :read1
         invert = (current_read === :read2 && invert_strand in (:read2, :both)) || (current_read === :read1 && invert_strand in (:read1, :both))
         foundit = false
         nms = nmtag(record)
-        if hasxatag(record) && !only_unique
+        if !is_unique && !only_unique
             xa = xatag(record)
             leftest = 0
             leftestpos = BAM.leftposition(record)

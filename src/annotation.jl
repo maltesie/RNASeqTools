@@ -47,6 +47,7 @@ function Features(gff_file::String, type::Vector{String}; name_key="Name", fallb
     intervals = Vector{Interval{Annotation}}()
     names = Dict{Tuple{String,String},Int}()
     for feature in features
+        GFF3.featuretype(feature) == "Source" && continue
         (GFF3.featuretype(feature) in type || isempty(type)) || continue
         seqn = GFF3.seqid(feature)
         name = ("NA", "NA")
@@ -73,12 +74,12 @@ function Features(gff_file::String, type::Vector{String}; name_key="Name", fallb
     return Features(intervals)
 end
 
-function Features(gff_file::String, type::String; name_key="Name", fallback_key=nothing)
-    return Features(gff_file, [type], name_key=name_key, fallback_key=fallback_key)
+function Features(gff_file::String, type::String; name_key="Name", fallback_key=nothing, same_name_rule=:all)
+    return Features(gff_file, [type], name_key=name_key, fallback_key=fallback_key, same_name_rule=same_name_rule)
 end
 
-function Features(gff_file::String; name_key="Name", fallback_key=nothing)
-    return Features(gff_file, String[], name_key=name_key, fallback_key=fallback_key)
+function Features(gff_file::String; name_key="Name", fallback_key=nothing, same_name_rule=:all)
+    return Features(gff_file, String[], name_key=name_key, fallback_key=fallback_key, same_name_rule=same_name_rule)
 end
 
 function Features(coverage::Coverage, type::String)

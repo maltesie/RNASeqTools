@@ -28,12 +28,12 @@ function feature_count(features::Features, coverages::Vector{Coverage}, conditio
     end
 end
 
-function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
+function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, invert_strand=:none, only_unique=true)
     expnames = Dict{String,Vector{String}}()
     mybams = copy(bams)
     for (name, range) in conditions
-        mybams.list = bams[range]
-        annotate!(features, mybams; count_key="$name")
+        mybams = bams[range]
+        annotate!(features, mybams; count_key="$name", invert_strand=invert_strand, only_unique=only_unique)
         expnames[name] = ["$name$i" for i in 1:length(range)]
     end
     write(joinpath(results_path, "all_counts.csv"), asdataframe(features; add_keys=vcat([val for val in values(expnames)]...)))
