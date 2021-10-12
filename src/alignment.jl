@@ -203,10 +203,10 @@ function readpositions(record::BAM.Record)
     return seqstart, seqstop, relrefstop, seqlen
 end
 
-function AlignedPart(xapart::Union{String, SubString{String}}; invert_strand=false, read=:read1)
+function AlignedPart(xapart::Union{String, SubString{String}}; invert=false, read=:read1)
     chr, pos, cigar, nm = split(xapart, ",")
     refstart = parse(Int, pos)
-    strand = (refstart > 0) == !invert_strand ? Strand('+') : Strand('-')
+    strand = (refstart > 0) == !invert ? Strand('+') : Strand('-')
     refstart *= sign(refstart)
     readstart, readstop, relrefstop, readlen = readpositions(cigar)
     seq_interval = (refstart > 0) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
@@ -456,6 +456,8 @@ function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength
     reader = BAM.Reader(open(bam_file))
     is_bitstring = is_bitstring_bam(bam_file)
     check_templen = isnothing(min_templength) ? false : 0 < min_templength
+    invert2 = invert_strand in (:read2, :both)
+    invert1 = invert_strand in (:read1, :both)
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
@@ -463,8 +465,8 @@ function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength
         !is_unique && only_unique && continue
         (check_templen && (0 < abs(BAM.templength(record)) < min_templength) && paironsamestrand(record, invert_strand) && isproperpair(record)) && continue
         id = hash_id ? (is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(@view(record.data[1:BAM.seqname_length(record)]))) : BAM.tempname(record)
-        current_read = isread2(record) && ispaired(record) ? :read2 : :read1
-        invert = (current_read === :read2 && invert_strand in (:read2, :both)) || (current_read === :read1 && invert_strand in (:read1, :both))
+        current_read = isread2(record) ? :read2 : :read1
+        invert = (current_read === :read2 && invert2) || (current_read === :read1 && invert1)
         foundit = false
         nms = nmtag(record)
         if !is_unique && !only_unique
@@ -480,7 +482,7 @@ function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength
                 intpos < leftestpos && (leftest = i; leftestpos=intpos; nms=pnm)
             end
             if leftest != 0
-                alnpart = AlignedPart(xastrings[leftest]; invert_strand=invert, read=current_read)
+                alnpart = AlignedPart(xastrings[leftest]; invert=invert, read=current_read)
                 foundit = true
             end
         end
