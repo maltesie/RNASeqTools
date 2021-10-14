@@ -123,7 +123,7 @@ function Coverage(values_f::CoverageValues, values_r::CoverageValues, chroms::Ve
                 current_end += 1
                 current_end == current_len && break
             end
-            (current_pos == 1 && current_end == current_len) || push!(new_intervals, Interval(current_ref, current_pos, current_end, 
+            (current_pos == 1 && current_end == current_len) || push!(new_intervals, Interval(current_ref, current_pos, current_end,
                                                                     vals===values_f ? STRAND_POS : STRAND_NEG, current_value))
             current_pos = current_end + 1
             current_end = current_pos
@@ -148,7 +148,7 @@ function Base.write(filename_f::String, filename_r::String, coverage::Coverage)
     writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
     writer_r = BigWig.Writer(open(filename_r, "w"), chromosome_list)
     for interval in coverage
-        strand(interval) == STRAND_POS ? 
+        strand(interval) == STRAND_POS ?
         write(writer_f, (interval.seqname, interval.first, interval.last, interval.metadata)) :
         write(writer_r, (interval.seqname, interval.first, interval.last, interval.metadata))
     end
@@ -185,7 +185,7 @@ function Base.merge(coverages::Coverage ...)
     vals_r = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
     for cv in coverages
         for interval in cv
-            strand(interval) == STRAND_POS ? 
+            strand(interval) == STRAND_POS ?
             vals_f[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata/n :
             vals_r[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata/n
         end
@@ -250,7 +250,7 @@ function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, mi
 end
 
 function terms(coverage::Coverage; min_step=10, window_size=10, min_background_ratio=1.2)
-    min_background_increase = min_background_ratio - 1.0 
+    min_background_increase = min_background_ratio - 1.0
     vals = values(coverage)
     intervals = Vector{Interval{Float64}}()
     chrs = [chr[1] for chr in coverage.chroms]
@@ -269,4 +269,3 @@ function terms(coverage::Coverage; min_step=10, window_size=10, min_background_r
     end
     return Coverage(IntervalCollection(intervals, true), coverage.chroms)
 end
-
