@@ -387,6 +387,8 @@ function overlapdistance(i1::Interval, i2::Interval)::Float64
     return min(min(length(i1), length(i2)), min(rightposition(i1) - leftposition(i2), rightposition(i2) - leftposition(i1)))
 end
 distance(i1::Interval, i2::Interval)::Float64 = -min(-0.0, overlapdistance(i1,i2))
+leftestposition(alnread::AlignedRead) = min(minimum(leftposition(part) for part in alnread), minimum(rightposition(part) for part in alnread))
+rightestposition(alnread::AlignedRead) = max(maximum(leftposition(part) for part in alnread), maximum(rightposition(part) for part in alnread))
 
 function ischimeric(part1::AlignedPart, part2::AlignedPart; min_distance=1000, check_annotation=true)
     check_annotation && hasannotation(part1) && hasannotation(part2) && (name(part1) == name(part2)) && (return false)
@@ -496,7 +498,7 @@ function Base.push!(l::Vector{AlignedPart}, item::AlignedPart; reverse_order=fal
 end
 
 function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength=nothing, only_unique=true, invert=:none, reverse_order=false) where T<:Union{UInt, String}
-    @assert invert in [:read1, :read2, :both, :none]
+    @assert invert in (:read1, :read2, :both, :none)
     hash_id = T <: UInt
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
