@@ -387,6 +387,8 @@ function overlapdistance(i1::Interval, i2::Interval)::Float64
     return min(min(length(i1), length(i2)), min(rightposition(i1) - leftposition(i2), rightposition(i2) - leftposition(i1)))
 end
 distance(i1::Interval, i2::Interval)::Float64 = -min(-0.0, overlapdistance(i1,i2))
+leftestposition(alnread::AlignedRead) = min(minimum(leftposition(part) for part in alnread), minimum(rightposition(part) for part in alnread))
+rightestposition(alnread::AlignedRead) = max(maximum(leftposition(part) for part in alnread), maximum(rightposition(part) for part in alnread))
 
 function ischimeric(part1::AlignedPart, part2::AlignedPart; min_distance=1000, check_annotation=true)
     check_annotation && hasannotation(part1) && hasannotation(part2) && (name(part1) == name(part2)) && (return false)
@@ -496,7 +498,7 @@ function Base.push!(l::Vector{AlignedPart}, item::AlignedPart; reverse_order=fal
 end
 
 function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength=nothing, only_unique=true, invert=:none, reverse_order=false) where T<:Union{UInt, String}
-    @assert invert in [:read1, :read2, :both, :none]
+    @assert invert in (:read1, :read2, :both, :none)
     hash_id = T <: UInt
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
@@ -535,7 +537,7 @@ function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; min_templength
         if !foundit
             readstart, readstop, _, readlen = readpositions(record)
             seq_interval = BAM.ispositivestrand(record) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
-            ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), BAM.ispositivestrand(record) == !invert ? Strand('+') : Strand('-'), AlignmentAnnotation())
+            ref_interval = Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), BAM.ispositivestrand(record) == !check_invert ? Strand('+') : Strand('-'), AlignmentAnnotation())
             alnpart = AlignedPart(ref_interval, seq_interval, nms, current_read)
         end
         id in keys(reads) ? push!(reads[id].alns, alnpart; reverse_order=reverse_order) : push!(reads, id=>AlignedRead([alnpart]))
@@ -639,5 +641,3 @@ function annotate!(features::Features, feature_alignments::Alignments{String}; k
         end
     end
 end
-
-function Coverage(alignments::Alignments)
