@@ -14,43 +14,60 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-function compute_coverage(bam_file::String; norm=0, only_unique=true, invert=:none)
+function compute_coverage(bam_file::String; norm = 0, only_unique = true, invert = :none)
+
     @assert invert in (:none, :both, :read1, :read2)
-    record::BAM.Record = BAM.Record()
-    reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
-    chromosome_list = [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))]
+    reader = BAM.Reader(open(bam_file), index = bam_file*".bai") # needed for names
+    chromosome_list = [n for n in zip(
+        bam_chromosome_names(reader), bam_chromosome_lengths(reader)
+    )]
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
-    invert1 = invert in (:both, :read1)
-    invert2 = invert in (:both, :read2)
     count = 0
-    while !eof(reader)
-        read!(reader, record)
-        BAM.ismapped(record) || continue
-        (only_unique && hasxatag(record)) && continue
-        ref = BAM.refname(record)
-        left = BAM.position(record)
-        right = BAM.rightposition(record)
+    chim_count = 0
+    for alignment in Alignments(bam_file; only_unique = only_unique, invert = invert)
+        if ischimeric(alignment; check_annotation = false, min_distance = 3000)
+            chim_count += 1
+            continue
+        end
+        ref = refname(alignment[1])
+        left = leftestposition(alignment)
+        right = rightestposition(alignment)
+        strand(alignment[1]) === STRAND_POS ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
         count += 1
-        ispositive = BAM.ispositivestrand(record) != ((invert1 && isread1(record)) || (invert2 && isread2(record)))
-        ispositive ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
     end
-    close(reader)
     norm_factor = norm > 0 ? norm/count : 1.0
     coverage = Coverage(vals_f, vals_r, chromosome_list)
+    # display(coverage)
     filename_f = bam_file[1:end-4] * "_forward.bw"
     filename_r = bam_file[1:end-4] * "_reverse.bw"
     writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
     writer_r = BigWig.Writer(open(filename_r, "w"), chromosome_list)
     for interval in coverage
-        writer = strand(interval) == STRAND_POS ? writer_f : writer_r
-        write(writer, (interval.seqname, interval.first, interval.last, interval.metadata*norm_factor))
+        writer = strand(interval) === STRAND_POS ? writer_f : writer_r
+        write(writer,
+            (interval.seqname, interval.first,
+                interval.last, interval.metadata * norm_factor))
     end
     close(writer_f)
     close(writer_r)
+    println("is chimeric count: ", chim_count)
 end
 
 function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_only=true, overwrite_existing=false, invert=:none)
+    @assert files.type == ".bam"
+    bw_files = Vector{Tuple{String, String}}()
+    for file in files
+        filename_f = file[1:end-4] * "_forward.bw"
+        filename_r = file[1:end-4] * "_reverse.bw"
+        push!(bw_files, (filename_f, filename_r))
+        (!overwrite_existing && isfile(filename_f) && isfile(filename_r)) && continue
+        compute_coverage(file; norm=norm, unique_mappings_only=unique_mappings_only, invert=invert)
+    end
+    return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
+end
+
+function compute_coverage(files::PairedSingleTypeFiles; norm=1000000, unique_mappings_only=true, overwrite_existing=false, invert=:none)
     @assert files.type == ".bam"
     bw_files = Vector{Tuple{String, String}}()
     for file in files
