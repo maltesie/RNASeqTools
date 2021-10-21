@@ -64,19 +64,6 @@ function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_
     return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
 end
 
-function compute_coverage(files::PairedSingleTypeFiles; norm=1000000, unique_mappings_only=true, overwrite_existing=false, invert=:none)
-    @assert files.type == ".bam"
-    bw_files = Vector{Tuple{String, String}}()
-    for file in files
-        filename_f = file[1:end-4] * "_forward.bw"
-        filename_r = file[1:end-4] * "_reverse.bw"
-        push!(bw_files, (filename_f, filename_r))
-        (!overwrite_existing && isfile(filename_f) && isfile(filename_r)) && continue
-        compute_coverage(file; norm=norm, unique_mappings_only=unique_mappings_only, invert=invert)
-    end
-    return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
-end
-
 struct Coverage <: AnnotationContainer
     list::IntervalCollection{Float64}
     chroms::Vector{Tuple{String, Int}}
