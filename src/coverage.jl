@@ -24,10 +24,8 @@ function compute_coverage(bam_file::String; norm = 0, only_unique = true, invert
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     count = 0
-    chim_count = 0
     for alignment in Alignments(bam_file; only_unique = only_unique, invert = invert)
         if ischimeric(alignment; check_annotation = false, min_distance = 3000)
-            chim_count += 1
             continue
         end
         ref = refname(alignment[1])
@@ -51,7 +49,6 @@ function compute_coverage(bam_file::String; norm = 0, only_unique = true, invert
     end
     close(writer_f)
     close(writer_r)
-    println("is chimeric count: ", chim_count)
 end
 
 function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_only=true, overwrite_existing=false, invert=:none)
