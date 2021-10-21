@@ -14,37 +14,38 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-function compute_coverage(bam_file::String; norm=0, only_unique=true, invert=:none)
+function compute_coverage(bam_file::String; norm = 0, only_unique = true, invert = :none)
+
     @assert invert in (:none, :both, :read1, :read2)
-    record::BAM.Record = BAM.Record()
-    reader = BAM.Reader(open(bam_file), index=bam_file*".bai")
-    chromosome_list = [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))]
+    reader = BAM.Reader(open(bam_file), index = bam_file*".bai") # needed for names
+    chromosome_list = [n for n in zip(
+        bam_chromosome_names(reader), bam_chromosome_lengths(reader)
+    )]
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
-    invert1 = invert in (:both, :read1)
-    invert2 = invert in (:both, :read2)
     count = 0
-    while !eof(reader)
-        read!(reader, record)
-        BAM.ismapped(record) || continue
-        (only_unique && hasxatag(record)) && continue
-        ref = BAM.refname(record)
-        left = BAM.position(record)
-        right = BAM.rightposition(record)
+    for alignment in Alignments(bam_file; only_unique = only_unique, invert = invert)
+        if ischimeric(alignment; check_annotation = false, min_distance = 3000)
+            continue
+        end
+        ref = refname(alignment[1])
+        left = leftestposition(alignment)
+        right = rightestposition(alignment)
+        strand(alignment[1]) === STRAND_POS ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
         count += 1
-        ispositive = BAM.ispositivestrand(record) != ((invert1 && isread1(record)) || (invert2 && isread2(record)))
-        ispositive ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
     end
-    close(reader)
     norm_factor = norm > 0 ? norm/count : 1.0
     coverage = Coverage(vals_f, vals_r, chromosome_list)
+    # display(coverage)
     filename_f = bam_file[1:end-4] * "_forward.bw"
     filename_r = bam_file[1:end-4] * "_reverse.bw"
     writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
     writer_r = BigWig.Writer(open(filename_r, "w"), chromosome_list)
     for interval in coverage
-        writer = strand(interval) == STRAND_POS ? writer_f : writer_r
-        write(writer, (interval.seqname, interval.first, interval.last, interval.metadata*norm_factor))
+        writer = strand(interval) === STRAND_POS ? writer_f : writer_r
+        write(writer,
+            (interval.seqname, interval.first,
+                interval.last, interval.metadata * norm_factor))
     end
     close(writer_f)
     close(writer_r)
@@ -123,7 +124,7 @@ function Coverage(values_f::CoverageValues, values_r::CoverageValues, chroms::Ve
                 current_end += 1
                 current_end == current_len && break
             end
-            (current_pos == 1 && current_end == current_len) || push!(new_intervals, Interval(current_ref, current_pos, current_end, 
+            (current_pos == 1 && current_end == current_len) || push!(new_intervals, Interval(current_ref, current_pos, current_end,
                                                                     vals===values_f ? STRAND_POS : STRAND_NEG, current_value))
             current_pos = current_end + 1
             current_end = current_pos
@@ -148,7 +149,7 @@ function Base.write(filename_f::String, filename_r::String, coverage::Coverage)
     writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
     writer_r = BigWig.Writer(open(filename_r, "w"), chromosome_list)
     for interval in coverage
-        strand(interval) == STRAND_POS ? 
+        strand(interval) == STRAND_POS ?
         write(writer_f, (interval.seqname, interval.first, interval.last, interval.metadata)) :
         write(writer_r, (interval.seqname, interval.first, interval.last, interval.metadata))
     end
@@ -185,7 +186,7 @@ function Base.merge(coverages::Coverage ...)
     vals_r = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
     for cv in coverages
         for interval in cv
-            strand(interval) == STRAND_POS ? 
+            strand(interval) == STRAND_POS ?
             vals_f[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata/n :
             vals_r[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata/n
         end
@@ -250,7 +251,7 @@ function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, mi
 end
 
 function terms(coverage::Coverage; min_step=10, window_size=10, min_background_ratio=1.2)
-    min_background_increase = min_background_ratio - 1.0 
+    min_background_increase = min_background_ratio - 1.0
     vals = values(coverage)
     intervals = Vector{Interval{Float64}}()
     chrs = [chr[1] for chr in coverage.chroms]
@@ -269,4 +270,3 @@ function terms(coverage::Coverage; min_step=10, window_size=10, min_background_r
     end
     return Coverage(IntervalCollection(intervals, true), coverage.chroms)
 end
-

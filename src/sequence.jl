@@ -108,12 +108,12 @@ end
 Base.length(reads::PairedSequences) = length(reads.dict)
 Base.keys(reads::PairedSequences) = keys(reads.dict)
 Base.values(reads::PairedSequences) = values(reads.dict)
-function Base.iterate(reads::PairedSequences) 
+function Base.iterate(reads::PairedSequences)
     it = iterate(reads.dict)
     isnothing(it) ? (return nothing) : ((key, (read1, read2)), state) = it
     return ((read1, read2), state)
 end
-function Base.iterate(reads::PairedSequences, state::Int) 
+function Base.iterate(reads::PairedSequences, state::Int)
     it = iterate(reads.dict, state)
     isnothing(it) ? (return nothing) : ((key, (read1, read2)), state) = it
     return ((read1, read2), state)
@@ -146,12 +146,12 @@ end
 Base.length(reads::Sequences) = length(reads.dict)
 Base.keys(reads::Sequences) = keys(reads.dict)
 Base.values(reads::Sequences) = values(reads.dict)
-function Base.iterate(reads::Sequences) 
+function Base.iterate(reads::Sequences)
     it = iterate(reads.dict)
     isnothing(it) ? (return nothing) : ((key, read), state) = it
     return (read, state)
 end
-function Base.iterate(reads::Sequences, state::Int) 
+function Base.iterate(reads::Sequences, state::Int)
     it = iterate(reads.dict, state)
     isnothing(it) ? (return nothing) : ((key, read), state) = it
     return (read, state)
@@ -176,7 +176,7 @@ function Sequences(f, paired_reads::PairedSequences{T}; use_when_tied=:none) whe
     @assert use_when_tied in [:none, :read1, :read2]
     reads = Dict{T, LongDNASeq}()
     for (key, (read1, read2)) in paired_reads
-        if use_when_tied == :read1 
+        if use_when_tied == :read1
             f(read1) ? push!(reads, key=>copy(read1)) : (f(read2) && push!(reads, key=>copy(read2)))
         elseif use_when_tied == :read2
             f(read2) ? push!(reads, key=>copy(read2)) : (f(read1) && push!(reads, key=>copy(read1)))
@@ -203,7 +203,7 @@ function read_reads(file::String; nb_reads=nothing, hash_id=true)
     read_counter = 0
     while !eof(reader)
         read!(reader, record)
-        id = !hash_id ? identifier(record) : 
+        id = !hash_id ? identifier(record) :
                 (is_bitstring ? parse(UInt, identifier(record); base=2) : hash(record.data[record.identifier]))
         push!(reads, id => LongDNASeq(record.data[record.sequence]))
         read_counter += 1
@@ -233,7 +233,7 @@ end
 #    is_zipped = endswith(files.type, ".gz")
 #    record = is_fastq ? FASTQ.Record() : FASTA.Record()
 #    sequencer = is_fastq ? FASTQ.sequence : FASTA.sequence
-#    
+#
 #    for file in files
 #        outfile = file * ".tmp"
 #        f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
@@ -257,16 +257,16 @@ end
 
 function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
     0 <= pos <= length(read) || resize!(read, 0)
-    
+
     if (from == :left) && (keep == :left)
         resize!(read, pos)
 
     elseif (from == :left) && (keep == :right)
         reverse!(resize!(reverse!(read), length(read)-pos, true))
-    
+
     elseif (from == :right) && (keep == :left)
         resize!(read, length(read)-pos)
-    
+
     elseif (from == :right) && (keep == :right)
         reverse!(resize!(reverse!(read), pos, true))
     end
@@ -357,7 +357,7 @@ end
 function Base.filter!(f, reads::PairedSequences; logic=:or)
     @assert logic in [:or, :xor, :and]
     for (key, (read1, read2)) in reads.dict
-        if logic == :and 
+        if logic == :and
             f(read1) && f(read2) || delete!(reads.dict, key)
         elseif logic == :or
             f(read1) || f(read2) || delete!(reads.dict, key)
@@ -368,7 +368,7 @@ function Base.filter!(f, reads::PairedSequences; logic=:or)
     end
 end
 
-occurences(test_sequence::LongDNASeq, seqs::Sequences{T}, similarity_cut::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1)) where T = 
+occurences(test_sequence::LongDNASeq, seqs::Sequences{T}, similarity_cut::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1)) where T =
     sum(similarity(test_sequence, seq; score_model=score_model) > similarity_cut for seq in seqs)
 
 function similarity(read1::LongDNASeq, read2::LongDNASeq; score_model=nothing)
@@ -392,8 +392,8 @@ function nucleotidecount(reads::Sequences; normalize=true)
     count = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     nb_reads = length(reads)
     for read in reads
-        (align==:left) ? 
-        (index = 1:length(read)) : 
+        (align==:left) ?
+        (index = 1:length(read)) :
         (index = (max_length - length(read) + 1):max_length)
         for (i, n) in zip(index, read)
             count[n][i] += 1
@@ -413,8 +413,8 @@ function nucleotidecount(reads::PairedSequences; normalize=true)
     count2 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     nb_reads = length(reads)
     for (read1, read2) in reads
-        (align==:left) ? 
-        (index1 = 1:length(read1); index2 = 1:length(read2)) : 
+        (align==:left) ?
+        (index1 = 1:length(read1); index2 = 1:length(read2)) :
         (index1 = (max_length - length(read1) + 1):max_length; index2 = (max_length - length(read2) + 1):max_length)
         for ((i1, n1),(i2, n2)) in zip(zip(index1, read1), zip(index2, read2))
             count1[n1][i1] += 1

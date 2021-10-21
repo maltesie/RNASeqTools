@@ -1,7 +1,7 @@
 #!/usr/bin/env julia
 """
     Wrapper function for kraken2 taxonomic sequence classifier that assigns taxonomic labels to DNA sequences.
-    
+
     # Output
     *.results.txt is a five fields tab-delimited text file.
     *.report.txt is in kraken2's modified report format (--report-minimizer-data).
@@ -33,7 +33,7 @@ function align_kraken2(
 end
 
 """
-    Core dispatch of align_mem, which is a wrapper for bwa-mem2. Takes ´in_file1´ and ´in_file2´ and ´genome_file´ and builds a shell 
+    Core dispatch of align_mem, which is a wrapper for bwa-mem2. Takes ´in_file1´ and ´in_file2´ and ´genome_file´ and builds a shell
     command that runs bwa-mem2 with the specified additional parameters and writes the resulting alignments in bam format into ´out_file´.
 
     # Arguments
@@ -76,14 +76,14 @@ end
 align_mem(in_file::String, out_file::String, genome_file::String;
     min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=19, reseeding_factor=1.5, bwa_bin="bwa-mem2", sam_bin="samtools") =
     align_mem(in_file, nothing, out_file::String, genome_file::String;
-        min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, min_seed_len=min_seed_len, 
+        min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, min_seed_len=min_seed_len,
         reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
 """
-    Helper dispatch of align_mem, which is a wrapper for bwa-mem2. Runs align_mem on `read_files::T` 
-    where T is a FileCollection and aligns it against `genome::Genome`. This enables easy handling of 
+    Helper dispatch of align_mem, which is a wrapper for bwa-mem2. Runs align_mem on `read_files::T`
+    where T is a FileCollection and aligns it against `genome::Genome`. This enables easy handling of
     whole folders containing sequence files and the manipulation of a genome using Genome.
-"""   
+"""
 function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, reseeding_factor=1.5,
                     min_seed_len=19, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
     tmp_genome = tempname()
@@ -96,11 +96,11 @@ function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatc
         isa(read_files, SingleTypeFiles) ?
         align_mem(file, out_file, tmp_genome;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open,
-                gap_extend=gap_extend, clipping_penalty=clipping_penalty,  min_seed_len=min_seed_len, 
+                gap_extend=gap_extend, clipping_penalty=clipping_penalty,  min_seed_len=min_seed_len,
                 reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin) :
         align_mem(first(file), last(file), out_file, tmp_genome;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
-                clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, 
+                clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
                 min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
@@ -111,12 +111,12 @@ function align_mem(read_files::T, genome::Genome; min_score=30, match=1, mismatc
 end
 
 """
-    Helper dispatch of align_mem, which is a wrapper for bwa-mem2. Runs align_mem on `reads::T` where T 
-    is a SequenceContainer and aligns it against `genomes::Vector{Genome}`. This enables easy handling 
+    Helper dispatch of align_mem, which is a wrapper for bwa-mem2. Runs align_mem on `reads::T` where T
+    is a SequenceContainer and aligns it against `genomes::Vector{Genome}`. This enables easy handling
     of Sequences and their alignment against multiple genomes.
-"""  
+"""
 function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_score=30, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5,
-                unpair_penalty=9, unpair_rescue=false, min_seed_len=19, reseeding_factor=1.5, bwa_bin="bwa-mem2", sam_bin="samtools", 
+                unpair_penalty=9, unpair_rescue=false, min_seed_len=19, reseeding_factor=1.5, bwa_bin="bwa-mem2", sam_bin="samtools",
                 overwrite_existing=false) where T<:SequenceContainer
     (isfile(out_file) && !overwrite_existing) && return
     tmp_reads = tempname()
@@ -131,11 +131,11 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_scor
         isa(reads, Sequences) ?
         align_mem(tmp_reads, this_out_file, tmp_genome;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
-            clipping_penalty=clipping_penalty, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, 
+            clipping_penalty=clipping_penalty, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
             bwa_bin=bwa_bin, sam_bin=sam_bin) :
         align_mem(tmp_reads, tmp_reads2, this_out_file, tmp_genome;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
-            clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, 
+            clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
             min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
         rm(tmp_genome)
@@ -174,7 +174,7 @@ struct AlignedPart
 end
 
 """
-    Helper function to extract start and stop of the alignment on the read from 
+    Helper function to extract start and stop of the alignment on the read from
     a cigar string. Also compute the stop position on the reference and the complete length of the read.
 """
 function readpositions(cigar::AbstractString)
@@ -209,8 +209,8 @@ function readpositions(cigar::AbstractString)
 end
 
 """
-    Helper function to extract start and stop of the alignment on the read from 
-    a XAM.BAM record. Also compute the stop position on the reference and the 
+    Helper function to extract start and stop of the alignment on the read from
+    a XAM.BAM record. Also compute the stop position on the reference and the
     complete length of the read.
 """
 function readpositions(record::BAM.Record)
@@ -640,4 +640,7 @@ function annotate!(features::Features, feature_alignments::Alignments{String}; k
             push!(params(feature), "Count"=>"$(length(refs))")
         end
     end
+end
+
+function Coverage(alignments::Alignments)
 end
