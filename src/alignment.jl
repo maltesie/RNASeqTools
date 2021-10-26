@@ -704,14 +704,14 @@ function annotate!(features::Features, files::SingleTypeFiles; only_unique_align
                     hasxatag(record) && only_unique_alignments && continue
                     invert = is_reverse_complement != isread2(record)
                     same_strand = ispositivestrand(record) == (strand(feature) === STRAND_POS)
-                    (same_strand != invert) && continue
+                    (same_strand == invert) && continue
                     c += 1
                 end
                 params(feature)["$count_key$i"] = "$c"
             end
             close(reader)
         end
-        
+
     elseif files.type == ".csv"
 
         for file in files

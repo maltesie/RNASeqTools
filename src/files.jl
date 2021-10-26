@@ -95,7 +95,7 @@ function Base.write(fname::String, files::SingleTypeFiles)
         for file in files
             sheetname = basename(file)[1:end-length(files.type)]
             dataframe = DataFrame(CSV.File(file))
-            push!(tables,(sheetname,collect(eachcol(dataframe)), DataFrames.names(dataframe)))
+            push!(tables,(sheetname,collect(eachcol(dataframe)), names(dataframe)))
         end
         XLSX.writetable(fname, tables; overwrite=true)
     end

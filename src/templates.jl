@@ -28,12 +28,12 @@ function feature_count(features::Features, coverages::Vector{Coverage}, conditio
     end
 end
 
-function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, invert=:none, only_unique_alignments=true)
+function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, is_reverse_complement=false, only_unique_alignments=true)
     expnames = Dict{String,Vector{String}}()
     mybams = copy(bams)
     for (name, range) in conditions
         mybams = bams[range]
-        annotate!(features, mybams; count_key="$name", invert=invert, only_unique_alignments=only_unique_alignments)
+        annotate!(features, mybams; count_key="$name", is_reverse_complement=is_reverse_complement, only_unique_alignments=only_unique_alignments)
         expnames[name] = ["$name$i" for i in 1:length(range)]
         println("Finished counting in $name")
     end

@@ -22,7 +22,7 @@ function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true,
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     count = 0
-    for alignment in Alignments(bam_file; only_unique_alignments = only_unique_alignments, is_reverse_complement=is_reverse_complement)
+    for (key, alignment) in Alignments(bam_file; only_unique_alignments = only_unique_alignments, is_reverse_complement=is_reverse_complement)
         if ischimeric(alignment; check_annotation = false, min_distance = 1000)
             continue
         end
@@ -49,7 +49,7 @@ function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true,
     close(writer_r)
 end
 
-function compute_coverage(files::SingleTypeFiles; norm=0, unique_mappings_only=true, overwrite_existing=false, is_reverse_complement=false)
+function compute_coverage(files::SingleTypeFiles; norm=0, only_unique_alignments=true, overwrite_existing=false, is_reverse_complement=false)
     files.type == ".bam" || throw(AssertionError("Only .bam files accepted for alignments."))
     bw_files = Vector{Tuple{String, String}}()
     for file in files
@@ -57,7 +57,7 @@ function compute_coverage(files::SingleTypeFiles; norm=0, unique_mappings_only=t
         filename_r = file[1:end-4] * "_reverse.bw"
         push!(bw_files, (filename_f, filename_r))
         (!overwrite_existing && isfile(filename_f) && isfile(filename_r)) && continue
-        compute_coverage(file; norm=norm, unique_mappings_only=unique_mappings_only, is_reverse_complement=is_reverse_complement)
+        compute_coverage(file; norm=norm, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
     end
     return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
 end
