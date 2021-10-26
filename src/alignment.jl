@@ -477,7 +477,7 @@ end
 
 function name(alnread::AlignedRead)
     names = Set(name(part) for part in alnread)
-    @assert length(names) == 1
+    (length(names) == 1) || throw(Assertion("Found more than one name in AlignedRead."))
     for n in names
         return n
     end
@@ -485,7 +485,7 @@ end
 function name(alnread1::AlignedRead, alnread2::AlignedRead)
     name1 = name(alnread1)
     name2 = name(alnread2)
-    @assert name1 === name2
+    (name1 === name2) || throw(Assertion("AlignedReads have different names."))
     return name1
 end
 
@@ -693,10 +693,8 @@ function occurences(test_sequence::LongDNASeq, bam_file::String, similarity_cut:
     return c
 end
 
-function annotate!(features::Features, files::SingleTypeFiles; only_unique_alignments=true, invert=:none, count_key="Count", abs_lfc_cut=1, pvalue_cut=0.05)
+function annotate!(features::Features, files::SingleTypeFiles; only_unique_alignments=true, is_reverse_complement=false, count_key="Count", abs_lfc_cut=1, pvalue_cut=0.05)
     if files.type == ".bam"
-
-        @assert invert in [:read1, :read2, :both, :none]
         for (i,bam_file) in enumerate(files)
             reader = BAM.Reader(open(bam_file); index=bam_file*".bai")
             for feature in features
@@ -704,15 +702,16 @@ function annotate!(features::Features, files::SingleTypeFiles; only_unique_align
                 for record in eachoverlap(reader, feature)
                     BAM.ismapped(record) || continue
                     hasxatag(record) && only_unique_alignments && continue
-                    invert = isread2(record) && ispaired(record) ? invert in (:read2, :both) : invert in (:read1, :both)
-                    (ispositivestrand(record) == (strand(feature) === STRAND_POS) == invert) && continue
+                    invert = is_reverse_complement != isread2(record)
+                    same_strand = ispositivestrand(record) == (strand(feature) === STRAND_POS)
+                    (same_strand != invert) && continue
                     c += 1
                 end
                 params(feature)["$count_key$i"] = "$c"
             end
             close(reader)
         end
-
+        
     elseif files.type == ".csv"
 
         for file in files

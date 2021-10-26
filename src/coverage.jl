@@ -15,8 +15,6 @@ function bam_chromosome_names(reader::BAM.Reader)
 end
 
 function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true, is_reverse_complement=false)
-
-    @assert invert in (:none, :both, :read1, :read2)
     reader = BAM.Reader(open(bam_file), index = bam_file*".bai") # needed for names
     chromosome_list = [n for n in zip(
         bam_chromosome_names(reader), bam_chromosome_lengths(reader)
@@ -51,15 +49,15 @@ function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true,
     close(writer_r)
 end
 
-function compute_coverage(files::SingleTypeFiles; norm=1000000, unique_mappings_only=true, overwrite_existing=false, invert=:none)
-    @assert files.type == ".bam"
+function compute_coverage(files::SingleTypeFiles; norm=0, unique_mappings_only=true, overwrite_existing=false, is_reverse_complement=false)
+    files.type == ".bam" || throw(AssertionError("Only .bam files accepted for alignments."))
     bw_files = Vector{Tuple{String, String}}()
     for file in files
         filename_f = file[1:end-4] * "_forward.bw"
         filename_r = file[1:end-4] * "_reverse.bw"
         push!(bw_files, (filename_f, filename_r))
         (!overwrite_existing && isfile(filename_f) && isfile(filename_r)) && continue
-        compute_coverage(file; norm=norm, unique_mappings_only=unique_mappings_only, invert=invert)
+        compute_coverage(file; norm=norm, unique_mappings_only=unique_mappings_only, is_reverse_complement=is_reverse_complement)
     end
     return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
 end
@@ -70,7 +68,7 @@ struct Coverage <: AnnotationContainer
 end
 
 function Coverage(bigwig_file::String, direction::Symbol)
-    @assert direction in [:forward, :reverse]
+    direction in [:forward, :reverse] || throw(Assertion("Valid values for direction are :forward and :reverse"))
     reader = open(BigWig.Reader, bigwig_file)
     stran = direction==:forward ? Strand('+') : Strand('-')
     chrlist = BigWig.chromlist(reader)
@@ -87,7 +85,7 @@ function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String)
     reader_r = open(BigWig.Reader, bigwig_reverse_file)
     chrlist_f = BigWig.chromlist(reader_f)
     chrlist_r = BigWig.chromlist(reader_r)
-    @assert chrlist_f == chrlist_r
+    (chrlist_f == chrlist_r) || throw(Assertion("Both strand .bw files have to be defined for the same reference sequences."))
     intervals = Vector{Interval{Float64}}()
     for record in reader_f
         push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), STRAND_POS, convert(Float64, BigWig.value(record))))
@@ -134,7 +132,7 @@ function Coverage(values_f::CoverageValues, values_r::CoverageValues, chroms::Ve
 end
 
 function Coverage(paired_files::PairedSingleTypeFiles)
-    @assert paired_files.type == ".bw"
+    (paired_files.type == ".bw") || throw(Assertion("Only .bw files are accepted for coverage."))
     coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in paired_files]
     return merge(coverages...)
 end
@@ -145,7 +143,7 @@ Base.iterate(coverage::Coverage) = iterate(coverage.list)
 Base.iterate(coverage::Coverage, state) =iterate(coverage.list, state)
 
 function Base.write(filename_f::String, filename_r::String, coverage::Coverage)
-    @assert endswith(filename_f, ".bw") && endswith(filename_f, ".bw")
+    (endswith(filename_f, ".bw") && endswith(filename_f, ".bw")) || throw(Assertion("Both files have to end in .bw\n1: $filename_f\n2: $filename_r"))
     writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
     writer_r = BigWig.Writer(open(filename_r, "w"), chromosome_list)
     for interval in coverage
@@ -180,7 +178,7 @@ function Base.values(coverage::Coverage)
 end
 
 function Base.merge(coverages::Coverage ...)
-    @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
+    all(coverages[1].chroms == c.chroms for c in coverages[2:end]) || throw(Assertion("All Coverage objects have to be defined for the same reference seuqences."))
     n = length(coverages)
     vals_f = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
     vals_r = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
@@ -196,7 +194,7 @@ end
 Base.merge(coverages::Vector{Coverage}) = merge(coverages...)
 
 function rolling_sum(a, n::Int)
-    @assert 1<=n<=length(a)
+    (1<=n<=length(a)) || throw(Assertion("n has to be betwen 1 and $(length(a))."))
     out = similar(a, length(a)-n+1)
     out[1] = sum(a[1:n])
     for i in eachindex(out)[2:end]
@@ -227,7 +225,7 @@ function diff(coverage::Vector{Float64}, invert::Bool, window_size::Int, min_bac
 end
 
 function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, min_background_ratio=1.2, window_size=10)
-    @assert notex.chroms == tex.chroms
+    (notex.chroms == tex.chroms) || throw(Assertion("All Coverage objects have to be defined for the same reference sequences."))
     min_background_increase = min_background_ratio - 1.0
     chrs = [chr[1] for chr in notex.chroms]
     vals_notex = values(notex)
