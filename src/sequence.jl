@@ -105,26 +105,17 @@ struct PairedSequences{T} <: SequenceContainer
     dict::Dict{T, LongDNASeqPair}
 end
 
+
+Base.getindex(reads::PairedSequences, index::UInt) = reads.dict[index]
+Base.getindex(reads::PairedSequences, index::String) = reads.dict[index]
 Base.length(reads::PairedSequences) = length(reads.dict)
 Base.keys(reads::PairedSequences) = keys(reads.dict)
 Base.values(reads::PairedSequences) = values(reads.dict)
-function Base.iterate(reads::PairedSequences)
-    it = iterate(reads.dict)
-    isnothing(it) ? (return nothing) : ((key, (read1, read2)), state) = it
-    return ((read1, read2), state)
-end
-function Base.iterate(reads::PairedSequences, state::Int)
-    it = iterate(reads.dict, state)
-    isnothing(it) ? (return nothing) : ((key, (read1, read2)), state) = it
-    return ((read1, read2), state)
-end
+Base.iterate(reads::PairedSequences) = iterate(reads.dict)
+Base.iterate(reads::PairedSequences, state::Int) = iterate(reads.dict, state)
 
-function PairedSequences(file1::String, file2::String; stop_at=nothing, hash_id=true)
-    reads1 = read_reads(file1; nb_reads=stop_at, hash_id=hash_id)
-    reads2 = read_reads(file2; nb_reads=stop_at, hash_id=hash_id)
-    @assert length(reads1) == length(reads2)
-    @assert all([haskey(reads2, key) for key in keys(reads1)])
-    PairedSequences(Dict(key=>(reads1[key], reads2[key]) for key in keys(reads1)))
+function PairedSequences(file1::String, file2::String; stop_at=nothing, is_reverse_complement=false, hash_id=true)
+    read_reads(file1, file2; nb_reads=stop_at, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
 end
 
 function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedSequences)
@@ -143,19 +134,13 @@ struct Sequences{T} <: SequenceContainer
     dict::Dict{T, LongDNASeq}
 end
 
+Base.getindex(reads::Sequences, index::UInt) = reads.dict[index]
+Base.getindex(reads::Sequences, index::String) = reads.dict[index]
 Base.length(reads::Sequences) = length(reads.dict)
 Base.keys(reads::Sequences) = keys(reads.dict)
 Base.values(reads::Sequences) = values(reads.dict)
-function Base.iterate(reads::Sequences)
-    it = iterate(reads.dict)
-    isnothing(it) ? (return nothing) : ((key, read), state) = it
-    return (read, state)
-end
-function Base.iterate(reads::Sequences, state::Int)
-    it = iterate(reads.dict, state)
-    isnothing(it) ? (return nothing) : ((key, read), state) = it
-    return (read, state)
-end
+Base.iterate(reads::Sequences) = iterate(reads.dict)
+Base.iterate(reads::Sequences, state::Int) = iterate(reads.dict, state)
 
 function Base.write(fasta_file::String, reads::Sequences{T}) where T
     f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")
@@ -167,8 +152,8 @@ end
 
 Sequences(seqs::Vector{LongDNASeq}) = Sequences(Dict(i=>seq for (i::UInt,seq) in enumerate(seqs)))
 
-function Sequences(file::String; stop_at=nothing, hash_id=true)
-    reads = read_reads(file, nb_reads=stop_at, hash_id=hash_id)
+function Sequences(file::String; stop_at=nothing, is_reverse_complement=false, hash_id=true)
+    reads = read_reads(file, nb_reads=stop_at, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
     Sequences(reads)
 end
 
@@ -190,7 +175,7 @@ function Sequences(f, paired_reads::PairedSequences{T}; use_when_tied=:none) whe
     Sequences(reads)
 end
 
-function read_reads(file::String; nb_reads=nothing, hash_id=true)
+function read_reads(file::String; nb_reads=nothing, is_reverse_complement=false, hash_id=true)
     @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
     reads::Dict{hash_id ? UInt : String, LongDNASeq} = Dict()
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
@@ -199,17 +184,55 @@ function read_reads(file::String; nb_reads=nothing, hash_id=true)
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
     reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
     record = is_fastq ? FASTQ.Record() : FASTA.Record()
-    sequencer = is_fastq ? FASTQ.sequence : FASTA.sequence
     read_counter = 0
     while !eof(reader)
         read!(reader, record)
-        id = !hash_id ? identifier(record) :
-                (is_bitstring ? parse(UInt, identifier(record); base=2) : hash(record.data[record.identifier]))
-        push!(reads, id => LongDNASeq(record.data[record.sequence]))
+        id = !hash_id ? identifier(record) : 
+                (is_bitstring ? parse(UInt, identifier(record); base=2) : hash(@view(record.data[record.identifier])))
+        push!(reads, id => is_reverse_complement ? reverse_complement(LongDNASeq(record.data[record.sequence])) : LongDNASeq(record.data[record.sequence]))
         read_counter += 1
         isnothing(nb_reads) || (read_counter >= nb_reads && break)
     end
     close(reader)
+    return reads
+end
+
+function read_reads(file1::String, file2::String; nb_reads=nothing, is_reverse_complement=false, hash_id=true)
+    @assert any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
+    reads::Dict{hash_id ? UInt : String, LongDNASeqPair} = Dict()
+    
+    is_fastq1 = any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz"]])
+    is_zipped1 = endswith(file1, ".gz")
+    is_bitstring1 = is_bitstring_fasta(file1)
+    f1 = is_zipped1 ? GzipDecompressorStream(open(file1, "r")) : open(file1, "r")
+    reader1 = is_fastq1 ? FASTQ.Reader(f1) : FASTA.Reader(f1)
+    record1 = is_fastq1 ? FASTQ.Record() : FASTA.Record()
+    
+    @assert any([endswith(file2, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
+    is_fastq2 = any([endswith(file2, ending) for ending in [".fastq", ".fastq.gz"]])
+    is_zipped2 = endswith(file2, ".gz")
+    is_bitstring2 = is_bitstring_fasta(file2)
+    f2 = is_zipped2 ? GzipDecompressorStream(open(file2, "r")) : open(file2, "r")
+    reader2 = is_fastq2 ? FASTQ.Reader(f2) : FASTA.Reader(f2)
+    record2 = is_fastq2 ? FASTQ.Record() : FASTA.Record()
+    
+    read_counter = 1
+    while !eof(reader1)
+        read!(reader1, record1)
+        id1 = !hash_id ? identifier(record1) : 
+                (is_bitstring1 ? parse(UInt, identifier(record1); base=2) : hash(@view(record1.data[record1.identifier])))
+        read!(reader2, record2)
+        id2 = !hash_id ? identifier(record2) : 
+                (is_bitstring2 ? parse(UInt, identifier(record2); base=2) : hash(@view(record2.data[record2.identifier])))
+        id1 == id2 || throw(AssertionError("entry identifiers do not match for entry $read_counter."))
+        is_reverse_complement ?
+        push!(reads, id1 => (LongDNASeq(record2.data[record2.sequence]), reverse_complement(LongDNASeq(record1.data[record1.sequence])))) : 
+        push!(reads, id1 => (LongDNASeq(record1.data[record1.sequence]), reverse_complement(LongDNASeq(record2.data[record2.sequence]))))
+        read_counter += 1
+        isnothing(nb_reads) || (read_counter > nb_reads && break)
+    end
+    close(reader1)
+    close(reader2)
     return reads
 end
 
@@ -226,34 +249,6 @@ function rev_comp!(reads::PairedSequences; treat=:both)
         treat in [:both, :read2] && BioSequences.reverse_complement!(read2)
     end
 end
-
-#function rev_comp(files::SingleTypeFiles)
-#    @assert files.type in [".fastq.gz", "fasta.gz", ".fastq", ".fasta"]
-#    is_fastq = files.type in [".fastq", ".fastq.gz"]
-#    is_zipped = endswith(files.type, ".gz")
-#    record = is_fastq ? FASTQ.Record() : FASTA.Record()
-#    sequencer = is_fastq ? FASTQ.sequence : FASTA.sequence
-#
-#    for file in files
-#        outfile = file * ".tmp"
-#        f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
-#        reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
-#        writer = is_zipped ? GzipCompressorStream(open(outfile, "w")) : open(outfile, "w")
-#        while !eof(reader)
-#            read!(record, reader)
-#        end
-#    end
-#end
-#
-#function rev_comp(files::PairedSingleTypeFiles; treat=:both)
-#    @assert files.type in [".fastq.gz", "fasta.gz", ".fastq", ".fasta"]
-#    @assert treat in [:both, :read1, :read2]
-#    for (file1, file2) in files
-#        reads = PairedSequences(file1, file2)
-#        rev_comp!(reads; treat=treat)
-#        write(file1[1:end-length(files.type)] * ".fasta.gz", file2[1:end-length(files.type)] * ".fasta.gz", reads)
-#    end
-#end
 
 function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
     0 <= pos <= length(read) || resize!(read, 0)

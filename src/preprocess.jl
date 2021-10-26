@@ -69,8 +69,8 @@ function split_libs(infile::String, barcodes::Dict{String,String}, output_path::
 end
 
 function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}}; 
-    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, umi_loc=:read1, min_length=nothing, 
-    cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=nothing, filter_complexity=nothing,
+    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, umi_loc=:read1, min_length=nothing,
+    max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=nothing, filter_complexity=nothing,
     average_window_quality=nothing, skip_quality_filtering=false, overwrite_existing=false)
 
     for (in_file1, in_file2) in input_files
@@ -89,6 +89,7 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
     !isnothing(trim_poly_x) && append!(params, ["-x", "--poly_x_min_len=$trim_poly_x"])
     !isnothing(trim_poly_g) ? append!(params, ["-g", "--poly_g_min_len=$trim_poly_g"]) : push!(params,"-G")
     !isnothing(min_length) && push!(params, "--length_required=$min_length")
+    !isnothing(max_length) && push!(params, "--max_len1=$max_length")
     !isnothing(umi) && append!(params, ["-U", "--umi_loc=$(String(umi_loc))", "--umi_len=$umi"])
     !isnothing(adapter) && push!(params, "--adapter_sequence=$adapter")
 
@@ -108,23 +109,27 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
 end
 
 function trim_fastp(input_files::SingleTypeFiles; 
-    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, min_length=25, 
+    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, min_length=25, max_length=nothing,
     cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, skip_quality_filtering=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}([(file, nothing) for file in input_files])
-    trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=:read1, min_length=min_length,
-        cut_front=cut_front, cut_tail=cut_tail, trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, average_window_quality=average_window_quality, skip_quality_filtering=skip_quality_filtering)
+    trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=:read1, 
+                min_length=min_length, max_length=max_length, cut_front=cut_front, cut_tail=cut_tail, 
+                trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, 
+                average_window_quality=average_window_quality, skip_quality_filtering=skip_quality_filtering)
     return SingleTypeFiles([joinpath(dirname(file),prefix*basename(file)) for file in input_files if !startswith(basename(file), prefix)], input_files.type)
 end
 
 function trim_fastp(input_files::PairedSingleTypeFiles; 
-    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, umi_loc=:read1, min_length=25, 
+    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, umi_loc=:read1, min_length=25, max_length=nothing,
     cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, skip_quality_filtering=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}(input_files.list)
-    trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=umi_loc, min_length=min_length, cut_front=cut_front,
-        cut_tail=cut_tail, trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, average_window_quality=average_window_quality, skip_quality_filtering=skip_quality_filtering)
+    trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=umi_loc, 
+                min_length=min_length, max_length=max_length, cut_front=cut_front, cut_tail=cut_tail, 
+                trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, 
+                average_window_quality=average_window_quality, skip_quality_filtering=skip_quality_filtering)
     return PairedSingleTypeFiles([(joinpath(dirname(file1),prefix*basename(file1)), joinpath(dirname(file2),prefix*basename(file2))) for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
 end

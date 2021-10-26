@@ -16,11 +16,11 @@ function Base.write(filepath::String, interactions::Interactions)
     end
 end
 
-function leftpos(alnpart::AlignedPart, alnread::AlignedRead)
+function leftestposition(alnpart::AlignedPart, alnread::AlignedRead)
     minimum(leftposition(p) for p in alnread if sameannotation(p, alnpart))
 end
 
-function rightpos(alnpart::AlignedPart, alnread::AlignedRead)
+function rightestposition(alnpart::AlignedPart, alnread::AlignedRead)
     maximum(rightposition(p) for p in alnread if sameannotation(p, alnpart))
 end
 
@@ -55,8 +55,8 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             interactions.nodes[b, :nb_ints] += 1
             has_edge(interactions.graph, a, b) || (add_edge!(interactions.graph, a, b); trans_edges[(a,b)] = ne(interactions.graph))
             iindex = trans_edges[(a, b)]
-            left1, right1 = leftpos(part1, alignment), rightpos(part1, alignment)
-            left2, right2 = leftpos(part2, alignment), rightpos(part2, alignment)
+            left1, right1 = leftestposition(part1, alignment), rightestposition(part1, alignment)
+            left2, right2 = leftestposition(part2, alignment), rightestposition(part2, alignment)
             iindex > nrow(interactions.edges) &&
                 push!(interactions.edges, (a, b, 0, 0, left1, right1, left2, right2, 0, 0, 0, 0, 0, 0, (0 for i in 1:length(interactions.replicate_ids))...))
             interactions.edges[iindex, :nb_ints] += 1
