@@ -14,7 +14,7 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-function compute_coverage(bam_file::String; norm = 0, only_unique = true, invert = :none)
+function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true, is_reverse_complement=false)
 
     @assert invert in (:none, :both, :read1, :read2)
     reader = BAM.Reader(open(bam_file), index = bam_file*".bai") # needed for names
@@ -24,8 +24,8 @@ function compute_coverage(bam_file::String; norm = 0, only_unique = true, invert
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     count = 0
-    for alignment in Alignments(bam_file; only_unique = only_unique, invert = invert)
-        if ischimeric(alignment; check_annotation = false, min_distance = 3000)
+    for alignment in Alignments(bam_file; only_unique_alignments = only_unique_alignments, is_reverse_complement=is_reverse_complement)
+        if ischimeric(alignment; check_annotation = false, min_distance = 1000)
             continue
         end
         ref = refname(alignment[1])
