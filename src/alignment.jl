@@ -563,14 +563,14 @@ Base.values(alignments::Alignments) = values(alignments.dict)
 Base.iterate(alignments::Alignments) = iterate(alignments.dict)
 Base.iterate(alignments::Alignments, state::Int) = iterate(alignments.dict, state)
 
-function Alignments(bam_file::String; min_templength=nothing, only_unique=true, is_reverse_complement=false, hash_id=true)
-    alignments = read_bam(bam_file; min_templength=min_templength, only_unique=only_unique, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
+function Alignments(bam_file::String; min_templength=nothing, only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
+    alignments = read_bam(bam_file; min_templength=min_templength, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
     Alignments(alignments)
 end
 
-function Alignments(bam_file1::String, bam_file2::String; min_templength=nothing, only_unique=true, is_reverse_complement=false, hash_id=true)
-    alignments = read_bam(bam_file1; min_templength=min_templength, only_unique=only_unique, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
-    read_bam!(alignments, bam_file2; min_templength=min_templength, only_unique=only_unique, is_reverse_complement=is_reverse_complement)
+function Alignments(bam_file1::String, bam_file2::String; min_templength=nothing, only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
+    alignments = read_bam(bam_file1; min_templength=min_templength, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
+    read_bam!(alignments, bam_file2; min_templength=min_templength, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
     Alignments(alignments)
 end
 
@@ -631,7 +631,7 @@ end
 
 
 function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; 
-                    min_templength=nothing, only_unique=true, is_reverse_complement=false) where T<:Union{UInt, String}
+                    min_templength=nothing, only_unique_alignments=true, is_reverse_complement=false) where T<:Union{UInt, String}
     hash_id = T <: UInt
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
@@ -641,13 +641,13 @@ function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String;
         read!(reader, record)
         BAM.ismapped(record) || continue
         is_unique = !hasxatag(record)
-        !is_unique && only_unique && continue
+        !is_unique && only_unique_alignments && continue
         (check_templen && (0 < abs(BAM.templength(record)) < min_templength) && paironsamestrand(record, invert) && isproperpair(record)) && continue
         id = hash_id ? (is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))) : BAM.tempname(record)
         current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
         foundit = false
         nms = nmtag(record)
-        if !is_unique && !only_unique
+        if !is_unique && !only_unique_alignments
             xa = xatag(record)
             leftest = 0
             leftestpos = BAM.leftposition(record)
@@ -675,9 +675,9 @@ function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String;
     close(reader)
     return reads
 end
-function read_bam(bam_file::String; min_templength=nothing, only_unique=true, is_reverse_complement=false, hash_id=true)
+function read_bam(bam_file::String; min_templength=nothing, only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
     reads = Dict{hash_id ? UInt : String, AlignedRead}()
-    read_bam!(reads, bam_file; min_templength=min_templength, only_unique=only_unique, is_reverse_complement=is_reverse_complement)
+    read_bam!(reads, bam_file; min_templength=min_templength, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
     return reads
 end
 
@@ -693,7 +693,7 @@ function occurences(test_sequence::LongDNASeq, bam_file::String, similarity_cut:
     return c
 end
 
-function annotate!(features::Features, files::SingleTypeFiles; only_unique=true, invert=:none, count_key="Count", abs_lfc_cut=1, pvalue_cut=0.05)
+function annotate!(features::Features, files::SingleTypeFiles; only_unique_alignments=true, invert=:none, count_key="Count", abs_lfc_cut=1, pvalue_cut=0.05)
     if files.type == ".bam"
 
         @assert invert in [:read1, :read2, :both, :none]
@@ -703,7 +703,7 @@ function annotate!(features::Features, files::SingleTypeFiles; only_unique=true,
                 c = 0
                 for record in eachoverlap(reader, feature)
                     BAM.ismapped(record) || continue
-                    hasxatag(record) && only_unique && continue
+                    hasxatag(record) && only_unique_alignments && continue
                     invert = isread2(record) && ispaired(record) ? invert in (:read2, :both) : invert in (:read1, :both)
                     (ispositivestrand(record) == (strand(feature) === STRAND_POS) == invert) && continue
                     c += 1

@@ -28,12 +28,12 @@ function feature_count(features::Features, coverages::Vector{Coverage}, conditio
     end
 end
 
-function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, invert=:none, only_unique=true)
+function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, invert=:none, only_unique_alignments=true)
     expnames = Dict{String,Vector{String}}()
     mybams = copy(bams)
     for (name, range) in conditions
         mybams = bams[range]
-        annotate!(features, mybams; count_key="$name", invert=invert, only_unique=only_unique)
+        annotate!(features, mybams; count_key="$name", invert=invert, only_unique_alignments=only_unique_alignments)
         expnames[name] = ["$name$i" for i in 1:length(range)]
         println("Finished counting in $name")
     end
@@ -118,7 +118,7 @@ end
 
 function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String;
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR",
-                            is_reverse_complement=true, only_unique=true, model=:fisher, min_interactions=5, max_fdr=0.05,
+                            is_reverse_complement=true, only_unique_alignments=true, model=:fisher, min_interactions=5, max_fdr=0.05,
                             overwrite_existing=false)
 
     isdir(joinpath(results_path, "interactions")) || mkdir(joinpath(results_path, "interactions"))
@@ -131,7 +131,7 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
             replicate_id = Symbol("$(condition)_$i")
             push!(replicate_ids, replicate_id)
             println("Reading $bam")
-            alignments = Alignments(bam; only_unique=only_unique, is_reverse_complement=is_reverse_complement)
+            alignments = Alignments(bam; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type)
             println("Building graph for replicate $replicate_id...")
