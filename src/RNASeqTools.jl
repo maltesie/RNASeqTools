@@ -14,7 +14,7 @@ export trim_fastp, split_libs
 export Genome, Sequences, PairedSequences, Alignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage, Interactions, Annotation, AlignmentAnnotation
 export FastaFiles, PairedFastaFiles, FastagzFiles, PairedFastagzFiles, FastqFiles, PaireFastqFiles, FastqgzFiles, PairedFastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles
 export cut!, rev_comp!, rev_comp, approxoccursin, annotate!, featureseqs, conservedfeatures, asdataframe
-export hasannotation, ischimeric, istriplet, refinterval, readrange, refrange, annotation, hasannotation, sameread, name, type, overlap, count, parts, refname, params, param, setparam, hastype, hasname, typein, namein, distanceonread
+export hasannotation, ischimeric, istriplet, refinterval, readrange, refrange, annotation, hasannotation, ispositivestrand, sameread, name, type, overlap, count, parts, refname, params, param, setparam, hastype, hasname, typein, namein, distanceonread
 export values, addutrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, normalizedcount, covratio
 export similarity, tsss, terms, nucleotidecount, occurences, hasannotationkey
 export dashboard, lengthhist, similarityhist, nucleotidedist, expressionpca, similarity

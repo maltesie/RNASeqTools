@@ -347,6 +347,14 @@ Availble only after using annotate! on Alignments.
 GenomicFeatures.strand(aln::AlignedPart) = aln.ref.strand
 
 """
+    strand(aln::AlignedPart)::Strand
+
+Returns the strand of the annotation.
+Availble only after using annotate! on Alignments.
+"""
+ispositivestrand(aln::AlignedPart) = aln.ref.strand === STRAND_POS
+
+"""
     readrange(aln::AlignedPart)::UnitRange
 
 Returns the Interval of the alignment on the read sequence as a UnitRange.
