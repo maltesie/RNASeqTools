@@ -147,7 +147,7 @@ end
 
 function paramstring(params::Dict{String,String};priority=("Name", "Count"))
     ps = join(("$key=$(params[key])" for key in priority if key in keys(params)), ";")
-    os = join(("$key=$value" for (key,value) in params if !(key in priority)), ";")
+    os = join(("$key=$(params[key])" for key in sort(collect(keys(params))) if !(key in priority)), ";")
     return ps * ((isempty(ps) || isempty(os)) ? "" : ";") * os
 end
 
@@ -263,6 +263,7 @@ refname(feature::Interval{T}) where T<:AnnotationStyle = feature.seqname
 params(feature::Interval{Annotation}) = feature.metadata.params
 param(feature::Interval{Annotation}, key::String) = feature.metadata.params[key]
 param(feature::Interval{Annotation}, key::String, ::Type{I}) where {I} = parse(I, feature.metadata.params[key])
+setparam(feature::Interval{Annotation}, key::String, value::String) = feature.metadata.params[key] = value
 hasannotationkey(feature::Interval{Annotation}, key::String) = key in keys(params(feature))
 annotation(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata
 
@@ -388,7 +389,7 @@ function asdataframe(features::Features; add_keys=:all)
         df[i, :right] = rightposition(feature)
         df[i, :strand] = strand(feature) === STRAND_NEG ? '-' : '+'
         pa = params(feature)
-        for key in keys(pa)
+        for key in sort(collect(keys(pa)))
             (key in add_keys || add_keys === :all) && (df[i, Symbol(key)] = pa[key])
         end
     end

@@ -105,6 +105,7 @@ struct PairedSequences{T} <: SequenceContainer
     dict::Dict{T, LongDNASeqPair}
 end
 
+PairedSequences(::T) where T  = PairedSequences(Dict{T, LongDNASeqPair}())
 
 Base.getindex(reads::PairedSequences, index::UInt) = reads.dict[index]
 Base.getindex(reads::PairedSequences, index::String) = reads.dict[index]
@@ -113,6 +114,7 @@ Base.keys(reads::PairedSequences) = keys(reads.dict)
 Base.values(reads::PairedSequences) = values(reads.dict)
 Base.iterate(reads::PairedSequences) = iterate(reads.dict)
 Base.iterate(reads::PairedSequences, state::Int) = iterate(reads.dict, state)
+Base.empty!(seqs::PairedSequences) = empty!(seqs.dict)
 
 function PairedSequences(file1::String, file2::String; stop_at=nothing, is_reverse_complement=false, hash_id=true)
     read_reads(file1, file2; nb_reads=stop_at, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
@@ -141,6 +143,7 @@ Base.keys(reads::Sequences) = keys(reads.dict)
 Base.values(reads::Sequences) = values(reads.dict)
 Base.iterate(reads::Sequences) = iterate(reads.dict)
 Base.iterate(reads::Sequences, state::Int) = iterate(reads.dict, state)
+Base.empty!(seqs::Sequences) = empty!(seqs.dict)
 
 function Base.write(fasta_file::String, reads::Sequences{T}) where T
     f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")
@@ -151,6 +154,7 @@ function Base.write(fasta_file::String, reads::Sequences{T}) where T
 end
 
 Sequences(seqs::Vector{LongDNASeq}) = Sequences(Dict(i=>seq for (i::UInt,seq) in enumerate(seqs)))
+Sequences(::T) where T  = Sequences(Dict{T, LongDNASeq}())
 
 function Sequences(file::String; stop_at=nothing, is_reverse_complement=false, hash_id=true)
     reads = read_reads(file, nb_reads=stop_at, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
@@ -339,7 +343,7 @@ function cut!(reads::PairedSequences, seq::LongDNASeq; keep=:left_of_query, from
     end
 end
 
-function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1, check_indels=false)
+function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1)
     return approxsearch(s2, s1, k) != 0:-1
 end
 
@@ -373,7 +377,7 @@ function similarity(read1::LongDNASeq, read2::LongDNASeq; score_model=nothing)
     return max(BioAlignments.score(aln), 0.0)/length(short_seq)
 end
 
-function similarity(reads::PairedSequences{T}; window_size=10, step_size=2) where T
+function similarity(reads::PairedSequences{T}) where T
     similarities = Dict{T, Float64}()
     score_model = AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1)
     for (read1, read2) in reads
@@ -385,7 +389,6 @@ end
 function nucleotidecount(reads::Sequences; normalize=true)
     max_length = maximum([length(read) for read in reads])
     count = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
-    nb_reads = length(reads)
     for read in reads
         (align==:left) ?
         (index = 1:length(read)) :
@@ -395,7 +398,7 @@ function nucleotidecount(reads::Sequences; normalize=true)
         end
     end
     if normalize
-        for (key, c) in count
+        for (_, c) in count
             c /= length(reads)
         end
     end

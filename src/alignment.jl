@@ -267,6 +267,14 @@ function Base.show(part::AlignedPart)
 end
 
 """
+    read(aln::AlignedPart)::Symbol
+
+Returns the read from which the alignment comes. If is_reverse_complement is true, the reads will be 
+inverted (:read1 will be :read2 and vice versa).
+"""
+sameread(aln1::AlignedPart, aln2::AlignedPart) = aln1.read === aln2.read
+
+"""
     annotation(aln::AlignedPart)::AlignmentAnnotation
 
 Returns the AlignmentAnnotation struct that is used as the metadata of the Interval{AlignmentAnnotation} and contains
@@ -555,6 +563,8 @@ struct Alignments{T} <: AlignmentContainer
     dict::Dict{T, AlignedRead}
 end
 
+Alignments(::T) where T  = Alignments(Dict{T, AlignedRead}())
+
 Base.empty!(alignments::Alignments) = empty!(alignments.dict)
 Base.getindex(alignments::Alignments, key::Union{String,UInt}) = alignments.dict[key]
 Base.length(alignments::Alignments) = length(alignments.dict)
@@ -628,7 +638,6 @@ function Base.push!(l::Vector{AlignedPart}, item::AlignedPart) #(Implement corre
     end
     insert!(l, length(l)+1, item)
 end
-
 
 function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; 
                     min_templength=nothing, only_unique_alignments=true, is_reverse_complement=false) where T<:Union{UInt, String}
