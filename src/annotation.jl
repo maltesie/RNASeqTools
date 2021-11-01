@@ -31,6 +31,7 @@ type(annot::T) where {T<:AnnotationStyle} = annot.type
 
 struct Features{T} <: AnnotationContainer
     list::IntervalCollection{T}
+    chroms::Dict{String, Int}
 end
 
 function Features()
@@ -38,15 +39,28 @@ function Features()
 end
 
 function Features(feature_list::Vector{Interval{Annotation}})
-    return Features(IntervalCollection(feature_list, true))
+    return Features(IntervalCollection(feature_list, true), Dict{String, Int}())
+end
+
+function Features(feature_list::Vector{Interval{Annotation}}, chroms::Dict{String, Int})
+    return Features(IntervalCollection(feature_list, true), chroms)
 end
 
 function Features(gff_file::String, type::Vector{String}; name_key="Name", fallback_key=nothing, same_name_rule=:all)
-    @assert same_name_rule in (:first, :all, :none)
-    features = open(collect, GFF3.Reader, gff_file)
+    same_name_rule in (:first, :all, :none) || throw(AssertionError("same_name_rule must be :first, :all, or :none"))
+    features = GFF3.Reader(open(gff_file), skip_directives=false)
     intervals = Vector{Interval{Annotation}}()
     names = Dict{Tuple{String,String},Int}()
+    chroms = Dict{String, Int}()
     for feature in features
+        if GFF3.isdirective(feature)
+            line = GFF3.content(feature)
+            if startswith(line, "sequence-region") 
+                seqid, _, rp = split(line)[2:4]
+                push!(chroms, seqid => parse(Int, rp))
+            end
+            continue
+        end
         GFF3.featuretype(feature) == "Source" && continue
         (GFF3.featuretype(feature) in type || isempty(type)) || continue
         seqn = GFF3.seqid(feature)
@@ -71,7 +85,7 @@ function Features(gff_file::String, type::Vector{String}; name_key="Name", fallb
         push!(intervals, Interval(seqn, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annot))
     end
     same_name_rule === :none && (return Features([i for i in intervals if ((type(i), name(i)) in names && names[(type(i), name(i))] == 1)]))
-    return Features(intervals)
+    return Features(intervals, chroms)
 end
 
 function Features(gff_file::String, type::String; name_key="Name", fallback_key=nothing, same_name_rule=:all)
@@ -152,11 +166,15 @@ function paramstring(params::Dict{String,String};priority=("Name", "Count"))
 end
 
 function Base.write(file::String, features::Features)
+    chroms = copy(features.chroms)
     writer = GFF3.Writer(open(file, "w"))
+    write(writer, GFF3.Record("##gff-version 3.2.1"))
     for feature in features
-        line = "$(feature.seqname)\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(params(feature)))"
-        record = GFF3.Record(line)
-        write(writer, record)
+        if feature.seqname in keys(chroms)
+            write(writer, GFF3.Record("##sequence-region $(feature.seqname) 1 $(chroms[feature.seqname])"))
+            delete!(chroms, feature.seqname)
+        end
+        write(writer, GFF3.Record("$(feature.seqname)\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(params(feature)))"))
     end
     close(writer)
 end

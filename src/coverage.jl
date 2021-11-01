@@ -70,7 +70,7 @@ end
 function Coverage(bigwig_file::String, direction::Symbol)
     direction in [:forward, :reverse] || throw(Assertion("Valid values for direction are :forward and :reverse"))
     reader = open(BigWig.Reader, bigwig_file)
-    stran = direction==:forward ? Strand('+') : Strand('-')
+    stran = direction==:forward ? STRAND_POS : STRAND_NEG
     chrlist = BigWig.chromlist(reader)
     intervals = Vector{Interval{Float64}}()
     for record in reader

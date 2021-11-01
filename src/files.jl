@@ -84,12 +84,12 @@ function hassingledir(files::PairedSingleTypeFiles)
 end
 
 function Base.dirname(files::PairedSingleTypeFiles)
-    @assert hassingledir(files)
+    hassingledir(files) || throw(AssertionError("Files have to be in a single folder."))
     return dirname(files.list[1][1])
 end
 
 function Base.write(fname::String, files::SingleTypeFiles)
-    @assert files.type in (".csv",)
+    files.type in (".csv",) || throw(AssertionError("File type has to be .csv"))
     if files.type == ".csv"
         tables = Vector{Tuple{String,Vector{Any},Vector{String}}}()
         for file in files
