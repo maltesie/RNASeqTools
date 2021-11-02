@@ -580,6 +580,7 @@ Base.keys(alignments::Alignments) = keys(alignments.dict)
 Base.values(alignments::Alignments) = values(alignments.dict)
 Base.iterate(alignments::Alignments) = iterate(alignments.dict)
 Base.iterate(alignments::Alignments, state::Int) = iterate(alignments.dict, state)
+partscount(alignments::Alignments) = sum(length(alnread) for alnread in alignments)
 
 function Alignments(bam_file::String; min_templength=nothing, only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
     alignments = read_bam(bam_file; min_templength=min_templength, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement, hash_id=hash_id)

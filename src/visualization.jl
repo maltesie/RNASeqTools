@@ -51,8 +51,8 @@ function nucleotidedist(reads::PairedSequences; align=:left, normalize=true, tit
     plot(p1, p2, layout=(2,1))
 end
 
-function similarityhist(reads::PairedSequences; window_size=10, step_size=5, title="similarity of reads")
-    sim = similarity(reads; window_size=window_size, step_size=step_size)
+function similarityhist(reads::PairedSequences; title="similarity of reads")
+    sim = similarity(reads)
     histogram(collect(values(sim)), title=title, legend=false)
 end
 
