@@ -133,3 +133,44 @@ function trim_fastp(input_files::PairedSingleTypeFiles;
                 average_window_quality=average_window_quality, skip_quality_filtering=skip_quality_filtering)
     return PairedSingleTypeFiles([(joinpath(dirname(file1),prefix*basename(file1)), joinpath(dirname(file2),prefix*basename(file2))) for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
 end
+
+function transform(file::String; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)
+    @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
+
+    is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
+    is_zipped = endswith(file, ".gz")
+    
+    f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
+    reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
+    record = is_fastq ? FASTQ.Record() : FASTA.Record()
+
+    out_file = joinpath(dirname(file), "trafo_"*basename(file))
+    (isfile(out_file) && !overwrite_existing) && (return out_file)
+    out_f = is_zipped ? GzipCompressorStream(open(out_file, "w")) : open(out_file, "w")
+    writer = is_fastq ? FASTQ.Writer(out_f) : FASTA.Writer(out_f)
+    out_record = is_fastq ? FASTQ.Record() : FASTA.Record()
+
+    in_seq = (to_dna || is_rna) ? LongRNASeq() : LongDNASeq()
+    out_seq = (is_rna && !to_dna) ? LongRNASeq() : LongDNASeq()
+    while !eof(reader)
+        read!(reader, record)
+        in_seq = FASTX.sequence((to_dna || is_rna) ? LongRNASeq : LongDNASeq, record)
+        out_seq = to_dna ? LongDNASeq(in_seq) : in_seq
+        reverse && reverse!(out_seq)
+        complement && complement!(out_seq)
+        out_record = is_fastq ? FASTQ.Record(FASTQ.identifier(record), out_seq, FASTQ.quality(record)) : FASTA.Record(FASTA.identifier(record), out_seq)
+        write(writer, out_record)
+    end
+
+    close(reader)
+    close(writer)
+    return out_file
+end
+
+function transform(input_files::SingleTypeFiles; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)
+    transformed_files = String[]
+    for file in input_files
+        push!(transformed_files, transform(file; to_dna=to_dna, reverse=reverse, complement=complement, overwrite_existing=overwrite_existing, is_rna=is_rna))
+    end
+    return SingleTypeFiles(transformed_files)
+end
