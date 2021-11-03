@@ -105,7 +105,6 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
         cmd = `$fastp_bin $file_params $params`
         run(cmd)
     end 
-
 end
 
 function trim_fastp(input_files::SingleTypeFiles; 
@@ -134,7 +133,7 @@ function trim_fastp(input_files::PairedSingleTypeFiles;
     return PairedSingleTypeFiles([(joinpath(dirname(file1),prefix*basename(file1)), joinpath(dirname(file2),prefix*basename(file2))) for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
 end
 
-function transform(file::String; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)
+function transform(file::String; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false, stop_at=-1)
     @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
 
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
@@ -152,7 +151,9 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
 
     in_seq = (to_dna || is_rna) ? LongRNASeq() : LongDNASeq()
     out_seq = (is_rna && !to_dna) ? LongRNASeq() : LongDNASeq()
+    c = 0
     while !eof(reader)
+        c += 1
         read!(reader, record)
         in_seq = FASTX.sequence((to_dna || is_rna) ? LongRNASeq : LongDNASeq, record)
         out_seq = to_dna ? LongDNASeq(in_seq) : in_seq
@@ -160,6 +161,7 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
         complement && complement!(out_seq)
         out_record = is_fastq ? FASTQ.Record(FASTQ.identifier(record), out_seq, FASTQ.quality(record)) : FASTA.Record(FASTA.identifier(record), out_seq)
         write(writer, out_record)
+        (stop_at > 0) && (c > stop_at) && break
     end
 
     close(reader)
@@ -167,10 +169,11 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
     return out_file
 end
 
-function transform(input_files::SingleTypeFiles; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)
+function transform(input_files::SingleTypeFiles; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false, stop_at=-1)
     transformed_files = String[]
     for file in input_files
-        push!(transformed_files, transform(file; to_dna=to_dna, reverse=reverse, complement=complement, overwrite_existing=overwrite_existing, is_rna=is_rna))
+        startswith(file, "trafo_") && continue
+        push!(transformed_files, transform(file; to_dna=to_dna, reverse=reverse, complement=complement, overwrite_existing=overwrite_existing, is_rna=is_rna, stop_at=stop_at))
     end
-    return SingleTypeFiles(transformed_files)
+    return SingleTypeFiles(transformed_files, input_files.type)
 end
