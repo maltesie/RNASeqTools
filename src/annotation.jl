@@ -97,7 +97,8 @@ function Features(gff_file::String; name_key="Name", fallback_key=nothing, same_
 end
 
 function Features(coverage::Coverage; type="VAL")
-    return Features([Interval(refname(i), leftposition(i), rightposition(i), strand(i), Annotation(type, "", Dict{String,String}("Value"=>"$(value(i))"))) for i in coverage])
+    chroms = Dict(seq=>val for (seq,val) in coverage.chroms)
+    return Features([Interval(refname(i), leftposition(i), rightposition(i), strand(i), Annotation(type, "", Dict{String,String}("Value"=>"$(value(i))"))) for i in coverage], chroms)
 end
 
 type(features::Features) = Set(type(f) for f in features)
@@ -165,7 +166,7 @@ function paramstring(params::Dict{String,String};priority=("Name", "Count"))
     return ps * ((isempty(ps) || isempty(os)) ? "" : ";") * os
 end
 
-function Base.write(file::String, features::Features)
+function Base.write(file::String, features::Features; zip=false, tabix=false)
     chroms = copy(features.chroms)
     writer = GFF3.Writer(open(file, "w"))
     write(writer, GFF3.Record("##gff-version 3.2.1"))
@@ -176,7 +177,11 @@ function Base.write(file::String, features::Features)
         end
         write(writer, GFF3.Record("$(feature.seqname)\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(params(feature)))"))
     end
-    close(writer)
+    b = close(writer)
+    sleep(0.5)
+    zip && run(`bgzip --force $file`)
+    tabix && run(`tabix $(file).gz`)
+    return b
 end
 
 function maxsignalposition(leftpos::Int, rightpos::Int, chr::String, st::Strand, coverage_dict::Dict{String,Coverage}, modify::Symbol)

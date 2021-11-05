@@ -25,7 +25,7 @@ struct ErrorCoverage
     del_count::Vector{Int}
 end
 
-function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true, is_reverse_complement=false)
+function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true, is_reverse_complement=false, max_temp_length=500)
     reader = BAM.Reader(open(bam_file), index = bam_file*".bai") # needed for names
     chromosome_list = [n for n in zip(
         bam_chromosome_names(reader), bam_chromosome_lengths(reader)
@@ -33,10 +33,8 @@ function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true,
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     count = 0
-    for (key, alignment) in Alignments(bam_file; only_unique_alignments = only_unique_alignments, is_reverse_complement=is_reverse_complement)
-        if ischimeric(alignment; check_annotation = false, min_distance = 1000)
-            continue
-        end
+    for (_, alignment) in Alignments(bam_file; only_unique_alignments = only_unique_alignments, is_reverse_complement=is_reverse_complement)
+        ischimeric(alignment; check_annotation = false, min_distance = max_temp_length) && continue
         ref = refname(alignment[1])
         left = leftestposition(alignment)
         right = rightestposition(alignment)
@@ -45,7 +43,6 @@ function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true,
     end
     norm_factor = norm > 0 ? norm/count : 1.0
     coverage = Coverage(vals_f, vals_r, chromosome_list)
-    # display(coverage)
     filename_f = bam_file[1:end-4] * "_forward.bw"
     filename_r = bam_file[1:end-4] * "_reverse.bw"
     writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
@@ -229,7 +226,7 @@ function Base.diff(coverage::Vector{Float64}, invert::Bool, window_size::Int; mi
             end
         end
     end
-    filtered_d[findall(iszero, d)] .= 0.0
+    filtered_d[findall(x -> x <= 0, d)] .= 0.0
     if filter_background_ratio
         for i in findall(!iszero, filtered_d)
             check_range = invert ? (i:i+half_window_size) : (i-half_window_size+1:i)
@@ -240,7 +237,7 @@ function Base.diff(coverage::Vector{Float64}, invert::Bool, window_size::Int; mi
     return filtered_d
 end
 
-function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, min_background_ratio=1.2, window_size=10)
+function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, window_size=10, min_background_ratio=1.2)
     (notex.chroms == tex.chroms) || throw(Assertion("All Coverage objects have to be defined for the same reference sequences."))
     chrs = [chr[1] for chr in notex.chroms]
     vals_notex = values(notex)
@@ -266,14 +263,13 @@ function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, mi
 end
 
 function terms(coverage::Coverage; min_step=10, window_size=10, min_background_ratio=1.2)
-    min_background_increase = min_background_ratio - 1.0
     vals = values(coverage)
     intervals = Vector{Interval{Float64}}()
     chrs = [chr[1] for chr in coverage.chroms]
     for chr in chrs
         f, r = vals[chr]
-        d_forward = diff(f, true, window_size, min_background_increase)
-        d_reverse = diff(r, false, window_size, min_background_increase)
+        d_forward = diff(f, true, window_size; min_background_ratio=min_background_ratio)
+        d_reverse = diff(r, false, window_size; min_background_ratio=min_background_ratio)
         check_forward = d_forward .>= min_step
         check_reverse = d_reverse .>= min_step
         for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
