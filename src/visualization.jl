@@ -11,7 +11,7 @@ function dashboard(reads::Sequences)
         html_div(id="app-container") do
             dcc_tabs(id ="tabs", value="data") do
                 dcc_tab(id="data", label="Data", value="data") do
-                    dash_datatable(id="my-data-table", columns=datatable_columns(show_table), data=datatabele_data(show_table), page_action="none",
+                    dash_datatable(id="my-data-table", columns=["test"], data=datatabele_data(show_table), page_action="none",
                                     style_table=Dict("height"=>"600px", "overflowY"=>"auto")),
                     html_p("asdasdasdasdasdasdasdasda")
                 end,

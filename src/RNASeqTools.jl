@@ -6,7 +6,7 @@ import Plots: plot, histogram, scatter
 import DataFrames: DataFrame, sort, nrow, names, eachcol
 using Measures, Statistics, HypothesisTests, MultipleTesting, StatsBase, MultivariateStats, Combinatorics, Random
 using LightGraphs
-using Dash, DashHtmlComponents, DashCoreComponents, DashTable
+using Dash, IterTools
 import IntervalTrees.IntervalBTree, IntervalTrees.IntervalBTreeIteratorState
 
 export align_mem, local_alignment

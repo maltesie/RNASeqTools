@@ -96,7 +96,7 @@ function Features(gff_file::String; name_key="Name", fallback_key=nothing, same_
     return Features(gff_file, String[], name_key=name_key, fallback_key=fallback_key, same_name_rule=same_name_rule)
 end
 
-function Features(coverage::Coverage, type::String)
+function Features(coverage::Coverage; type="VAL")
     return Features([Interval(refname(i), leftposition(i), rightposition(i), strand(i), Annotation(type, "", Dict{String,String}("Value"=>"$(value(i))"))) for i in coverage])
 end
 
@@ -239,9 +239,9 @@ function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage}
             ((fivestart, fivestop, found_five_in) = maxsignalposition(fivestart, fivestop, fiveref, stran, tss_positions, stran === STRAND_POS ? :left : :right))
             isnothing(term_positions) ? (found_three_in="guess") :
             ((threestart, threestop, found_three_in) = maxsignalposition(threestart, threestop, threeref, stran, term_positions, stran === STRAND_POS ? :right : :left))
-            (guess_missing || fixed_five) && push!(new_features, Interval(fiveref, fivestart, fivestop, stran,
+            (guess_missing || (found_five_in != "guess")) && push!(new_features, Interval(fiveref, fivestart, fivestop, stran,
                 Annotation(five_type, fivename, merge(Dict("source"=>found_five_in), copy(stran === STRAND_NEG ? params(feature) : params(next_feature))))))
-            (guess_missing || fixed_three) && push!(new_features, Interval(threeref, threestart, threestop, stran,
+            (guess_missing || (found_three_in != "guess")) && push!(new_features, Interval(threeref, threestart, threestop, stran,
                 Annotation(three_type, threename, merge(Dict("source"=>found_three_in), copy(stran === STRAND_NEG ? params(next_feature) : params(feature))))))
         end
     end

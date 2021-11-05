@@ -637,7 +637,7 @@ function is_bitstring_bam(file::String)
     return false
 end
 
-function Base.push!(l::Vector{AlignedPart}, item::AlignedPart) #(Implement correct order reversing in read2 + readranges have to start from end of read.)
+function Base.push!(l::Vector{AlignedPart}, item::AlignedPart) 
     for (i, part) in enumerate(l)
         if item.read === part.read
             first(item.seq) < first(part.seq) && (return insert!(l, i, item))
@@ -646,6 +646,86 @@ function Base.push!(l::Vector{AlignedPart}, item::AlignedPart) #(Implement corre
         end
     end
     insert!(l, length(l)+1, item)
+end
+
+#unique_ranges(ns::Vector{UInt}) = [a:b-1 for (a,b) in partition([1, [i+1 for (i,check) in enumerate(diff(ns) .!= UInt(0)) if check]..., length(ns)+1], 2, 1)]
+struct RangeIterator{T}
+    data::Vector{T}
+    n_unique::Int
+end
+RangeIterator(d::Vector{T}) where T = RangeIterator(d, length(unique(d)))
+
+Base.length(r::RangeIterator) = r.n_unique
+function Base.iterate(r::RangeIterator)
+    index::Int = 1
+    for v in view(r.data, 2:length(r.data))
+        v != r.data[1] && break
+        index += 1
+    end 
+index==length(r.data) ? nothing : (1:index, index+1)
+end
+function Base.iterate(r::RangeIterator, state::Int)
+state > length(r.data) && (return nothing)
+index = state
+for v in view(r.data, state+1:length(r.data))
+    v != r.data[state] && break
+    index += 1
+end 
+(state:index, index+1)
+end
+
+struct Alignments2
+    tempname::Vector{UInt}
+    leftpos::Vector{Int}
+    rightpos::Vector{Int}
+    refname::Vector{String}
+    strand::Vector{Strand}
+    anname::Vector{String}
+    antype::Vector{String}
+    anol::Vector{Int8}
+    rangeit::RangeIterator
+end
+
+function test_bam(bam_file::String)
+    record = BAM.Record()
+    reader = BAM.Reader(open(bam_file))
+    ns = Vector{UInt}(undef, 10000)
+    ls = Vector{Int}(undef, 10000)
+    rs = Vector{Int}(undef, 10000)
+    is = Vector{String}(undef, 10000)
+    ss = Vector{Strand}(undef, 10000)
+    index::Int = 0 
+    while !eof(reader)
+        read!(reader, record)
+        BAM.ismapped(record) || continue
+        index += 1
+        if index > length(ns)
+            resize!(ns, length(ns)+10000) 
+            resize!(ls, length(ns)+10000) 
+            resize!(rs, length(ns)+10000) 
+            resize!(is, length(ns)+10000) 
+            resize!(ss, length(ns)+10000) 
+        end
+        ns[index] = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
+        ls[index] = BAM.leftposition(record)
+        rs[index] = BAM.rightposition(record)
+        is[index] = BAM.refname(record)
+        ss[index] = BAM.ispositivestrand(record) ? STRAND_POS : STRAND_NEG
+    end
+    resize!(ns, index) 
+    resize!(ls, index) 
+    resize!(rs, index) 
+    resize!(is, index) 
+    resize!(ss, index) 
+    close(reader)
+    perm = sortperm(ns)
+    ns = ns[perm]
+    ls = ls[perm]
+    rs = rs[perm]
+    is = is[perm]
+    ss = ss[perm]
+    ri = RangeIterator(ns)
+    return Alignments2(ns, ls, rs, is, ss, Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(Int8,length(ns)), ri)
 end
 
 function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; 

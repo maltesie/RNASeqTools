@@ -14,6 +14,17 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
+struct ErrorCoverage
+    ref_seq::LongDNASeq
+    chroms::Dict{String, UnitRange}
+    a_count::Vector{Int}
+    t_count::Vector{Int}
+    c_count::Vector{Int}
+    g_count::Vector{Int}
+    ins_count::Vector{Int}
+    del_count::Vector{Int}
+end
+
 function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true, is_reverse_complement=false)
     reader = BAM.Reader(open(bam_file), index = bam_file*".bai") # needed for names
     chromosome_list = [n for n in zip(
@@ -203,30 +214,34 @@ function rolling_sum(a, n::Int)
     return out
 end
 
-function diff(coverage::Vector{Float64}, invert::Bool, window_size::Int, min_background_increase::Float64)
+function Base.diff(coverage::Vector{Float64}, invert::Bool, window_size::Int; min_background_ratio=1.2, filter_local_max=true, filter_background_ratio=true)
     d = zeros(Float64,length(coverage))
+    min_background_increase = min_background_ratio - 1
     filtered_d = zeros(Float64,length(coverage))
     invert ? d[1:end-1] = @view(coverage[1:end-1]) .- @view(coverage[2:end])  : d[2:end] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
     half_window_size = floor(Int, window_size/2)
     filtered_d[half_window_size:end-half_window_size] = rolling_sum(d,window_size)
-    for i in 1:length(d)-window_size+1
-        _, mi = findmax(@view(d[i:i+window_size-1]))
-        for j in 1:window_size
-            mi != j && (d[i+j-1]=0.0)
+    if filter_local_max
+        for i in 1:length(d)-window_size+1
+            _, mi = findmax(@view(d[i:i+window_size-1]))
+            for j in 1:window_size
+                mi != j && (d[i+j-1]=0.0)
+            end
         end
     end
     filtered_d[findall(iszero, d)] .= 0.0
-    for i in findall(!iszero, filtered_d)
-        check_range = invert ? (i:i+half_window_size) : (i-half_window_size+1:i)
-        lim = filtered_d[i]/min_background_increase
-        any(@view(coverage[check_range]) .< lim) || (filtered_d[i] = 0.0)
+    if filter_background_ratio
+        for i in findall(!iszero, filtered_d)
+            check_range = invert ? (i:i+half_window_size) : (i-half_window_size+1:i)
+            lim = filtered_d[i]/min_background_increase
+            any(@view(coverage[check_range]) .< lim) || (filtered_d[i] = 0.0)
+        end
     end
     return filtered_d
 end
 
 function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, min_background_ratio=1.2, window_size=10)
     (notex.chroms == tex.chroms) || throw(Assertion("All Coverage objects have to be defined for the same reference sequences."))
-    min_background_increase = min_background_ratio - 1.0
     chrs = [chr[1] for chr in notex.chroms]
     vals_notex = values(notex)
     vals_tex = values(tex)
@@ -234,10 +249,12 @@ function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, mi
     for chr in chrs
         notex_f, notex_r = vals_notex[chr]
         tex_f, tex_r = vals_tex[chr]
-        d_forward = diff(tex_f, false, window_size, min_background_increase)
-        d_reverse = diff(tex_r, true, window_size, min_background_increase)
-        check_forward = ((tex_f ./ notex_f) .>= min_tex_ratio) .& (d_forward .>= min_step)
-        check_reverse = ((tex_r ./ notex_r) .>= min_tex_ratio) .& (d_reverse .>= min_step)
+        d_forward = diff(tex_f, false, window_size; min_background_ratio=min_background_ratio)
+        d_reverse = diff(tex_r, true, window_size; min_background_ratio=min_background_ratio)
+        check_d_forward = diff(notex_f, false, window_size; min_background_ratio=min_background_ratio, filter_local_max=false, filter_background_ratio=false)
+        check_d_reverse = diff(notex_r, true, window_size; min_background_ratio=min_background_ratio, filter_local_max=false, filter_background_ratio=false)
+        check_forward = ((d_forward ./ check_d_forward) .>= min_tex_ratio) .& (d_forward .>= min_step)
+        check_reverse = ((d_reverse ./ check_d_reverse) .>= min_tex_ratio) .& (d_reverse .>= min_step)
         for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
             push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
         end
