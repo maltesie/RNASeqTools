@@ -14,23 +14,13 @@ end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
 
-mutable struct AlignmentAnnotation <: AnnotationStyle
+struct AlignmentAnnotation <: AnnotationStyle
     type::String
     name::String
     overlap::UInt8
 end
 
 function AlignmentAnnotation()
-    AlignmentAnnotation("", "", 0)
-end
-
-struct AlignmentAnnotation2 <: AnnotationStyle
-    type::String
-    name::String
-    overlap::UInt8
-end
-
-function AlignmentAnnotation2()
     AlignmentAnnotation("", "", 0)
 end
 

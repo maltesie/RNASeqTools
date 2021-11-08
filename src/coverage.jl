@@ -44,7 +44,7 @@ function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true,
         ref = refname(alignment[1])
         left = leftestposition(alignment)
         right = rightestposition(alignment)
-        strand(alignment[1]) === STRAND_POS ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
+        ispositivestrand(alignment) ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
         count += 1
     end
     norm_factor = norm > 0 ? norm/count : 1.0
