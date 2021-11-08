@@ -47,7 +47,7 @@ end
 """
 function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::String, genome_file::String;
     min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
-    min_seed_len=19, reseeding_factor=1.5, bwa_bin="bwa-mem2", sam_bin="samtools")
+    min_seed_len=19, reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools")
 
     tmp_bwa = tempname()
     tmp_view = tempname()
@@ -56,6 +56,7 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
     run(cmd)
     params = ["-A", match, "-B", mismatch, "-O", gap_open, "-E", gap_extend, "-T", min_score, "-L", clipping_penalty, "-r", reseeding_factor, "-k", min_seed_len]
     isnothing(in_file2) || append!(params, ["-U", unpair_penalty])
+    is_ont && append!(params, ["-x", "ont2d"])
     unpair_rescue && push!(params, "-P")
     fileparams = isnothing(in_file2) ? [genome_file, in_file1] : [genome_file, in_file1, in_file2]
     cmd = pipeline(`$bwa_bin mem -v 1 -t 6 $params $fileparams`, stdout=tmp_bwa)
@@ -74,10 +75,11 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
     rm(tmp_view)
 end
 align_mem(in_file::String, out_file::String, genome_file::String;
-    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=19, reseeding_factor=1.5, bwa_bin="bwa-mem2", sam_bin="samtools") =
+    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=19, 
+    reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools") =
     align_mem(in_file, nothing, out_file::String, genome_file::String;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, min_seed_len=min_seed_len,
-        reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin)
+        reseeding_factor=reseeding_factor, is_ont=is_ont, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
 """
     Helper dispatch of align_mem, which is a wrapper for bwa-mem2. Runs align_mem on `read_files::T`
@@ -85,7 +87,7 @@ align_mem(in_file::String, out_file::String, genome_file::String;
     whole folders containing sequence files and the manipulation of a genome using Genome.
 """   
 function align_mem(read_files::T, genome::Genome; min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, reseeding_factor=1.5,
-                    min_seed_len=19, unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
+                    min_seed_len=19, unpair_rescue=false, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
     tmp_genome = tempname()
     write(tmp_genome, genome)
     outfiles = Vector{String}()
@@ -97,11 +99,11 @@ function align_mem(read_files::T, genome::Genome; min_score=25, match=1, mismatc
         align_mem(file, out_file, tmp_genome;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open,
                 gap_extend=gap_extend, clipping_penalty=clipping_penalty,  min_seed_len=min_seed_len,
-                reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+                reseeding_factor=reseeding_factor, is_ont=is_ont, bwa_bin=bwa_bin, sam_bin=sam_bin) :
         align_mem(first(file), last(file), out_file, tmp_genome;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
                 clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
-                min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin)
+                min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
@@ -116,7 +118,7 @@ end
     of Sequences and their alignment against multiple genomes.
 """  
 function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5,
-                unpair_penalty=9, unpair_rescue=false, min_seed_len=19, reseeding_factor=1.5, bwa_bin="bwa-mem2", sam_bin="samtools", 
+                unpair_penalty=9, unpair_rescue=false, min_seed_len=19, reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools", 
                 overwrite_existing=false) where T<:SequenceContainer
     (isfile(out_file) && !overwrite_existing) && return
     tmp_reads = tempname()
@@ -132,11 +134,11 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_scor
         align_mem(tmp_reads, this_out_file, tmp_genome;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
-            bwa_bin=bwa_bin, sam_bin=sam_bin) :
+            is_ont=is_ont, bwa_bin=bwa_bin, sam_bin=sam_bin) :
         align_mem(tmp_reads, tmp_reads2, this_out_file, tmp_genome;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
-            min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin)
+            min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
         rm(tmp_genome)
     end
@@ -161,10 +163,11 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_scor
 end
 align_mem(reads::T, genome::Genome, out_file::String;
     min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, unpair_penalty=9, min_seed_len=19, reseeding_factor=1.5,
-    unpair_rescue=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where T<:SequenceContainer =
+    unpair_rescue=false, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where T<:SequenceContainer =
         align_mem(reads, [genome], out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty,
-            unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
+            unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, 
+            bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
 struct AlignedPart
     ref::Interval{AlignmentAnnotation}
@@ -467,6 +470,18 @@ function AlignedRead()
     return AlignedRead([])
 end
 
+function AlignedRead(alns::Alignments2, r::UnitRange)
+    ar = AlignedRead()
+    for i in r
+        seq_interval = alns.rls[i]:alns.rrs[i]
+        ref_interval = Interval(alns.is[i], alns.ls[i], alns.rs[i], alns.ss[i], AlignmentAnnotation())
+        alnpart = AlignedPart(ref_interval, seq_interval, 0, alns.rds[i])
+        push!(ar, alnpart)
+    end
+    return ar
+end
+
+
 parts(alnread::AlignedRead) = alnread.alns
 count(alnread::AlignedRead) = length(alnread.alns)
 typein(alnread::AlignedRead, types::Vector{String}) = any(type(alnpart) in types for alnpart in alnread)
@@ -582,14 +597,14 @@ Base.iterate(alignments::Alignments) = iterate(alignments.dict)
 Base.iterate(alignments::Alignments, state::Int) = iterate(alignments.dict, state)
 partscount(alignments::Alignments) = sum(length(alnread) for alnread in alignments)
 
-function Alignments(bam_file::String; min_templength=nothing, only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
-    alignments = read_bam(bam_file; min_templength=min_templength, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
+function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
+    alignments = read_bam(bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
     Alignments(alignments)
 end
 
-function Alignments(bam_file1::String, bam_file2::String; min_templength=nothing, only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
-    alignments = read_bam(bam_file1; min_templength=min_templength, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
-    read_bam!(alignments, bam_file2; min_templength=min_templength, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
+function Alignments(bam_file1::String, bam_file2::String; only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
+    alignments = read_bam(bam_file1; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
+    read_bam!(alignments, bam_file2; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
     Alignments(alignments)
 end
 
@@ -678,6 +693,9 @@ struct Alignments2
     tempname::Vector{UInt}
     leftpos::Vector{Int}
     rightpos::Vector{Int}
+    read_leftpos::Vector{Int}
+    read_rightpos::Vector{Int}
+    read::Vector{Symbol}
     refname::Vector{String}
     strand::Vector{Strand}
     anname::Vector{String}
@@ -686,7 +704,11 @@ struct Alignments2
     rangeit::RangeIterator
 end
 
-function test_bam(bam_file::String)
+function Alignments2(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
+    return test_bam(bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
+end
+
+function test_bam(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     ns = Vector{UInt}(undef, 10000)
@@ -694,10 +716,16 @@ function test_bam(bam_file::String)
     rs = Vector{Int}(undef, 10000)
     is = Vector{String}(undef, 10000)
     ss = Vector{Strand}(undef, 10000)
+    rls = Vector{Int}(undef, 10000)
+    rrs = Vector{Int}(undef, 10000)
+    rds = Vector{Sybol}(undef, 10000)
     index::Int = 0 
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
+        is_unique = !hasxatag(record)
+        !is_unique && only_unique_alignments && continue
+        current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
         index += 1
         if index > length(ns)
             resize!(ns, length(ns)+10000) 
@@ -705,18 +733,60 @@ function test_bam(bam_file::String)
             resize!(rs, length(ns)+10000) 
             resize!(is, length(ns)+10000) 
             resize!(ss, length(ns)+10000) 
+            resize!(rls, length(ns)+10000) 
+            resize!(rrs, length(ns)+10000) 
+            resize!(rds, length(ns)+10000)
         end
+        if !is_unique && !only_unique_alignments
+            xa = xatag(record)
+            leftest = 0
+            leftestpos = BAM.leftposition(record)
+            nms = nmtag(record)
+            xastrings = split(xa, ";")[1:end-1]
+            for (i,xapart) in enumerate(xastrings)
+                _, pos, _, nm = split(xapart, ",")
+                pnm = parse(UInt8, nm)
+                pnm > nms && continue
+                intpos = abs(parse(Int, pos))
+                intpos < leftestpos && (leftest = i; leftestpos=intpos; nms=pnm)
+            end
+            if leftest != 0
+                chr, pos, cigar, nm = split(xastrings[leftest], ",")
+                refstart = parse(Int, pos)
+                strand = ((refstart > 0) != current_read===:read2) ? STRAND_POS : STRAND_NEG
+                refstart *= sign(refstart)
+                readstart, readstop, relrefstop, readlen = readpositions(cigar)
+                (BAM.ispositivestrand(record) == (current_read === :read2)) && (readstart=readlen-readstop+1;readstop=readlen-readstart+1)
+                ns[index] = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
+                ls[index] = refstart
+                rs[index] = refstart+relrefstop
+                is[index] = chr
+                ss[index] = strand
+                rls[index] = readstart
+                rrs[index] = readstop
+                rds[index] = current_read
+                continue
+            end
+        end
+        readstart, readstop, _, readlen = readpositions(record)
+        (BAM.ispositivestrand(record) == (current_read === :read2)) && (readstart=readlen-readstop+1;readstop=readlen-readstart+1)
         ns[index] = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
         ls[index] = BAM.leftposition(record)
         rs[index] = BAM.rightposition(record)
         is[index] = BAM.refname(record)
-        ss[index] = BAM.ispositivestrand(record) ? STRAND_POS : STRAND_NEG
+        ss[index] = BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG
+        rls[index] = readstart
+        rrs[index] = readstop
+        rds[index] = current_read
     end
     resize!(ns, index) 
     resize!(ls, index) 
     resize!(rs, index) 
     resize!(is, index) 
     resize!(ss, index) 
+    resize!(rls, index) 
+    resize!(rrs, index) 
+    resize!(rds, index) 
     close(reader)
     perm = sortperm(ns)
     ns = ns[perm]
@@ -724,23 +794,38 @@ function test_bam(bam_file::String)
     rs = rs[perm]
     is = is[perm]
     ss = ss[perm]
+    rls = rls[perm]
+    rrs = rrs[perm]
+    rds = rds[perm]
     ri = RangeIterator(ns)
-    return Alignments2(ns, ls, rs, is, ss, Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(Int8,length(ns)), ri)
+    return Alignments2(ns, ls, rs, rls, rrs, rds, is, ss, Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(Int8,length(ns)), ri)
 end
 
-function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; 
-                    min_templength=nothing, only_unique_alignments=true, is_reverse_complement=false) where T<:Union{UInt, String}
+function Base.iterate(alns::Alignments2)
+    r = first(alns.it)
+    isnothing(r) && (return nothing)
+    return (AlignedRead(alns, r), last(r)+1)
+end
+function Base.iterate(alns::Alignments2, state::int)
+    state > length(alns.it.data) && (return nothing)
+    index = state
+    for v in view(alns.it.data, state+1:length(alns.it.data))
+        v != alns.it.data[state] && break
+        index += 1
+    end 
+    return (AlignedRead(alns, state:index), index+1)
+end
+
+function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; only_unique_alignments=true, is_reverse_complement=false) where T<:Union{UInt, String}
     hash_id = T <: UInt
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     is_bitstring = is_bitstring_bam(bam_file)
-    check_templen = isnothing(min_templength) ? false : 0 < min_templength
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
         is_unique = !hasxatag(record)
         !is_unique && only_unique_alignments && continue
-        (check_templen && (0 < abs(BAM.templength(record)) < min_templength) && paironsamestrand(record, invert) && isproperpair(record)) && continue
         id = hash_id ? (is_bitstring ? parse(UInt, BAM.tempname(record); base=2) : hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))) : BAM.tempname(record)
         current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
         foundit = false
@@ -773,9 +858,9 @@ function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String;
     close(reader)
     return reads
 end
-function read_bam(bam_file::String; min_templength=nothing, only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
+function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
     reads = Dict{hash_id ? UInt : String, AlignedRead}()
-    read_bam!(reads, bam_file; min_templength=min_templength, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
+    read_bam!(reads, bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
     return reads
 end
 

@@ -25,6 +25,12 @@ struct ErrorCoverage
     del_count::Vector{Int}
 end
 
+function ErrorCoverage(bam_file::String, genome::Genome)
+    new_ec = ErrorCoverage(genome.seq, genome.chrs, zeros(Int, length(genome.seq)), zeros(Int, length(genome.seq)), zeros(Int, length(genome.seq)),
+                            zeros(Int, length(genome.seq)), zeros(Int, length(genome.seq)), zeros(Int, length(genome.seq)))
+    alns = Alignments2(bam_file)
+end
+
 function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true, is_reverse_complement=false, max_temp_length=500)
     reader = BAM.Reader(open(bam_file), index = bam_file*".bai") # needed for names
     chromosome_list = [n for n in zip(

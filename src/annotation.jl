@@ -24,6 +24,16 @@ function AlignmentAnnotation()
     AlignmentAnnotation("", "", 0)
 end
 
+struct AlignmentAnnotation2 <: AnnotationStyle
+    type::String
+    name::String
+    overlap::UInt8
+end
+
+function AlignmentAnnotation2()
+    AlignmentAnnotation("", "", 0)
+end
+
 Base.isempty(annotation::AlignmentAnnotation) = isempty(annotation.type) && isempty(annotation.name) && (annotation.overlap==0)
 
 name(annot::T) where {T<:AnnotationStyle} = annot.name

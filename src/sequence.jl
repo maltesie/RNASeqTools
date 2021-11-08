@@ -1,11 +1,11 @@
 struct Genome
     seq::LongDNASeq
-    chrs::Dict{String, UnitRange{Int}}
+    chrs::Dict{String, UnitRange}
 end
 
 function Genome(sequences::Vector{LongDNASeq}, names::Vector{String})
     seq = LongDNASeq(0)
-    chrs = Dict{String, UnitRange{Int}}()
+    chrs = Dict{String, UnitRange}()
     sequence_position = 1
     for (sequence, name) in zip(sequences, names)
         seq *= sequence
@@ -21,7 +21,7 @@ end
 
 function Genome(genome_fasta::String)
     (name, sequences) = read_genomic_fasta(genome_fasta)
-    chrs::Dict{String,UnitRange{Int}} = Dict()
+    chrs::Dict{String, UnitRange} = Dict()
     total_seq = ""
     temp_start = 1
     for (chr, chr_seq) in sequences
