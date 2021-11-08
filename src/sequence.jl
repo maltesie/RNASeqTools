@@ -4,7 +4,7 @@ struct Genome
 end
 
 function Genome(sequences::Vector{LongDNASeq}, names::Vector{String})
-    seq = LongDNASeq()
+    seq = LongDNASeq(0)
     chrs = Dict{String, UnitRange{Int}}()
     sequence_position = 1
     for (sequence, name) in zip(sequences, names)

@@ -149,8 +149,8 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
     writer = is_fastq ? FASTQ.Writer(out_f) : FASTA.Writer(out_f)
     out_record = is_fastq ? FASTQ.Record() : FASTA.Record()
 
-    in_seq = (to_dna || is_rna) ? LongRNASeq() : LongDNASeq()
-    out_seq = (is_rna && !to_dna) ? LongRNASeq() : LongDNASeq()
+    in_seq = (to_dna || is_rna) ? LongRNASeq(0) : LongDNASeq(0)
+    out_seq = (is_rna && !to_dna) ? LongRNASeq(0) : LongDNASeq(0)
     c = 0
     while !eof(reader)
         c += 1
