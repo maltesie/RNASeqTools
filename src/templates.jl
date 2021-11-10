@@ -131,7 +131,7 @@ function rilseq_analysis(features::Features, bams::SingleTypeFiles, conditions::
             replicate_id = Symbol("$(condition)_$i")
             push!(replicate_ids, replicate_id)
             println("Reading $bam")
-            alignments = Alignments(bam; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
+            alignments = Alignments2(bam; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type)
             println("Building graph for replicate $replicate_id...")

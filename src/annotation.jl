@@ -1,4 +1,4 @@
-mutable struct Annotation <: AnnotationStyle
+struct Annotation <: AnnotationStyle
     type::String
     name::String
     params::Dict{String, String}
@@ -14,7 +14,7 @@ end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
 
-struct AlignmentAnnotation <: AnnotationStyle
+mutable struct AlignmentAnnotation <: AnnotationStyle
     type::String
     name::String
     overlap::UInt8
@@ -133,7 +133,7 @@ Base.length(features::Features) = length(features.list)
 Base.split(features::Features) = [Features([feature for feature in features if type(feature)==t], [t]) for t in types(features)]
 
 Base.convert(::Type{Interval{Float64}}, i::Interval{T}) where T<:AnnotationStyle = Interval(refname(i), leftposition(i), rightposition(i), strand(i), 0.0)
-strand_filter(a::Interval, b::Interval)::Bool = strand(a) == strand(b)
+strand_filter(a::Interval, b::Interval)::Bool = strand(a) === strand(b)
 function GenomicFeatures.eachoverlap(features::I, feature::Interval{T}) where {I<:AnnotationContainer,T}
     t = T
     if I === Coverage && T === Annotation

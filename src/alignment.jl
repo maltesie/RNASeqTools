@@ -169,11 +169,71 @@ align_mem(reads::T, genome::Genome, out_file::String;
             unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, 
             bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
-struct AlignedPart
-    ref::Interval{AlignmentAnnotation}
-    seq::UnitRange{Int}
-    nms::UInt8
-    read::Symbol
+struct Alignments2
+    tempnames::Vector{UInt}
+    leftpos::Vector{Int}
+    rightpos::Vector{Int}
+    read_leftpos::Vector{Int}
+    read_rightpos::Vector{Int}
+    reads::Vector{Symbol}
+    nms::Vector{UInt8}
+    refnames::Vector{String}
+    strands::Vector{Strand}
+    annames::Vector{String}
+    antypes::Vector{String}
+    anols::Vector{UInt8}
+    ranges::Vector{UnitRange{Int}}
+end
+
+function Alignments2(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
+    return read_bam2(bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
+end
+
+Base.length(alns::Alignments2) = length(alns.tempnames)
+
+function Base.iterate(alns::Alignments2) 
+    return isempty(alns.ranges) ? nothing : (AlignedRead2(alns.ranges[1], alns), 2)
+end
+function Base.iterate(alns::Alignments2, state::Int) 
+    return state > length(alns.ranges) ? nothing : (AlignedRead2(alns.ranges[state], alns), state+1)
+end
+
+function samevalueintervals(d::Vector{T}) where T
+    index::Int = 1
+    rindex::Int = 1
+    lindex::Int = 0
+    n_unique = length(unique(d))
+    ranges = Vector{UnitRange{Int}}(undef, n_unique)
+    while index < length(d)
+        if d[index] != d[index+1]
+            ranges[rindex] = lindex+1:index
+            lindex = index
+            rindex += 1
+        end
+        index += 1
+    end
+    ranges[end] = last(ranges[end-1])+1:length(d)
+    return ranges
+end
+
+function partsindex(ranges::Vector{UnitRange{Int}}, sorted_index::Vector{Int}, read_leftpos::Vector{Int}, reads::Vector{Symbol})
+    pindex = Vector{Int}(undef, length(read_leftpos))
+    for r in ranges
+        for i in view(sorted_index, r)
+            c = 0
+            for ii in view(sorted_index, r)
+                if reads[i] === :read1
+                    reads[ii] === :read2 && continue 
+                    read_leftpos[ii] >= read_leftpos[i] && continue
+                else
+                    (reads[ii] === :read2) && (read_leftpos[ii] >= read_leftpos[i]) && continue
+                end
+                c += 1
+            end
+            pindex[first(r) + c] = i
+        end
+    end
+    return pindex
 end
 
 """
@@ -243,6 +303,195 @@ function readpositions(record::BAM.Record)
     end
     return seqstart, seqstop, relrefstop, seqlen
 end
+
+function ispaired(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x001) != 0
+end
+
+function isproperpair(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x002) != 0
+end
+
+function isprimary(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x100) == 0
+end
+
+function isread1(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x040) != 0
+end
+
+function isread2(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x080) != 0
+end
+
+function ispositivestrand(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x010) == 0
+end
+
+function mateispositivestrand(record::BAM.Record)::Bool
+    BAM.flag(record) & UInt(0x020) == 0
+end
+
+function paironsamestrand(record::BAM.Record, invert::Symbol)::Bool
+    (ispositivestrand(record) != (invert in (:both, :read1))) == (mateispositivestrand(record) != (invert in (:both, :read2)))
+end
+
+function is_bitstring_bam(file::String)
+    reader = BAM.Reader(open(file))
+    tempname = ""
+    for record in reader
+        tempname = BAM.tempname(record)
+        break
+    end
+    close(reader)
+    ((length(tempname) == 64) && all([c in ['0', '1'] for c in tempname])) && (return true)
+    return false
+end
+
+@inline function translateddata(data::SubArray{UInt8,1})
+    for i in 1:length(data)
+        (data[i] == 0x00) && (return data[1:i-1])
+    end
+end
+
+@inline function xatag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+        (0x00 == data[i]) & (0x58 == data[i+1]) & (0x41 == data[i+2]) &&
+        (return translateddata(@view(data[i+4:end])))
+    end
+    return nothing
+end
+
+function hasxatag(data::SubArray{UInt8,1})
+    for i in 1:length(data)-2
+        (0x00 == data[i]) & (0x58 == data[i+1]) & (0x41 == data[i+2]) && (return true)
+    end
+    return false
+end
+
+function hasxatag(record::BAM.Record)
+    return hasxatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
+end
+
+function xatag(record::BAM.Record)
+    xa = xatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
+    return isnothing(xa) ? nothing : String(xa)
+end
+
+function astag(record::BAM.Record)
+    data = @view(record.data[BAM.auxdata_position(record):BAM.data_size(record)])
+    for i in 1:length(data)-4
+        (0x00 == data[i]) & (0x41 == data[i+1]) & (0x53 == data[i+2]) && (return data[i+4])
+    end
+end
+
+function nmtag(record::BAM.Record)
+    return record.data[BAM.auxdata_position(record)+3]
+end
+
+function read_bam2(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
+    record = BAM.Record()
+    reader = BAM.Reader(open(bam_file))
+    ns = Vector{UInt}(undef, 10000)
+    ls = Vector{Int}(undef, 10000)
+    rs = Vector{Int}(undef, 10000)
+    is = Vector{String}(undef, 10000)
+    ss = Vector{Strand}(undef, 10000)
+    nms = Vector{UInt8}(undef, 10000)
+    rls = Vector{Int}(undef, 10000)
+    rrs = Vector{Int}(undef, 10000)
+    rds = Vector{Symbol}(undef, 10000)
+    index::Int = 0 
+    while !eof(reader)
+        read!(reader, record)
+        BAM.ismapped(record) || continue
+        is_unique = !hasxatag(record)
+        !is_unique && only_unique_alignments && continue
+        current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
+        index += 1
+        if index > length(ns)
+            for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
+                resize!(z, length(z)+10000) 
+            end
+        end
+        nm = nmtag(record)
+        if !is_unique && !only_unique_alignments
+            xa = xatag(record)
+            leftest = 0
+            leftestpos = BAM.leftposition(record)
+            xastrings = split(xa, ";")[1:end-1]
+            for (i,xapart) in enumerate(xastrings)
+                _, pos, _, nm = split(xapart, ",")
+                pnm = parse(UInt8, nm)
+                pnm > nm && continue
+                intpos = abs(parse(Int, pos))
+                intpos < leftestpos && (leftest = i; leftestpos=intpos; nm=pnm)
+            end
+            if leftest != 0
+                chr, pos, cigar, nm = split(xastrings[leftest], ",")
+                refstart = parse(Int, pos)
+                strand = ((refstart > 0) != current_read===:read2) ? STRAND_POS : STRAND_NEG
+                refstart *= sign(refstart)
+                readstart, readstop, relrefstop, readlen = readpositions(cigar)
+                (BAM.ispositivestrand(record) == (current_read === :read2)) && (readstart=readlen-readstop+1;readstop=readlen-readstart+1)
+                ns[index] = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
+                ls[index] = refstart
+                rs[index] = refstart+relrefstop
+                is[index] = chr
+                ss[index] = strand
+                rls[index] = readstart
+                rrs[index] = readstop
+                rds[index] = current_read
+                nms[index] = nm
+                continue
+            end
+        end
+        readstart, readstop, _, readlen = readpositions(record)
+        (BAM.ispositivestrand(record) == (current_read === :read2)) && (readstart=readlen-readstop+1;readstop=readlen-readstart+1)
+        ns[index] = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
+        ls[index] = BAM.leftposition(record)
+        rs[index] = BAM.rightposition(record)
+        is[index] = BAM.refname(record)
+        ss[index] = BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG
+        rls[index] = readstart
+        rrs[index] = readstop
+        rds[index] = current_read
+        nms[index] = nm
+    end
+    for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
+        resize!(z, index) 
+    end
+    close(reader)
+    nindex = sortperm(ns)
+    ns = ns[nindex]
+    ranges = samevalueintervals(ns)
+    pindex = partsindex(ranges, nindex, rls, rds)
+    return Alignments2(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex], 
+                        Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
+end
+
+struct AlignedPart
+    ref::Interval{AlignmentAnnotation}
+    seq::UnitRange{Int}
+    nms::UInt8
+    read::Symbol
+end
+
+AlignedPart(alns::Alignments2, i::Int) = AlignedPart(
+                                            Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i], 
+                                                AlignmentAnnotation(
+                                                    isassigned(alns.antypes, i) ? alns.antypes[i] : "",
+                                                    isassigned(alns.annames, i) ? alns.annames[i] : "",
+                                                    alns.anols[i]
+                                                )
+                                            ),  
+                                            alns.read_leftpos[i]:alns.read_rightpos[i], 
+                                            alns.nms[i], 
+                                            alns.reads[i]
+                                        )
+
+Base.getindex(alns::Alignments2, i::Int) = AlignedPart(alns, i)
+Base.getindex(alns::Alignments2, r::UnitRange{Int}) = [alns[i] for i::Int in r]
 
 """
     Constructor for the AlignedPart struct. Builds AlignedPart from a XA string, which is created by bwa-mem2
@@ -421,47 +670,6 @@ if the two parts overlap.
 """
 distanceonread(aln1::AlignedPart, aln2::AlignedPart) = max(first(aln1.seq), first(aln2.seq)) - min(last(aln1.seq), last(aln2.seq))
 
-@inline function translateddata(data::SubArray{UInt8,1})
-    for i in 1:length(data)
-        (data[i] == 0x00) && (return data[1:i-1])
-    end
-end
-
-@inline function xatag(data::SubArray{UInt8,1})
-    for i in 1:length(data)-2
-        (0x00 == data[i]) & (0x58 == data[i+1]) & (0x41 == data[i+2]) &&
-        (return translateddata(@view(data[i+4:end])))
-    end
-    return nothing
-end
-
-function hasxatag(data::SubArray{UInt8,1})
-    for i in 1:length(data)-2
-        (0x00 == data[i]) & (0x58 == data[i+1]) & (0x41 == data[i+2]) && (return true)
-    end
-    return false
-end
-
-function hasxatag(record::BAM.Record)
-    return hasxatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
-end
-
-function xatag(record::BAM.Record)
-    xa = xatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
-    return isnothing(xa) ? nothing : String(xa)
-end
-
-function astag(record::BAM.Record)
-    data = @view(record.data[BAM.auxdata_position(record):BAM.data_size(record)])
-    for i in 1:length(data)-4
-        (0x00 == data[i]) & (0x41 == data[i+1]) & (0x53 == data[i+2]) && (return data[i+4])
-    end
-end
-
-function nmtag(record::BAM.Record)
-    return record.data[BAM.auxdata_position(record)+3]
-end
-
 struct AlignedRead
     alns::Vector{AlignedPart}
 end
@@ -470,8 +678,44 @@ function AlignedRead()
     return AlignedRead([])
 end
 
+struct AlignedRead2
+    range::UnitRange{Int}
+    alns::Alignments2
+end
+
+function Base.iterate(alnread::AlignedRead2) 
+    return isnothing(alnread.range) ? nothing : (AlignedPart(alnread.alns, first(alnread.range)), first(alnread.range)+1)
+end
+function Base.iterate(alnread::AlignedRead2, state::Int) 
+    return state > last(alnread.range) ? nothing : (AlignedPart(alnread.alns, state), state+1)
+end
+Base.getindex(alnread::AlignedRead2, i::Int) = alnread.alns[alnread.range[i]]
+Base.getindex(alnread::AlignedRead2, r::UnitRange{Int}) = AlignedRead2(alnread.range[r], alnread.alns)
+Base.getindex(alnread::AlignedRead2, b::Vector{Bool}) = [alnread.alns[index] for (i::Int,index::Int) in enumerate(alnread.range) if b[i]]
+Base.isempty(alnread::AlignedRead2) = isempty(alnread.range)
+Base.length(alnread::AlignedRead2) = length(alnread.range)
+
+parts(alnread::AlignedRead2) = [AlignedPart(alnread.alns, i) for i in alnread.range]
+typein(alnread::AlignedRead2, types::Vector{String}) = any(alnread.alns.antypes[i] in types for i::Int in alnread.range if isassigned(alnread.alns.antypes, i))
+hastype(alnread::AlignedRead2, t::String) = any(alnread.alns.antypes[i] === t for i::Int in alnread.range if isassigned(alnread.alns.antypes, i))
+namein(alnread::AlignedRead2, names::Vector{String}) = any(alnread.alns.annames[i] in names for i::Int in alnread.range if isassigned(alnread.alns.annames, i))
+hasname(alnread::AlignedRead2, n::String) = any(alnread.alns.annames[i] === n for i::Int in alnread.range if isassigned(alnread.alns.annames, i))
+hasannotation(alnread::AlignedRead2) = any(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
+annotatedcount(alnread::AlignedRead2) = sum(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
+annotationcount(alnread::AlignedRead2) = length(Set(name(part) for part in alnread))
+isfullyannotated(alnread::AlignedRead2) = all(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
+function leftestposition(alnread::AlignedRead2) 
+    v = view(alnread.alns.refnames, alnread.range)
+    all(v .== alnread.alns.refnames[first(alnread.range)]) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
+    minimum(v)
+end
+function rightestposition(alnread::AlignedRead2) 
+    v = view(alnread.alns.refnames, alnread.range)
+    all(v .== alnread.alns.refnames[first(alnread.range)]) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
+    maximum(v)
+end
+
 parts(alnread::AlignedRead) = alnread.alns
-count(alnread::AlignedRead) = length(alnread.alns)
 typein(alnread::AlignedRead, types::Vector{String}) = any(type(alnpart) in types for alnpart in alnread)
 hastype(alnread::AlignedRead, t::String) = any(type(alnpart) == t for alnpart in alnread)
 namein(alnread::AlignedRead, names::Vector{String}) = any(name(alnpart) in names for alnpart in alnread)
@@ -487,31 +731,22 @@ function GenomicFeatures.strand(alnread::AlignedRead)
     length(alnread) > 0 || (return STRAND_NA)
     return all((strand(alnread[1]) == strand(part)) for part in alnread[2:end]) ? strand(alnread[1]) : STRAND_BOTH
 end
+function GenomicFeatures.strand(alnread::AlignedRead2)
+    length(alnread) > 0 || (return STRAND_NA)
+    return all(view(alnread.alns.strands, alnread.range) .=== alnread.alns.strands[first(alnread.range)]) ? alnread.alns.strands[first(alnread.range)] : STRAND_BOTH
+end
+
 function ispositivestrand(alnread::AlignedRead)
     s = strand(alnread)
     s === STRAND_NA && throw(AssertionError("Empty Alignment does not have a strand."))
     s === STRAND_BOTH && throw(AssertionError("Alignments are not on the same strand."))
     return s === STRAND_POS
 end
-
-function merge!(alnread1::AlignedRead, alnread2::AlignedRead)
-    for part in alnread2
-        push!(alnread1, part)
-    end
-end
-
-function name(alnread::AlignedRead)
-    names = Set(name(part) for part in alnread)
-    (length(names) == 1) || throw(Assertion("Found more than one name in AlignedRead."))
-    for n in names
-        return n
-    end
-end
-function name(alnread1::AlignedRead, alnread2::AlignedRead)
-    name1 = name(alnread1)
-    name2 = name(alnread2)
-    (name1 === name2) || throw(Assertion("AlignedReads have different names."))
-    return name1
+function ispositivestrand(alnread::AlignedRead2)
+    s = strand(alnread)
+    s === STRAND_NA && throw(AssertionError("Empty Alignment does not have a strand."))
+    s === STRAND_BOTH && throw(AssertionError("Alignments are not on the same strand."))
+    return s === STRAND_POS
 end
 
 Base.length(alnread::AlignedRead) = length(alnread.alns)
@@ -528,11 +763,12 @@ function Base.show(alnread::AlignedRead)
     print("\n")
 end
 
-function hasannotation(alnread::AlignedRead, annotation_name::String)
+function Base.show(alnread::AlignedRead2)
+    println("Alignment with $(length(alnread)) part(s):")
     for part in alnread
-        name(part) == annotation_name && (return true)
+        show(part)
     end
-    return false
+    print("\n")
 end
 
 refname(i::Interval) = i.seqname
@@ -579,6 +815,32 @@ function ismulti(alnread::AlignedRead; min_distance=1000, check_annotation=true)
     countchimeric(alnread; min_distance=min_distance, check_annotation=check_annotation) >= length(alnread)
 end
 
+function distance(l1::Int, r1::Int, l2::Int, r2::Int)::Int
+    l2>r1 && (return l2-l1)
+    l1>r2 && (return l1-r2)
+    return 0 
+end
+function countchimeric(alnread::AlignedRead2; min_distance=1000, check_annotation=true)
+    length(alnread) > 1 || (return 0)
+    c = 0
+    for (i1, i2) in combinations(alnread.range, 2)
+        (check_annotation && isassigned(alnread.alns.annames, i1) &&  isassigned(alnread.alns.annames, i2) && 
+            (alnread.alns.annames[i1] === alnread.alns.annames[i2])) && continue
+        ((alnread.alns.refnames[i1] === alnread.alns.refnames[i2]) && (alnread.alns.strands[i1] === alnread.alns.strands[i2]) && 
+            distance(alnread.alns.leftpos[i1], alnread.alns.rightpos[i1], alnread.alns.leftpos[i2], alnread.alns.rightpos[i2]) < min_distance) && continue
+        c += 1
+    end
+    return c
+end
+
+function ischimeric(alnread::AlignedRead2; min_distance=1000, check_annotation=true)
+    countchimeric(alnread; min_distance=min_distance, check_annotation=check_annotation) > 0
+end
+
+function ismulti(alnread::AlignedRead2; min_distance=1000, check_annotation=true)
+    countchimeric(alnread; min_distance=min_distance, check_annotation=check_annotation) >= length(alnread)
+end
+
 struct Alignments{T} <: AlignmentContainer
     dict::Dict{T, AlignedRead}
 end
@@ -594,6 +856,22 @@ Base.iterate(alignments::Alignments) = iterate(alignments.dict)
 Base.iterate(alignments::Alignments, state::Int) = iterate(alignments.dict, state)
 partscount(alignments::Alignments) = sum(length(alnread) for alnread in alignments)
 
+function Base.empty!(alns::Alignments2)
+    empty!(alns.tempnames)
+    empty!(alns.leftpos)
+    empty!(alns.rightpos)
+    empty!(alns.refnames)
+    empty!(alns.strands)
+    empty!(alns.nms)
+    empty!(alns.annames)
+    empty!(alns.antypes)
+    empty!(alns.anols)
+    empty!(alns.ranges)
+    empty!(alns.read_leftpos)
+    empty!(alns.read_rightpos)
+    empty!(alns.reads)
+end
+
 function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
     alignments = read_bam(bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
     Alignments(alignments)
@@ -605,50 +883,6 @@ function Alignments(bam_file1::String, bam_file2::String; only_unique_alignments
     Alignments(alignments)
 end
 
-function ispaired(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x001) != 0
-end
-
-function isproperpair(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x002) != 0
-end
-
-function isprimary(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x100) == 0
-end
-
-function isread1(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x040) != 0
-end
-
-function isread2(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x080) != 0
-end
-
-function ispositivestrand(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x010) == 0
-end
-
-function mateispositivestrand(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x020) == 0
-end
-
-function paironsamestrand(record::BAM.Record, invert::Symbol)::Bool
-    (ispositivestrand(record) != (invert in (:both, :read1))) == (mateispositivestrand(record) != (invert in (:both, :read2)))
-end
-
-function is_bitstring_bam(file::String)
-    reader = BAM.Reader(open(file))
-    tempname = ""
-    for record in reader
-        tempname = BAM.tempname(record)
-        break
-    end
-    close(reader)
-    ((length(tempname) == 64) && all([c in ['0', '1'] for c in tempname])) && (return true)
-    return false
-end
-
 function Base.push!(r::AlignedRead, item::AlignedPart) 
     for (i, part) in enumerate(r)
         if item.read === part.read
@@ -658,194 +892,6 @@ function Base.push!(r::AlignedRead, item::AlignedPart)
         end
     end
     insert!(r.alns, length(r)+1, item)
-end
-
-struct Alignments2
-    tempnames::Vector{UInt}
-    leftpos::Vector{Int}
-    rightpos::Vector{Int}
-    read_leftpos::Vector{Int}
-    read_rightpos::Vector{Int}
-    reads::Vector{Symbol}
-    nms::Vector{UInt8}
-    refnames::Vector{String}
-    strands::Vector{Strand}
-    annames::Vector{String}
-    antypes::Vector{String}
-    anols::Vector{UInt8}
-    ranges::Vector{UnitRange{Int}}
-end
-
-function Alignments2(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
-    return test_bam(bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
-end
-
-function Base.iterate(alns::Alignments2) 
-    return isempty(alns.ranges) ? nothing : (AlignedRead2(alns.ranges[1], alns), 2)
-end
-function Base.iterate(alns::Alignments2, state::Int) 
-    return state > length(alns.ranges) ? nothing : (AlignedRead2(alns.ranges[state], alns), state+1)
-end
-
-function samevalueintervals(d::Vector{T}) where T
-    index::Int = 1
-    rindex::Int = 1
-    lindex::Int = 0
-    n_unique = length(unique(d))
-    ranges = Vector{UnitRange{Int}}(undef, n_unique)
-    while index < length(d)
-        if d[index] != d[index+1]
-            ranges[rindex] = lindex+1:index
-            lindex = index
-            rindex += 1
-        end
-        index += 1
-    end
-    ranges[end] = last(ranges[end-1])+1:length(d)
-    return ranges
-end
-
-function partsindex(ranges::Vector{UnitRange{Int}}, sorted_index::Vector{Int}, read_leftpos::Vector{Int}, reads::Vector{Symbol})
-    pindex = Vector{Int}(undef, length(read_leftpos))
-    for r in ranges
-        for i in view(sorted_index, r)
-            c = 0
-            for ii in view(sorted_index, r)
-                if reads[i] === :read1
-                    reads[ii] === :read2 && continue 
-                    read_leftpos[ii] >= read_leftpos[i] && continue
-                else
-                    (reads[ii] === :read2) && (read_leftpos[ii] >= read_leftpos[i]) && continue
-                end
-                c += 1
-            end
-            pindex[first(r) + c] = i
-        end
-    end
-    return pindex
-end
-
-function test_bam(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
-    record = BAM.Record()
-    reader = BAM.Reader(open(bam_file))
-    ns = Vector{UInt}(undef, 10000)
-    ls = Vector{Int}(undef, 10000)
-    rs = Vector{Int}(undef, 10000)
-    is = Vector{String}(undef, 10000)
-    ss = Vector{Strand}(undef, 10000)
-    nms = Vector{UInt8}(undef, 10000)
-    rls = Vector{Int}(undef, 10000)
-    rrs = Vector{Int}(undef, 10000)
-    rds = Vector{Symbol}(undef, 10000)
-    index::Int = 0 
-    while !eof(reader)
-        read!(reader, record)
-        BAM.ismapped(record) || continue
-        is_unique = !hasxatag(record)
-        !is_unique && only_unique_alignments && continue
-        current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
-        index += 1
-        if index > length(ns)
-            for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
-                resize!(z, length(z)+10000) 
-            end
-        end
-        nm = nmtag(record)
-        if !is_unique && !only_unique_alignments
-            xa = xatag(record)
-            leftest = 0
-            leftestpos = BAM.leftposition(record)
-            xastrings = split(xa, ";")[1:end-1]
-            for (i,xapart) in enumerate(xastrings)
-                _, pos, _, nm = split(xapart, ",")
-                pnm = parse(UInt8, nm)
-                pnm > nm && continue
-                intpos = abs(parse(Int, pos))
-                intpos < leftestpos && (leftest = i; leftestpos=intpos; nm=pnm)
-            end
-            if leftest != 0
-                chr, pos, cigar, nm = split(xastrings[leftest], ",")
-                refstart = parse(Int, pos)
-                strand = ((refstart > 0) != current_read===:read2) ? STRAND_POS : STRAND_NEG
-                refstart *= sign(refstart)
-                readstart, readstop, relrefstop, readlen = readpositions(cigar)
-                (BAM.ispositivestrand(record) == (current_read === :read2)) && (readstart=readlen-readstop+1;readstop=readlen-readstart+1)
-                ns[index] = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
-                ls[index] = refstart
-                rs[index] = refstart+relrefstop
-                is[index] = chr
-                ss[index] = strand
-                rls[index] = readstart
-                rrs[index] = readstop
-                rds[index] = current_read
-                nms[index] = nm
-                continue
-            end
-        end
-        readstart, readstop, _, readlen = readpositions(record)
-        (BAM.ispositivestrand(record) == (current_read === :read2)) && (readstart=readlen-readstop+1;readstop=readlen-readstart+1)
-        ns[index] = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
-        ls[index] = BAM.leftposition(record)
-        rs[index] = BAM.rightposition(record)
-        is[index] = BAM.refname(record)
-        ss[index] = BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG
-        rls[index] = readstart
-        rrs[index] = readstop
-        rds[index] = current_read
-        nms[index] = nm
-    end
-    for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
-        resize!(z, index) 
-    end
-    close(reader)
-    nindex = sortperm(ns)
-    ns = ns[nindex]
-    ranges = samevalueintervals(ns)
-    pindex = partsindex(ranges, nindex, rls, rds)
-    return Alignments2(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex], 
-                        Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
-end
-
-struct AlignedRead2
-    range::UnitRange{Int}
-    alns::Alignments2
-end
-
-function Base.iterate(alnread::AlignedRead2) 
-    return isnothing(alnread.range) ? nothing : (AlignedPart(
-                                                    Interval(
-                                                        alnread.alns.refnames[first(alnread.range)], 
-                                                        alnread.alns.leftpos[first(alnread.range)],
-                                                        alnread.alns.rightpos[first(alnread.range)],
-                                                        alnread.alns.strands[first(alnread.range)], 
-                                                        AlignmentAnnotation(
-                                                            isdefined(alnread.alns.antypes, first(alnread.range)) ? alnread.alns.antypes[first(alnread.range)] : "",
-                                                            isdefined(alnread.alns.annames, first(alnread.range)) ? alnread.alns.annames[first(alnread.range)] : "",
-                                                            alnread.alns.anols[first(alnread.range)]
-                                                        )
-                                                    ), 
-                                                    alnread.alns.read_leftpos[first(alnread.range)]:alnread.alns.read_rightpos[first(alnread.range)], 
-                                                    alnread.alns.nms[first(alnread.range)], 
-                                                    alnread.alns.reads[first(alnread.range)]
-                                                ), first(alnread.range)+1)
-end
-function Base.iterate(alnread::AlignedRead2, state::Int) 
-    return state > last(alnread.range) ? nothing : (AlignedPart(
-                                                        Interval(
-                                                            alnread.alns.refnames[state], 
-                                                            alnread.alns.leftpos[state],
-                                                            alnread.alns.rightpos[state],
-                                                            alnread.alns.strands[state], 
-                                                            AlignmentAnnotation(
-                                                                isdefined(alnread.alns.antypes, state) ? alnread.alns.antypes[state] : "",
-                                                                isdefined(alnread.alns.annames, state) ? alnread.alns.annames[state] : "",
-                                                                alnread.alns.anols[state]
-                                                            )
-                                                        ), 
-                                                        alnread.alns.read_leftpos[state]:alnread.alns.read_rightpos[state], 
-                                                        alnread.alns.nms[state], 
-                                                        alnread.alns.reads[state]
-                                                    ), state+1)
 end
 
 function read_bam!(reads::Dict{T, AlignedRead}, bam_file::String; only_unique_alignments=true, is_reverse_complement=false) where T<:Union{UInt, String}
@@ -973,36 +1019,26 @@ function annotate!(alns::Alignments, features::Features; prioritize_type=nothing
     end
 end
 
+annotate_filter(a::Interval{Annotation}, b::Interval{Nothing}) = strand(a) === strand(b)
 function annotate!(alns::Alignments2, features::Features; prioritize_type=nothing, overwrite_type=nothing)
+    myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(annotate_filter), Annotation}(
+                                    annotate_filter,
+                                    GenomicFeatures.ICTreeIntersection{Annotation}(), 
+                                    features.list.trees[refn], 
+                                    Interval("", 1, 1, STRAND_NA, Annotation())) 
+                            for refn in refnames(features))
     olp::UInt8 = 0
-    for i in 1:length(alns.tempnames)
-        haskey(features.list.trees, alns.refnames[i]) || continue
-        for feature_interval in intersect(features.list.trees[alns.refnames[i]], (alns.leftpos[i], alns.rightpos[i]))
-            strand(feature_interval) === alns.strands[i] || continue
-            #olp = rand(UInt8)#round(UInt8, (min(min(feature_interval.last - feature_interval.first + 1, alns.rightpos[i] - alns.leftpos[i] + 1), 
-                  #                  min(feature_interval.last - alns.leftpos[i] + 1, alns.rightpos[i] - feature_interval.first + 1)) / 
-                  #              (alns.rightpos[i] - alns.leftpos[i] + 1)) * 100)
-            #if (!isnothing(prioritize_type) && (type(feature_interval) === prioritize_type)) || 
-            #    (!isnothing(overwrite_type) && (alns.antypes[i] === overwrite_type)) || alns.anols[i]<olp
-            #    
-            #    alns.antypes[i] = type(feature_interval)
-            #    alns.annames[i] = name(feature_interval)
-            #    alns.anols[i] = olp
-            #end
-        end
-    end
-end
-
-"""
-function annotate!(alns::Alignments2, features::Features; prioritize_type=nothing, overwrite_type=nothing)
-    for i in 1:length(alns.tempnames)
-        ref_interval = Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i])
-        for feature_interval in eachoverlap(features.list, ref_interval)
-            strand(feature_interval) != strand(ref_interval) && continue
-            olp = round(UInt8, (overlapdistance(feature_interval, ref_interval) / (rightposition(ref_interval) - leftposition(ref_interval) + 1)) * 100)
-            foundpriority = (!isnothing(prioritize_type) && (type(feature_interval) == prioritize_type))
-            overwrite = (!isnothing(overwrite_type) && (alns.antypes[i] == overwrite_type))
-            if foundpriority || overwrite || alns.anols[i]<olp
+    for i::Int in 1:length(alns)
+        alns.refnames[i] in keys(myiterators) || continue
+        myiterator = myiterators[alns.refnames[i]]
+        myiterator.query = Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i])
+        for feature_interval in myiterator
+            olp = round(UInt8, (min(min(feature_interval.last - feature_interval.first + 1, alns.rightpos[i] - alns.leftpos[i] + 1), 
+                                    min(feature_interval.last - alns.leftpos[i] + 1, alns.rightpos[i] - feature_interval.first + 1)) / 
+                                (alns.rightpos[i] - alns.leftpos[i] + 1)) * 100)
+            if (!isnothing(prioritize_type) && (type(feature_interval) === prioritize_type)) || 
+                (!isnothing(overwrite_type) && isassigned(alns.antypes, i) && (alns.antypes[i] === overwrite_type)) || alns.anols[i]<olp
+                
                 alns.antypes[i] = type(feature_interval)
                 alns.annames[i] = name(feature_interval)
                 alns.anols[i] = olp
@@ -1010,7 +1046,6 @@ function annotate!(alns::Alignments2, features::Features; prioritize_type=nothin
         end
     end
 end
-"""
 
 function annotate!(features::Features, feature_alignments::Alignments{String}; key_gen=typenamekey)
     for feature in features

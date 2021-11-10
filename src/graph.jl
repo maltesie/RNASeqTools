@@ -77,6 +77,69 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
     return interactions
 end
 
+function leftestposition(alnpart::AlignedPart, alnread::AlignedRead2)
+    minimum(alnread.alns.leftpos[i] for i::Int in alnread.range if (isassigned(alnread.alns.annames, i) && alnread.alns.annames[i] === name(alnpart)))
+end
+
+function rightestposition(alnpart::AlignedPart, alnread::AlignedRead2)
+    minimum(alnread.alns.rightpos[i] for i::Int in alnread.range if (isassigned(alnread.alns.annames, i) && alnread.alns.annames[i] === name(alnpart)))
+end
+
+function Base.append!(interactions::Interactions, alignments::Alignments2, replicate_id::Symbol; min_distance=1000, filter_types=[])
+    myhash(part::AlignedPart) = hash(name(part))
+    interactions.edges[:, replicate_id] = repeat([0], nrow(interactions.edges))
+    push!(interactions.replicate_ids, replicate_id)
+    trans = Dict{UInt, Int}(interactions.nodes[i, :hash]=>i for i in 1:nrow(interactions.nodes))
+    trans_edges = Dict{Tuple{Int,Int},Int}((interactions.edges[i, :src],interactions.edges[i, :dst])=>i for i in 1:nrow(interactions.edges))
+    for alignment in alignments
+        !isempty(filter_types) && typein(alignment, filter_types) && continue
+        is_chimeric = ischimeric(alignment; min_distance=min_distance)
+        is_multi = is_chimeric ? ismulti(alignment) : false
+
+        for (i,part) in enumerate(alignment)
+            hasannotation(part) || continue
+            any(samename(part, formerpart) for formerpart in alignment[1:i-1]) && continue
+            h = myhash(part)
+            if !(h in keys(trans))
+                trans[h] = length(trans) + 1
+                add_vertex!(interactions.graph)
+                push!(interactions.nodes, (name(part), type(part) in ("5UTR", "3UTR") ? "CDS" : type(part), refname(part), 0, 0, strand(part), h))
+            end
+            is_chimeric || (interactions.nodes[trans[h], :nb_single] += 1)
+        end
+
+        for (part1, part2) in combinations(alignment[collect(!any(samename(alignment[i], formerpart) for formerpart in alignment[1:i-1]) for i in 1:length(alignment))], 2)
+            (hasannotation(part1) && hasannotation(part2)) || continue
+            ischimeric(part1, part2; min_distance=min_distance) || continue
+            show(part1)
+            show(part2)
+            println("\n")
+            a, b = trans[myhash(part1)], trans[myhash(part2)]
+            interactions.nodes[a, :nb_ints] += 1
+            interactions.nodes[b, :nb_ints] += 1
+            has_edge(interactions.graph, a, b) || (add_edge!(interactions.graph, a, b); trans_edges[(a,b)] = ne(interactions.graph))
+            iindex = trans_edges[(a, b)]
+            left1, right1 = leftestposition(part1, alignment), rightestposition(part1, alignment)
+            left2, right2 = leftestposition(part2, alignment), rightestposition(part2, alignment)
+            iindex > nrow(interactions.edges) &&
+                push!(interactions.edges, (a, b, 0, 0, left1, right1, left2, right2, 0, 0, 0, 0, 0, 0, (0 for i in 1:length(interactions.replicate_ids))...))
+            interactions.edges[iindex, :nb_ints] += 1
+            is_multi && (interactions.edges[iindex, :nb_multi] += 1)
+            interactions.edges[iindex, :minleft1] = min(interactions.edges[iindex, :minleft1], left1)
+            interactions.edges[iindex, :maxright1] = max(interactions.edges[iindex, :maxright1], right1)
+            interactions.edges[iindex, :minleft2] = min(interactions.edges[iindex, :minleft2], left2)
+            interactions.edges[iindex, :maxright2] = max(interactions.edges[iindex, :maxright2], right2)
+            for (s,v) in zip((:meanleft1, :meanright1, :meanleft2, :meanright2, :length1, :length2),
+                            (left1, right1, left2, right2, right1 - left1 + 1, right2 - left2 + 1))
+                interactions.edges[iindex, s] =
+                (interactions.edges[iindex, s] * (interactions.edges[iindex, :nb_ints] - 1) + v) / interactions.edges[iindex, :nb_ints]
+            end
+            interactions.edges[iindex, replicate_id] = 1
+        end
+    end
+    return interactions
+end
+
 function Interactions()
     nodes = DataFrame(:name=>String[], :type=>String[], :ref=>String[], :nb_single=>Int[], :nb_ints=>Int[], :strand=>Char[], :hash=>UInt[])
     edges = DataFrame(:src=>Int[], :dst=>Int[], :nb_ints=>Int[], :nb_multi=>Int[], :minleft1=>Int[], :maxright1=>Int[], :minleft2=>Int[],
