@@ -414,6 +414,9 @@ function read_bam2(bam_file::String; only_unique_alignments=true, is_reverse_com
                 resize!(z, length(z)+10000) 
             end
         end
+        n= hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
+        (l,r) = (BAM.leftposition(record), BAM.rightposition(record))
+        (ref,s) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
         nm = nmtag(record)
         if !is_unique && !only_unique_alignments
             xa = xatag(record)
@@ -433,30 +436,13 @@ function read_bam2(bam_file::String; only_unique_alignments=true, is_reverse_com
                 strand = ((refstart > 0) != current_read===:read2) ? STRAND_POS : STRAND_NEG
                 refstart *= sign(refstart)
                 readstart, readstop, relrefstop, readlen = readpositions(cigar)
-                (BAM.ispositivestrand(record) == (current_read === :read2)) && (readstart=readlen-readstop+1;readstop=readlen-readstart+1)
-                ns[index] = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
-                ls[index] = refstart
-                rs[index] = refstart+relrefstop
-                is[index] = chr
-                ss[index] = strand
-                rls[index] = readstart
-                rrs[index] = readstop
-                rds[index] = current_read
-                nms[index] = nm
-                continue
+                (rl, rr) = ((refstart > 0) != (current_read === :read2)) ? (readstart,readstop) : (readlen-readstop+1,readlen-readstart+1)
+                (l, r, ref, s) = (refstart, refstart+relrefstop, chr, strand)
             end
         end
         readstart, readstop, _, readlen = readpositions(record)
-        (BAM.ispositivestrand(record) == (current_read === :read2)) && (readstart=readlen-readstop+1;readstop=readlen-readstart+1)
-        ns[index] = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
-        ls[index] = BAM.leftposition(record)
-        rs[index] = BAM.rightposition(record)
-        is[index] = BAM.refname(record)
-        ss[index] = BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG
-        rls[index] = readstart
-        rrs[index] = readstop
-        rds[index] = current_read
-        nms[index] = nm
+        (rl, rr) = (BAM.ispositivestrand(record) != (current_read === :read2)) ? (readstart,readstop) : (readlen-readstop+1,readlen-readstart+1)
+        (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) = (n, l, r, ref, s, rl, rr, current_read, nm)
     end
     for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
         resize!(z, index) 
@@ -816,7 +802,7 @@ function ismulti(alnread::AlignedRead; min_distance=1000, check_annotation=true)
 end
 
 function distance(l1::Int, r1::Int, l2::Int, r2::Int)::Int
-    l2>r1 && (return l2-l1)
+    l2>r1 && (return l2-r1)
     l1>r2 && (return l1-r2)
     return 0 
 end
@@ -1027,7 +1013,7 @@ function annotate!(alns::Alignments2, features::Features; prioritize_type=nothin
                                     features.list.trees[refn], 
                                     Interval("", 1, 1, STRAND_NA, Annotation())) 
                             for refn in refnames(features))
-    olp::UInt8 = 0
+
     for i::Int in 1:length(alns)
         alns.refnames[i] in keys(myiterators) || continue
         myiterator = myiterators[alns.refnames[i]]
@@ -1036,12 +1022,15 @@ function annotate!(alns::Alignments2, features::Features; prioritize_type=nothin
             olp = round(UInt8, (min(min(feature_interval.last - feature_interval.first + 1, alns.rightpos[i] - alns.leftpos[i] + 1), 
                                     min(feature_interval.last - alns.leftpos[i] + 1, alns.rightpos[i] - feature_interval.first + 1)) / 
                                 (alns.rightpos[i] - alns.leftpos[i] + 1)) * 100)
-            if (!isnothing(prioritize_type) && (type(feature_interval) === prioritize_type)) || 
-                (!isnothing(overwrite_type) && isassigned(alns.antypes, i) && (alns.antypes[i] === overwrite_type)) || alns.anols[i]<olp
-                
+            
+            priority = !isnothing(prioritize_type) && (type(feature_interval) === prioritize_type)
+            overwrite = !isnothing(overwrite_type) && isassigned(alns.antypes, i) && (alns.antypes[i] === overwrite_type)
+            
+            if  priority || overwrite || alns.anols[i]<olp
                 alns.antypes[i] = type(feature_interval)
                 alns.annames[i] = name(feature_interval)
                 alns.anols[i] = olp
+                priority && break
             end
         end
     end

@@ -30,11 +30,11 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
     push!(interactions.replicate_ids, replicate_id)
     trans = Dict{UInt, Int}(interactions.nodes[i, :hash]=>i for i in 1:nrow(interactions.nodes))
     trans_edges = Dict{Tuple{Int,Int},Int}((interactions.edges[i, :src],interactions.edges[i, :dst])=>i for i in 1:nrow(interactions.edges))
-    for alignment in alignments
+
+    for (key,alignment) in alignments
         !isempty(filter_types) && typein(alignment, filter_types) && continue
         is_chimeric = ischimeric(alignment; min_distance=min_distance)
         is_multi = is_chimeric ? ismulti(alignment) : false
-
         for (i,part) in enumerate(alignment)
             hasannotation(part) || continue
             any(samename(part, formerpart) for formerpart in alignment.alns[1:i-1]) && continue
@@ -47,7 +47,9 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             is_chimeric || (interactions.nodes[trans[h], :nb_single] += 1)
         end
 
-        for (part1, part2) in combinations(alignment.alns[collect(!any(samename(alignment[i], formerpart) for formerpart in alignment.alns[1:i-1]) for i in 1:length(alignment))], 2)
+        for (part1, part2) in combinations(alignment.alns[collect(!any(samename(alignment[i], formerpart) 
+                                                                    for formerpart in alignment.alns[1:i-1]) 
+                                                                        for i in 1:length(alignment))], 2)
             (hasannotation(part1) && hasannotation(part2)) || continue
             ischimeric(part1, part2; min_distance=min_distance) || continue
             a, b = trans[myhash(part1)], trans[myhash(part2)]
@@ -73,7 +75,6 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             interactions.edges[iindex, replicate_id] = 1
         end
     end
-
     return interactions
 end
 
@@ -91,14 +92,18 @@ function Base.append!(interactions::Interactions, alignments::Alignments2, repli
     push!(interactions.replicate_ids, replicate_id)
     trans = Dict{UInt, Int}(interactions.nodes[i, :hash]=>i for i in 1:nrow(interactions.nodes))
     trans_edges = Dict{Tuple{Int,Int},Int}((interactions.edges[i, :src],interactions.edges[i, :dst])=>i for i in 1:nrow(interactions.edges))
+
     for alignment in alignments
         !isempty(filter_types) && typein(alignment, filter_types) && continue
         is_chimeric = ischimeric(alignment; min_distance=min_distance)
         is_multi = is_chimeric ? ismulti(alignment) : false
+        alnparts = parts(alignment)
 
-        for (i,part) in enumerate(alignment)
+        for (i,part) in enumerate(alnparts)
             hasannotation(part) || continue
-            any(samename(part, formerpart) for formerpart in alignment[1:i-1]) && continue
+            any(alignments.annames[i] === alignments.annames[ii] 
+                for ii in first(alignment.range):alignment.range[i]-1 
+                    if (isassigned(alignments.annames, i) && isassigned(alignments.annames, ii))) && continue
             h = myhash(part)
             if !(h in keys(trans))
                 trans[h] = length(trans) + 1
@@ -108,12 +113,11 @@ function Base.append!(interactions::Interactions, alignments::Alignments2, repli
             is_chimeric || (interactions.nodes[trans[h], :nb_single] += 1)
         end
 
-        for (part1, part2) in combinations(alignment[collect(!any(samename(alignment[i], formerpart) for formerpart in alignment[1:i-1]) for i in 1:length(alignment))], 2)
+        for (part1, part2) in combinations(alnparts[collect(!any(samename(part, formerpart) 
+                                                                        for formerpart in alnparts[1:i-1]) 
+                                                                            for (i, part) in enumerate(alnparts))], 2)
             (hasannotation(part1) && hasannotation(part2)) || continue
             ischimeric(part1, part2; min_distance=min_distance) || continue
-            show(part1)
-            show(part2)
-            println("\n")
             a, b = trans[myhash(part1)], trans[myhash(part2)]
             interactions.nodes[a, :nb_ints] += 1
             interactions.nodes[b, :nb_ints] += 1
