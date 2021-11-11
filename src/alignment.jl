@@ -861,7 +861,7 @@ function annotate!(alns::Alignments, features::Features; prioritize_type=nothing
     end
 end
 
-function annotate!(features::Features, feature_alignments::Alignments_old{String}; key_gen=typenamekey)
+function annotate!(features::Features, feature_alignments::Alignments; key_gen=typenamekey)
     for feature in features
         key = key_gen(feature)
         push!(params(feature), "Count"=>"0")
