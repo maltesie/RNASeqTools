@@ -186,7 +186,7 @@ struct Alignments
 end
 
 function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
-    return read_bam2(bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
+    return read_bam(bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
 end
 
 Base.length(alns::Alignments) = length(alns.tempnames)
@@ -389,7 +389,7 @@ function nmtag(record::BAM.Record)
     return record.data[BAM.auxdata_position(record)+3]
 end
 
-function read_bam2(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
+function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     ns = Vector{UInt}(undef, 10000)

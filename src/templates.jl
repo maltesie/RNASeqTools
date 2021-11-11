@@ -111,7 +111,7 @@ function conserved_features(results_path::String, features::Features, source_gen
     target_genomes = [Genome(genome_file) for genome_file in targets]
     seqs = featureseqs(features, source_genome)
     align_mem(seqs, target_genomes, joinpath(results_path, "utrs.bam"))
-    alignments = Alignments(joinpath(results_path, "utrs.bam"); hash_id=false)
+    alignments = Alignments(joinpath(results_path, "utrs.bam"))
     annotate!(features, alignments)
     write(joinpath(results_path, "features.gff"), features)
 end
@@ -131,7 +131,7 @@ function chimeric_alignments(results_path::String, features::Features, bams::Sin
             replicate_id = Symbol("$(condition)_$i")
             push!(replicate_ids, replicate_id)
             println("Reading $bam")
-            alignments = Alignments2(bam; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
+            alignments = Alignments(bam; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type)
             println("Building graph for replicate $replicate_id...")
