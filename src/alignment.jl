@@ -760,6 +760,11 @@ function ischimeric(alnread::AlignedRead; min_distance=1000, check_annotation=tr
     countchimeric(alnread; min_distance=min_distance, check_annotation=check_annotation) > 0
 end
 
+function ischimeric(part1::AlignedPart, part2::AlignedPart; min_distance=1000, check_annotation=true)
+    check_annotation && hasannotation(part1) && hasannotation(part2) && (name(part1) == name(part2)) && (return false)
+    return distance(refinterval(part1), refinterval(part2)) > min_distance
+end
+
 function ismulti(alnread::AlignedRead; min_distance=1000, check_annotation=true)
     countchimeric(alnread; min_distance=min_distance, check_annotation=check_annotation) >= length(alnread)
 end
