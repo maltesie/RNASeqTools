@@ -8,8 +8,8 @@ function Annotation()
     Annotation("", "", Dict{String, String}())
 end
 
-function Annotation(type::String, name::String)
-    Annotation(type, name, Dict{String, String}())
+function Annotation(type::String, name::String; args...)
+    Annotation(type, name, Dict{String, String}("$key"=>value for (key,value) in args))
 end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)

@@ -1,3 +1,6 @@
+const ANNOTATION_VCH = "/home/abc/Data/vibrio/annotation/NC_002505_6.gff"
+const GENOME_VCH = "/home/abc/Data/vibrio/genome/NC_002505_6.fa"
+
 function translate_position_mg1655_to_bw25113(pos::Int)::Union{Nothing, Int}
     
     if abs(pos) < 66533

@@ -18,6 +18,8 @@ export values, addutrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, m
 export similarity, tsss, terms, nucleotidecount, occurences, hasannotationkey
 export dashboard, lengthhist, similarityhist, nucleotidedist, expressionpca, similarity
 export feature_ratio, feature_count, de_genes, prepare_data, chimeric_alignments, remove_features, unmapped_reads, transcriptional_startsites, full_annotation, prepare_data
+export ANNOTATION_VCH, GENOME_VCH
+
 
 include("types.jl")
 include("misc.jl")

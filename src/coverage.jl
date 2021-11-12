@@ -14,21 +14,46 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
+
+
 struct ErrorCoverage
     ref_seq::LongDNASeq
     chroms::Dict{String, UnitRange}
-    a_count::Vector{Int}
-    t_count::Vector{Int}
-    c_count::Vector{Int}
-    g_count::Vector{Int}
-    ins_count::Vector{Int}
-    del_count::Vector{Int}
+    fcount::Dict{String, Vector{Int}}
+    rcount::Dict{String, Vector{Int}}
 end
 
-function ErrorCoverage(bam_file::String, genome::Genome)
-    new_ec = ErrorCoverage(genome.seq, genome.chrs, zeros(Int, length(genome.seq)), zeros(Int, length(genome.seq)), zeros(Int, length(genome.seq)),
-                            zeros(Int, length(genome.seq)), zeros(Int, length(genome.seq)), zeros(Int, length(genome.seq)))
-    alns = Alignments2(bam_file)
+function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=false)
+    fcount = Dict(s=>zeros(Int, length(genome.seq)) for i in ("A", "T", "C", "G", "INS", "DEL"))
+    rcount = Dict(s=>zeros(Int, length(genome.seq)) for s in ("A", "T", "C", "G", "INS", "DEL"))
+    trans = Dict(DNA_A=>"A",DNA_T=>"T",DNA_C=>"C",DNAG=>"G")
+    record = BAM.Record()
+    reader = BAM.Reader(open(bam_file))
+    seq = LongDNASeq(0)
+    index::Int = 0 
+    while !eof(reader)
+        read!(reader, record)
+        BAM.ismapped(record) || continue
+        hasxatag(record) && continue
+        index += 1
+        reverse = (isread2(record) != is_reverse_complement)
+        seq = BAM.sequence(record)
+        reverse && reverse_complement!(seq)
+
+        offset, nops = BAM.cigar_position(record)
+        pos = 0
+        for i in offset:4:offset + (nops - 1) * 4
+            x = unsafe_load(Ptr{UInt32}(pointer(record.data, i)))
+            op = BioAlignments.Operation(x & 0x0F)
+            n = x >> 4
+            if BioAlignments.isinsertop(op)
+            elseif BioAlignments.isdeleteop(op)
+            elseif BioAlignments.ismatchop(op)
+            end
+            relpos += n
+        end
+    end
+    ErrorCoverage(genome.seq, genome.chrs, fcount, rcount)
 end
 
 function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true, is_reverse_complement=false, max_temp_length=500)

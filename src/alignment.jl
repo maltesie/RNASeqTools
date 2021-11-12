@@ -259,6 +259,7 @@ function readpositions(cigar::AbstractString)
                 pending_seqstop += n
             elseif BioAlignments.isdeleteop(op)
                 relrefstop += n
+                seqlen -= n
             elseif BioAlignments.ismatchop(op)
                 inseq = true
                 seqstop += n + pending_seqstop
@@ -294,6 +295,7 @@ function readpositions(record::BAM.Record)
             pending_seqstop += n
         elseif BioAlignments.isdeleteop(op)
             relrefstop += n
+            seqlen -= n
         elseif BioAlignments.ismatchop(op)
             inseq = true
             seqstop += n + pending_seqstop
@@ -853,7 +855,7 @@ function annotate!(alns::Alignments, features::Features; prioritize_type=nothing
                                     min(feature_interval.last - alns.leftpos[i] + 1, alns.rightpos[i] - feature_interval.first + 1)) / 
                                 (alns.rightpos[i] - alns.leftpos[i] + 1)) * 100)
             
-            priority = !isnothing(prioritize_type) && (type(feature_interval) === prioritize_type)
+            priority = !isnothing(prioritize_type) && (type(feature_interval) === prioritize_type) && (olp > 90)
             overwrite = !isnothing(overwrite_type) && isassigned(alns.antypes, i) && (alns.antypes[i] === overwrite_type)
             
             if  priority || overwrite || alns.anols[i]<olp
