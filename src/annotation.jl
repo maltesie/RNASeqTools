@@ -103,7 +103,7 @@ end
 
 type(features::Features) = Set(type(f) for f in features)
 refnames(features::Features) = collect(keys(features.list.trees))
-function overlaps(alignmentinterval::Interval{AlignmentAnnotation}, feature::Interval{Annotation})
+function overlaps(alignmentinterval::Interval{T}, feature::Interval{Annotation}) where T<:AnnotationStyle
     seqname(feature) == seqname(alignmentinterval) || return false
     strand(feature) == strand(alignmentinterval) || return false
     return leftposition(feature) <= rightposition(alignmentinterval) && leftposition(alignmentinterval) <= rightposition(feature)
@@ -127,10 +127,10 @@ function Base.merge(features1::Features, features2::Features)
 end
 Base.:*(featuresa::Features, featuresb::Features) = merge(featuresa, featuresb)
 
-Base.iterate(features::Features) = iterate(features.list)
-Base.iterate(features::Features, state::Tuple{Int64,GenomicFeatures.ICTree{Annotation},GenomicFeatures.ICTreeIteratorState{Annotation}}) = iterate(features.list, state)
-Base.length(features::Features) = length(features.list)
-Base.split(features::Features) = [Features([feature for feature in features if type(feature)==t], [t]) for t in types(features)]
+Base.iterate(features::T) where T<:AnnotationContainer = iterate(features.list)
+Base.iterate(features::T, state::Tuple{Int64,GenomicFeatures.ICTree{I},GenomicFeatures.ICTreeIteratorState{I}}) where {T<:AnnotationContainer,I<:AnnotationStyle} = iterate(features.list, state)
+Base.length(features::T) where T<:AnnotationContainer = length(features.list)
+Base.split(features::T) where T<:AnnotationContainer = [Features([feature for feature in features if type(feature)==t], [t]) for t in types(features)]
 
 Base.convert(::Type{Interval{Float64}}, i::Interval{T}) where T<:AnnotationStyle = Interval(refname(i), leftposition(i), rightposition(i), strand(i), 0.0)
 strand_filter(a::Interval, b::Interval)::Bool = strand(a) === strand(b)
@@ -289,6 +289,7 @@ param(feature::Interval{Annotation}, key::String, ::Type{I}) where {I} = parse(I
 setparam(feature::Interval{Annotation}, key::String, value::String) = feature.metadata.params[key] = value
 hasannotationkey(feature::Interval{Annotation}, key::String) = key in keys(params(feature))
 annotation(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata
+ispositivestrand(feature::Interval{T}) where T<:AnnotationStyle = strand(feature) === STRAND_POS
 
 typenamekey(feature::Interval{Annotation}) = type(feature) * ":" * name(feature)
 function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)

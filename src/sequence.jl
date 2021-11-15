@@ -1,6 +1,6 @@
 struct Genome
     seq::LongDNASeq
-    chrs::Dict{String, UnitRange}
+    chroms::Dict{String, UnitRange}
 end
 
 function Genome(sequences::Vector{LongDNASeq}, names::Vector{String})
@@ -33,27 +33,27 @@ function Genome(genome_fasta::String)
 end
 
 Base.length(genome::Genome) = length(genome.seq)
-Base.getindex(genome::Genome, key::String) = genome.seq[genome.chrs[key]]
+Base.getindex(genome::Genome, key::String) = genome.seq[genome.chroms[key]]
 
 function chomosomecount(genome::Genome)
-    return length(genome.chrs)
+    return length(genome.chroms)
 end
 
 function Base.iterate(genome::Genome)
-    (chr, slice) = first(genome.chrs)
+    (chr, slice) = first(genome.chroms)
     ((chr, genome.seq[slice]), 1)
 end
 
 function Base.iterate(genome::Genome, state::Int)
     state += 1
-    state > genome.chrs.count && (return nothing)
-    for (i, (chr, slice)) in enumerate(genome.chrs)
+    state > genome.chroms.count && (return nothing)
+    for (i, (chr, slice)) in enumerate(genome.chroms)
         (i == state) && (return ((chr, genome.seq[slice]), state))
     end
 end
 
 function Base.:*(genome1::Genome, genome2::Genome)
-    return Genome(genome1.seq*genome2.seq, merge(genome1.chrs, Dict(key=>(range .+ length(genome1)) for (key, range) in genome2.chrs)))
+    return Genome(genome1.seq*genome2.seq, merge(genome1.chroms, Dict(key=>(range .+ length(genome1)) for (key, range) in genome2.chroms)))
 end
 
 function Base.write(file::String, genome::Genome)

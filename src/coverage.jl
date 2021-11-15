@@ -14,47 +14,104 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-
-
-struct ErrorCoverage
+struct ErrorCoverage <: AnnotationContainer
     ref_seq::LongDNASeq
     chroms::Dict{String, UnitRange}
-    fcount::Dict{String, Vector{Int}}
-    rcount::Dict{String, Vector{Int}}
+    fcount::Dict{DNA, Vector{Int}}
+    rcount::Dict{DNA, Vector{Int}}
 end
 
 function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=false)
-    fcount = Dict(s=>zeros(Int, length(genome.seq)) for i in ("A", "T", "C", "G", "INS", "DEL"))
-    rcount = Dict(s=>zeros(Int, length(genome.seq)) for s in ("A", "T", "C", "G", "INS", "DEL"))
-    trans = Dict(DNA_A=>"A",DNA_T=>"T",DNA_C=>"C",DNAG=>"G")
+    fcount = Dict{DNA, Vector{Int}}(s=>zeros(Int, length(genome.seq)) for s in (DNA_A, DNA_T, DNA_C, DNA_G, DNA_Gap))
+    rcount = Dict{DNA, Vector{Int}}(s=>zeros(Int, length(genome.seq)) for s in (DNA_A, DNA_T, DNA_C, DNA_G, DNA_Gap))
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     seq = LongDNASeq(0)
-    index::Int = 0 
+    nuc::DNA = DNA_A
+    index::Int = 0
+    chroms = genome.chroms
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
         hasxatag(record) && continue
-        index += 1
         reverse = (isread2(record) != is_reverse_complement)
+        ref_name::String = BAM.refname(record)
         seq = BAM.sequence(record)
         reverse && reverse_complement!(seq)
-
+        ispositive = BAM.ispositivestrand(record) != reverse
+        count = ispositive ? fcount : rcount
         offset, nops = BAM.cigar_position(record)
-        pos = 0
+        current_ref::Int = ispositive ? BAM.leftposition(record) : BAM.rightposition(record)
+        current_seq::Int = ispositive ? 1 : length(seq)
+        #println("seq: $seq\nref: $(genome[BAM.refname(record)][BAM.leftposition(record):BAM.rightposition(record)])")
         for i in offset:4:offset + (nops - 1) * 4
             x = unsafe_load(Ptr{UInt32}(pointer(record.data, i)))
             op = BioAlignments.Operation(x & 0x0F)
             n = x >> 4
+            #println("i: $i\nop: $op\nn: $n\nrefpos: $current_ref\nseqpos: $current_seq")
             if BioAlignments.isinsertop(op)
+                ispositive ? (current_seq += n) : (current_seq -= n)
             elseif BioAlignments.isdeleteop(op)
+                for pos in 1:1000
+                #for pos::Int in current_ref:(ispositive ? 1 : -1):current_ref+(ispositive ? n : -n)
+                    #index = first(chroms[ref_name]) + pos - 1
+                    #count[DNA_Gap][index] += 1
+                end
+                ispositive ? (current_ref += n) : (current_ref -= n)
             elseif BioAlignments.ismatchop(op)
+                for pos in 1:1000
+                #for (ref_pos::Int, seq_pos::Int) in zip(current_ref:(ispositive ? 1 : -1):current_ref+(ispositive ? (n-1) : (-n+1)),
+                #                                current_seq:(ispositive ? 1 : -1):current_seq+(ispositive ? (n-1) : (-n+1)))
+                    #nuc = seq[seq_pos]
+                    #index = first(chroms[ref_name]) + ref_pos - 1
+                    #count[nuc][first(chroms[ref_name]) + ref_pos - 1] += 1
+                end
+                ispositive ? (current_ref += n) : (current_ref -= n)
+                ispositive ? (current_seq += n) : (current_seq -= n)
             end
-            relpos += n
         end
     end
-    ErrorCoverage(genome.seq, genome.chrs, fcount, rcount)
+    return ErrorCoverage(genome.seq, chroms, fcount, rcount)
 end
+
+struct ErrorAnnotation <: AnnotationStyle
+    ref::Vector{Int}
+    a::Vector{Int}
+    t::Vector{Int}
+    g::Vector{Int}
+    c::Vector{Int}
+    del::Vector{Int}
+end
+
+struct ErrorFeatures <: AnnotationContainer
+    list::IntervalCollection{ErrorAnnotation}
+    chroms::Dict{String, UnitRange{Int}}
+end
+
+function ErrorFeatures(gff_file::String, bam_file::String, genome::Genome)
+    new_intervals = Interval{ErrorAnnotation}[]
+    features = Features(gff_file)
+    errorcov = ErrorCoverage(bam_file, genome)
+    for feature in features
+        left = leftposition(feature)
+        right = rightposition(feature)
+        seq = genome[refname(feature)][left:right]
+        ispositivestrand(feature) || reverse_complement!(seq)
+        count = ispositivestrand(feature) ? errorcov.fcount : errorcov.rcount
+        r = ispositivestrand(feature) ? (left:right) : (right:-1:left)
+        ref = Int[(seq[i] in (DNA_A, DNA_T, DNA_G, DNA_C)) ? count[seq[i]][ii] : 0 for (i, ii) in enumerate(r)]
+        annotation = ErrorAnnotation(ref, count[DNA_A][r], count[DNA_T][r], count[DNA_G][r], count[DNA_C][r], count[DNA_Gap][r]) 
+        push!(new_intervals, Interval(refname(feature), left, right, strand(feature), annotation))
+    end
+    return ErrorFeatures(IntervalCollection(new_intervals, true), genome.chroms)
+end
+
+function totalvalues(feature::Interval{ErrorAnnotation})
+    return [feature.metadata.a[i]+feature.metadata.t[i]+feature.metadata.g[i]+feature.metadata.c[i]+feature.metadata.del[i] for i in 1:length(feature)]
+end
+
+refvalues(feature::Interval{ErrorAnnotation}) = feature.metadata.ref
+refpercentage(feature::Interval{ErrorAnnotation}) = refvalues(feature) ./ totalvalues(feature)
 
 function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true, is_reverse_complement=false, max_temp_length=500)
     reader = BAM.Reader(open(bam_file), index = bam_file*".bai") # needed for names
@@ -64,7 +121,7 @@ function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true,
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     count = 0
-    for (_, alignment) in Alignments(bam_file; only_unique_alignments = only_unique_alignments, is_reverse_complement=is_reverse_complement)
+    for alignment in Alignments(bam_file; only_unique_alignments = only_unique_alignments, is_reverse_complement=is_reverse_complement)
         ischimeric(alignment; check_annotation = false, min_distance = max_temp_length) && continue
         ref = refname(alignment[1])
         left = leftestposition(alignment)
