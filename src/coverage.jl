@@ -22,18 +22,25 @@ struct ErrorCoverage <: AnnotationContainer
 end
 
 function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=false)
-    fcount = Dict{DNA, Vector{Int}}(s=>zeros(Int, length(genome.seq)) for s in (DNA_A, DNA_T, DNA_C, DNA_G, DNA_Gap))
-    rcount = Dict{DNA, Vector{Int}}(s=>zeros(Int, length(genome.seq)) for s in (DNA_A, DNA_T, DNA_C, DNA_G, DNA_Gap))
+    function add_nucleotide(c::Matrix{Int}, base::DNA, i::Int)
+        base === DNA_A && (c[1,i]+=1;return)
+        base === DNA_T && (c[2,i]+=1;return)
+        base === DNA_C && (c[3,i]+=1;return)
+        base === DNA_G && (c[4,i]+=1;return)
+        base === DNA_Gap && (c[5,i]+=1;return)
+    end
+    fcount = zeros(Int, 5, length(genome.seq))
+    rcount = zeros(Int, 5, length(genome.seq))
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     seq = LongDNASeq(0)
-    chroms = genome.chroms
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
         hasxatag(record) && continue
         reverse = (isread2(record) != is_reverse_complement)
         ref_name::String = BAM.refname(record)
+        starting_pos = first(genome.chroms[ref_name]) 
         seq = BAM.sequence(record)
         reverse && reverse_complement!(seq)
         ispositive = BAM.ispositivestrand(record) != reverse
@@ -41,33 +48,33 @@ function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=f
         offset, nops = BAM.cigar_position(record)
         current_ref::Int = ispositive ? BAM.leftposition(record) : BAM.rightposition(record)
         current_seq::Int = ispositive ? 1 : length(seq)
-        #println("seq: $seq\nref: $(genome[BAM.refname(record)][BAM.leftposition(record):BAM.rightposition(record)])")
         for i in offset:4:offset + (nops - 1) * 4
             x = unsafe_load(Ptr{UInt32}(pointer(record.data, i)))
             op = BioAlignments.Operation(x & 0x0F)
             n = x >> 4
-            #println("i: $i\nop: $op\nn: $n\nrefpos: $current_ref\nseqpos: $current_seq")
-            r = ispositive ? (0:n-1) : (0:-1:-n+1)
+            r::StepRange{Int} = ispositive ? (0:1:n-1) : (0:-1:-n+1)
             if BioAlignments.isinsertop(op)
                 ispositive ? (current_seq += n) : (current_seq -= n)
             elseif BioAlignments.isdeleteop(op)
                 for ii in r
-                    ref_pos = first(chroms[ref_name]) + current_ref + ii
-                    count[DNA_Gap][ref_pos] += 1
+                    ref_pos = starting_pos + current_ref + ii
+                    add_nucleotide(count, DNA_Gap, ref_pos)
                 end
                 ispositive ? (current_ref += n) : (current_ref -= n)
             elseif BioAlignments.ismatchop(op)
                 for ii in r
-                    ref_pos = first(chroms[ref_name]) + current_ref + ii
+                    ref_pos = starting_pos + current_ref + ii
                     seq_pos = current_seq + ii
-                    count[seq[seq_pos]][ref_pos] += 1
+                    add_nucleotide(count, seq[seq_pos], ref_pos)
                 end
                 ispositive ? (current_ref += n) : (current_ref -= n)
                 ispositive ? (current_seq += n) : (current_seq -= n)
             end
         end
     end
-    return ErrorCoverage(genome.seq, chroms, fcount, rcount)
+    fdict = Dict{DNA, Vector{Int}}(s=>fcount[i,:] for (i,s) in enumerate((DNA_A, DNA_T, DNA_C, DNA_G, DNA_Gap)))
+    rdict = Dict{DNA, Vector{Int}}(s=>rcount[i,:] for (i,s) in enumerate((DNA_A, DNA_T, DNA_C, DNA_G, DNA_Gap)))
+    return ErrorCoverage(genome.seq, genome.chroms, fdict, rdict)
 end
 
 struct ErrorAnnotation <: AnnotationStyle
