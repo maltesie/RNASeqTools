@@ -675,6 +675,7 @@ Base.getindex(alnread::AlignedRead, b::Vector{Bool}) = [alnread.alns[index] for 
 Base.isempty(alnread::AlignedRead) = isempty(alnread.range)
 Base.length(alnread::AlignedRead) = length(alnread.range)
 
+readid(alnread::AlignedRead) = alnread.alns.tempnames[first(alnread.range)]
 parts(alnread::AlignedRead) = [AlignedPart(alnread.alns, i) for i in alnread.range]
 typein(alnread::AlignedRead, types::Vector{String}) = any(alnread.alns.antypes[i] in types for i::Int in alnread.range if isassigned(alnread.alns.antypes, i))
 hastype(alnread::AlignedRead, t::String) = any(alnread.alns.antypes[i] === t for i::Int in alnread.range if isassigned(alnread.alns.antypes, i))

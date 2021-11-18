@@ -1,3 +1,20 @@
+function download_sra(input_file::String, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false)
+    open(input_file) do f
+        for accession_number in eachline(f)
+            run(`$prefetch_bin --output-directory $output_path $accession_number`)
+            sra_file = joinpath(output_path, "$accession_number.sra")
+            run(`$fastqdump_bin --gzip --outdir $output_path $sra_file`)
+            keep_sra || rm(sra_file)
+        end
+    end
+end
+function download_sra(sra_ids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false)
+    f = tempname()
+    write(f, join(sra_ids, "\n"))
+    download_sra(f, output_path; fastqdump_bin=fastqdump_bin, prefetch_bin=prefetch_bin, keep_sra=keep_sra)
+    rm(f)
+end
+
 function split_libs(infile1::String, prefixfile1::Union{String,Nothing}, infile2::Union{String,Nothing}, barcodes::Dict{String,String}, output_path::String; overwrite_existing=false)
 
     dplxr = Demultiplexer(LongDNASeq.(collect(values(barcodes))), n_max_errors=1, distance=:hamming)

@@ -1,6 +1,6 @@
 struct Genome
     seq::LongDNASeq
-    chroms::Dict{String, UnitRange}
+    chroms::Dict{String, UnitRange{Int}}
 end
 
 function Genome(sequences::Vector{LongDNASeq}, names::Vector{String})

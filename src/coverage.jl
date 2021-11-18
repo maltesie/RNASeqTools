@@ -27,8 +27,6 @@ function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=f
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     seq = LongDNASeq(0)
-    nuc::DNA = DNA_A
-    index::Int = 0
     chroms = genome.chroms
     while !eof(reader)
         read!(reader, record)
@@ -49,22 +47,20 @@ function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=f
             op = BioAlignments.Operation(x & 0x0F)
             n = x >> 4
             #println("i: $i\nop: $op\nn: $n\nrefpos: $current_ref\nseqpos: $current_seq")
+            r = ispositive ? (0:n-1) : (0:-1:-n+1)
             if BioAlignments.isinsertop(op)
                 ispositive ? (current_seq += n) : (current_seq -= n)
             elseif BioAlignments.isdeleteop(op)
-                for pos in 1:1000
-                #for pos::Int in current_ref:(ispositive ? 1 : -1):current_ref+(ispositive ? n : -n)
-                    #index = first(chroms[ref_name]) + pos - 1
-                    #count[DNA_Gap][index] += 1
+                for ii in r
+                    ref_pos = first(chroms[ref_name]) + current_ref + ii
+                    count[DNA_Gap][ref_pos] += 1
                 end
                 ispositive ? (current_ref += n) : (current_ref -= n)
             elseif BioAlignments.ismatchop(op)
-                for pos in 1:1000
-                #for (ref_pos::Int, seq_pos::Int) in zip(current_ref:(ispositive ? 1 : -1):current_ref+(ispositive ? (n-1) : (-n+1)),
-                #                                current_seq:(ispositive ? 1 : -1):current_seq+(ispositive ? (n-1) : (-n+1)))
-                    #nuc = seq[seq_pos]
-                    #index = first(chroms[ref_name]) + ref_pos - 1
-                    #count[nuc][first(chroms[ref_name]) + ref_pos - 1] += 1
+                for ii in r
+                    ref_pos = first(chroms[ref_name]) + current_ref + ii
+                    seq_pos = current_seq + ii
+                    count[seq[seq_pos]][ref_pos] += 1
                 end
                 ispositive ? (current_ref += n) : (current_ref -= n)
                 ispositive ? (current_seq += n) : (current_seq -= n)
@@ -75,6 +71,8 @@ function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=f
 end
 
 struct ErrorAnnotation <: AnnotationStyle
+    type::String
+    name::String
     ref::Vector{Int}
     a::Vector{Int}
     t::Vector{Int}
@@ -100,7 +98,7 @@ function ErrorFeatures(gff_file::String, bam_file::String, genome::Genome)
         count = ispositivestrand(feature) ? errorcov.fcount : errorcov.rcount
         r = ispositivestrand(feature) ? (left:right) : (right:-1:left)
         ref = Int[(seq[i] in (DNA_A, DNA_T, DNA_G, DNA_C)) ? count[seq[i]][ii] : 0 for (i, ii) in enumerate(r)]
-        annotation = ErrorAnnotation(ref, count[DNA_A][r], count[DNA_T][r], count[DNA_G][r], count[DNA_C][r], count[DNA_Gap][r]) 
+        annotation = ErrorAnnotation(type(feature), name(feature), ref, count[DNA_A][r], count[DNA_T][r], count[DNA_G][r], count[DNA_C][r], count[DNA_Gap][r]) 
         push!(new_intervals, Interval(refname(feature), left, right, strand(feature), annotation))
     end
     return ErrorFeatures(IntervalCollection(new_intervals, true), genome.chroms)
