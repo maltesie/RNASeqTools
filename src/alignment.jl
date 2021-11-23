@@ -453,7 +453,12 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
     nindex = sortperm(ns)
     ns = ns[nindex]
     ranges = samevalueintervals(ns)
+    println(ranges[1:20])
+    println(nindex[1:20])
+    println(rls[1:20])
+    println(rds[1:20])
     pindex = partsindex(ranges, nindex, rls, rds)
+    println(pindex[1:20])
     return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex], 
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
 end

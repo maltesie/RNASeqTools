@@ -5,7 +5,7 @@ function prepare_data(data_path::String, genome::Genome; files=FastqgzFiles)
     compute_coverage(bams)
 end
 
-function de_genes(results_path::String, features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}; between_conditions=nothing, add_keys=["BaseValueFrom", "BaseValueTo", "LogFoldChange", "PValue", "AdjustedPValue"])
+function de_genes(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, add_keys=["BaseValueFrom", "BaseValueTo", "LogFoldChange", "PValue", "AdjustedPValue"])
     between_conditions = isnothing(between_conditions) ? combinations(collect(conditions), 2) : [((a,conditions[a]), (b,conditions[b])) for (a,b) in between_conditions]
     for ((name1, range1), (name2, range2)) in between_conditions
         annotate!(features, coverages[range1], coverages[range2])
@@ -13,7 +13,7 @@ function de_genes(results_path::String, features::Features, coverages::Vector{Co
     end
 end
 
-function feature_count(results_path::String, features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}; between_conditions=nothing)
+function feature_count(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
     expnames = Dict{String,Vector{String}}()
     for (name, range) in conditions
         annotate!(features, coverages[range]; count_key="$name")
@@ -28,7 +28,7 @@ function feature_count(results_path::String, features::Features, coverages::Vect
     end
 end
 
-function feature_count(results_path::String, features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}; between_conditions=nothing, is_reverse_complement=false, only_unique_alignments=true)
+function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, is_reverse_complement=false, only_unique_alignments=true)
     expnames = Dict{String,Vector{String}}()
     mybams = copy(bams)
     for (name, range) in conditions
@@ -46,7 +46,7 @@ function feature_count(results_path::String, features::Features, bams::SingleTyp
     end
 end
 
-function feature_ratio(results_file::String, features::Features, coverage_files::PairedSingleTypeFiles)
+function feature_ratio(features::Features, coverage_files::PairedSingleTypeFiles, results_file::String)
     result_string = "filename\t" * join([t for t in features.types], "\t") * "\n"
     split_features = split(features)
     for (file1,file2) in coverage_files
@@ -89,7 +89,7 @@ function remove_features(bams::SingleTypeFiles, features::Features)
     end
 end
 
-function transcriptional_startsites(results_gff::String, texreps::SingleTypeFiles, notexreps::SingleTypeFiles)
+function transcriptional_startsites(texreps::SingleTypeFiles, notexreps::SingleTypeFiles, results_gff::String)
     tex_coverage = Coverage(texreps)
     notex_coverage = Coverage(notexreps)
     tss_pos = tsss(tex_coverage, notex_coverage)
@@ -97,7 +97,7 @@ function transcriptional_startsites(results_gff::String, texreps::SingleTypeFile
     write(results_gff, tss_features)
 end
 
-function full_annotation(results_gff::String, features::Features, texdict::Dict{String,Coverage}, notexdict::Dict{String,Coverage}, termdict::Dict{String,Coverage};
+function full_annotation(features::Features, texdict::Dict{String,Coverage}, notexdict::Dict{String,Coverage}, termdict::Dict{String,Coverage}, results_gff::String;
                             cds_type="CDS", five_type="5UTR", three_type="3UTR", igr_type="IGR", min_tex_ratio=1.3, min_step=5, min_background_ratio=1.2, window_size=10)
     @assert keys(texdict) == keys(notexdict)
     tss_pos = Dict(key=>tsss(notexdict[key], texdict[key]; min_tex_ratio=min_tex_ratio, min_step=min_step, min_background_ratio=min_background_ratio, window_size=window_size) for key in keys(texdict))
@@ -107,7 +107,7 @@ function full_annotation(results_gff::String, features::Features, texdict::Dict{
     write(results_gff, features)
 end
 
-function conserved_features(results_path::String, features::Features, source_genome::Genome, targets::SingleTypeFiles)
+function conserved_features(features::Features, source_genome::Genome, targets::SingleTypeFiles, results_path::String)
     target_genomes = [Genome(genome_file) for genome_file in targets]
     seqs = featureseqs(features, source_genome)
     align_mem(seqs, target_genomes, joinpath(results_path, "utrs.bam"))
@@ -116,7 +116,7 @@ function conserved_features(results_path::String, features::Features, source_gen
     write(joinpath(results_path, "features.gff"), features)
 end
 
-function chimeric_alignments(results_path::String, features::Features, bams::SingleTypeFiles; conditions::Dict{String, UnitRange{Int}}=Dict("chimeras"=>1:length(bams)),
+function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String; conditions::Dict{String, UnitRange{Int}}=Dict("chimeras"=>1:length(bams)),
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR",
                             is_reverse_complement=true, only_unique_alignments=true, model=:fisher, min_interactions=5, max_fdr=0.05,
                             overwrite_existing=false)

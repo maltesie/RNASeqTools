@@ -40,7 +40,7 @@ function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=f
         hasxatag(record) && continue
         reverse = (isread2(record) != is_reverse_complement)
         ref_name::String = BAM.refname(record)
-        starting_pos = first(genome.chroms[ref_name]) 
+        starting_pos = first(genome.chroms[ref_name]) - 1
         seq = BAM.sequence(record)
         reverse && reverse_complement!(seq)
         ispositive = BAM.ispositivestrand(record) != reverse
@@ -52,8 +52,9 @@ function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=f
             x = unsafe_load(Ptr{UInt32}(pointer(record.data, i)))
             op = BioAlignments.Operation(x & 0x0F)
             n = x >> 4
+            (starting_pos + current_ref + (ispositive ? n : 0)) > length(genome.seq) && continue
             r::StepRange{Int} = ispositive ? (0:1:n-1) : (0:-1:-n+1)
-            if BioAlignments.isinsertop(op)
+            if op == OP_INSERT || op == OP_SOFT_CLIP
                 ispositive ? (current_seq += n) : (current_seq -= n)
             elseif BioAlignments.isdeleteop(op)
                 for ii in r
@@ -127,12 +128,21 @@ function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true,
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     count = 0
     for alignment in Alignments(bam_file; only_unique_alignments = only_unique_alignments, is_reverse_complement=is_reverse_complement)
-        ischimeric(alignment; check_annotation = false, min_distance = max_temp_length) && continue
-        ref = refname(alignment[1])
-        left = leftestposition(alignment)
-        right = rightestposition(alignment)
-        ispositivestrand(alignment) ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
-        count += 1
+        if ischimeric(alignment; check_annotation = false, min_distance = max_temp_length)
+            for part in alignment
+                ref = refname(part)
+                left = leftposition(part)
+                right = rightposition(part)
+                ispositivestrand(part) ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
+                count += 1
+            end
+        else
+            ref = refname(alignment[1])
+            left = leftestposition(alignment)
+            right = rightestposition(alignment)
+            ispositivestrand(alignment) ? vals_f[ref][left:right] .+= 1.0 : vals_r[ref][left:right] .+= 1.0
+            count += 1
+        end
     end
     norm_factor = norm > 0 ? norm/count : 1.0
     coverage = Coverage(vals_f, vals_r, chromosome_list)
