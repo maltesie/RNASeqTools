@@ -453,12 +453,7 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
     nindex = sortperm(ns)
     ns = ns[nindex]
     ranges = samevalueintervals(ns)
-    println(ranges[1:20])
-    println(nindex[1:20])
-    println(rls[1:20])
-    println(rds[1:20])
     pindex = partsindex(ranges, nindex, rls, rds)
-    println(pindex[1:20])
     return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex], 
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
 end
@@ -690,20 +685,22 @@ hasannotation(alnread::AlignedRead) = any(isassigned(alnread.alns.annames, i) &&
 annotatedcount(alnread::AlignedRead) = sum(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
 annotationcount(alnread::AlignedRead) = length(Set(name(part) for part in alnread))
 isfullyannotated(alnread::AlignedRead) = all(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
-function leftestposition(alnread::AlignedRead) 
-    v = view(alnread.alns.refnames, alnread.range)
-    all(v .== alnread.alns.refnames[first(alnread.range)]) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
-    minimum(v)
+function GenomicFeatures.leftposition(alnread::AlignedRead) 
+    check_refname = alnread.alns.refnames[first(alnread.range)]
+    all(v .== check_refname for v in view(alnread.alns.refnames, alnread.range)) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
+    minimum(view(alnread.alns.leftpos, alnread.range))
 end
-function rightestposition(alnread::AlignedRead) 
-    v = view(alnread.alns.refnames, alnread.range)
-    all(v .== alnread.alns.refnames[first(alnread.range)]) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
-    maximum(v)
+function GenomicFeatures.rightposition(alnread::AlignedRead) 
+    check_refname = alnread.alns.refnames[first(alnread.range)]
+    all(v .== check_refname for v in view(alnread.alns.refnames, alnread.range)) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
+    maximum(view(alnread.alns.rightpos, alnread.range))
 end
 
 function GenomicFeatures.strand(alnread::AlignedRead)
     length(alnread) > 0 || (return STRAND_NA)
-    return all(view(alnread.alns.strands, alnread.range) .=== alnread.alns.strands[first(alnread.range)]) ? alnread.alns.strands[first(alnread.range)] : STRAND_BOTH
+    #println(view(alnread.alns.strands, alnread.range), "\n",alnread.alns.strands[first(alnread.range)])
+    check_strand = alnread.alns.strands[first(alnread.range)]
+    return all(s === check_strand for s in view(alnread.alns.strands, alnread.range)) ? check_strand : STRAND_BOTH
 end
 
 function ispositivestrand(alnread::AlignedRead)
