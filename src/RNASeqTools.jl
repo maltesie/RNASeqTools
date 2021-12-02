@@ -6,7 +6,7 @@ import Plots: plot, histogram, scatter
 import DataFrames: DataFrame, sort, nrow, names, eachcol
 using Measures, Statistics, HypothesisTests, MultipleTesting, StatsBase, MultivariateStats, Combinatorics, Random
 using LightGraphs
-using Dash, IterTools
+using Dash, IterTools, RCall
 
 export align_mem, local_alignment
 export trim_fastp, split_libs, download_sra

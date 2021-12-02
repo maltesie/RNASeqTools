@@ -166,9 +166,29 @@ function krona_plot_pipeline(
         threads = 6, report = false
     )
     taxonomy_report = split(sequence_file, ".")[1] * ".report.txt"
-    
+
     align_kraken2(db_location, sequence_file, threads = threads)
     kronaplot(taxonomy_report)
     # cleanup
     !report && rm(taxonomy_report)
+end
+
+
+"""
+DESeq2 pipeline wrapper.
+Needs deseq2.R script in the same dir.
+"""
+function deseq2_R(
+    results_path::String,
+    bams::SingleTypeFiles,
+    features::Features,
+    conditions::Dict,
+    between_conditions::Tuple,
+)
+
+    raw_counts = joinpath(results_path, "raw_counts")
+    mkpath(raw_counts) # create path if nonexistent
+    feature_count(features, bams, conditions,  raw_counts; between_conditions)
+    num_replicates = length.(values(conditions))[1]
+    run(`Rscript deseq2.R $raw_counts $results_path $num_replicates`)
 end
