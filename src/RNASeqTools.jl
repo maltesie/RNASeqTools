@@ -9,6 +9,7 @@ using LightGraphs
 using Dash, IterTools, RCall
 
 export align_mem, local_alignment
+export deseq2_R
 export trim_fastp, split_libs, download_sra
 export Genome, Sequences, PairedSequences, Alignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage, Interactions, Annotation, AlignmentAnnotation, ErrorCoverage, ErrorFeatures
 export FastaFiles, PairedFastaFiles, FastagzFiles, PairedFastagzFiles, FastqFiles, PaireFastqFiles, FastqgzFiles, PairedFastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles
