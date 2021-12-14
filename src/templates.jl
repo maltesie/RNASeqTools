@@ -135,7 +135,7 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type)
             println("Building graph for replicate $replicate_id...")
-            append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types)
+           append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types)
             empty!(alignments)
         end
         println("Found $(sum(interactions.edges[!, :nb_ints])) chimeras in $(nrow(interactions.edges)) interactions.")
@@ -185,10 +185,10 @@ function deseq2_R(
     conditions::Dict,
     between_conditions::Tuple,
 )
-
+    deseq2_script = joinpath(@__DIR__, "deseq2.R")
     raw_counts = joinpath(results_path, "raw_counts")
     mkpath(raw_counts) # create path if nonexistent
     feature_count(features, bams, conditions,  raw_counts; between_conditions)
     num_replicates = length.(values(conditions))[1]
-    run(`Rscript deseq2.R $raw_counts $results_path $num_replicates`)
+    run(`Rscript $deseq2_script $raw_counts $results_path $num_replicates`)
 end
