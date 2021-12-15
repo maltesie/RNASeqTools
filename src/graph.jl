@@ -39,9 +39,10 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
 
         for (i,part) in enumerate(alnparts)
             hasannotation(part) || continue
-            any(alignments.annames[i] === alignments.annames[ii] 
-                for ii in first(alignment.range):alignment.range[i]-1 
-                    if (isassigned(alignments.annames, i) && isassigned(alignments.annames, ii))) && continue
+            any(samename(part, formerpart) for formerpart in alnparts[1:i-1]) && continue
+            #any(alignments.annames[i] === alignments.annames[ii] 
+            #    for ii in first(alignment.range):alignment.range[i]-1 
+            #        if (isassigned(alignments.annames, i) && isassigned(alignments.annames, ii))) && continue
             h = myhash(part)
             if !(h in keys(trans))
                 trans[h] = length(trans) + 1
@@ -56,6 +57,7 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
                                                                             for (i, part) in enumerate(alnparts))], 2)
             (hasannotation(part1) && hasannotation(part2)) || continue
             ischimeric(part1, part2; min_distance=min_distance) || continue
+            #((myhash(part1) in keys(trans)) && (myhash(part2) in keys(trans))) || println("$(show(part1))\n$(show(part2))")
             a, b = trans[myhash(part1)], trans[myhash(part2)]
             interactions.nodes[a, :nb_ints] += 1
             interactions.nodes[b, :nb_ints] += 1
