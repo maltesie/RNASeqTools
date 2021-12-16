@@ -186,9 +186,15 @@ function deseq2_R(
     between_conditions::Tuple,
 )
     deseq2_script = joinpath(@__DIR__, "deseq2.R")
-    raw_counts = joinpath(results_path, "raw_counts")
-    mkpath(raw_counts) # create path if nonexistent
+
+    rawcounts_path = joinpath(results_path, "raw_counts")
+    mkpath(rawcounts_path) # create path if nonexistent
     feature_count(features, bams, conditions,  raw_counts; between_conditions)
-    num_replicates = length.(values(conditions))[1]
-    run(`Rscript $deseq2_script $raw_counts $results_path $num_replicates`)
+
+    R"source($deseq2_script)"
+    for (cond1, cond2) in between_conditions
+        file = joinpath(rawcounts_path, cond1 * "_vs_" * cond2 * ".csv")
+        num_ctl, num_exp = length(conditions[cond1]), length(conditions[cond2])
+        rcall(:deseq2pipeline, file, results_path, num_ctl, num_exp)
+    end
 end
