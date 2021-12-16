@@ -222,12 +222,14 @@ function partsindex(ranges::Vector{UnitRange{Int}}, sorted_index::Vector{Int}, r
         for i in view(sorted_index, r)
             c = 0
             for ii in view(sorted_index, r)
+                i === ii && continue
                 if reads[i] === :read1
                     reads[ii] === :read2 && continue 
-                    read_leftpos[ii] >= read_leftpos[i] && continue
+                    (read_leftpos[ii] > read_leftpos[i]) && continue
                 else
-                    (reads[ii] === :read2) && (read_leftpos[ii] >= read_leftpos[i]) && continue
+                    (reads[ii] === :read2) && (read_leftpos[ii] > read_leftpos[i]) && continue
                 end
+                (reads[i] === reads[ii]) && (read_leftpos[i] === read_leftpos[ii]) && (i>ii) && continue 
                 c += 1
             end
             pindex[first(r) + c] = i
@@ -451,9 +453,11 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
     end
     close(reader)
     nindex = sortperm(ns)
+    #println(nindex[nindex .< 1])
     ns = ns[nindex]
     ranges = samevalueintervals(ns)
     pindex = partsindex(ranges, nindex, rls, rds)
+    #println(pindex[pindex .< 1])
     return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex], 
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
 end

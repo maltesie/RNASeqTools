@@ -71,22 +71,31 @@ function unmapped_reads(bams::SingleTypeFiles)
     end
 end
 
-function remove_features(bams::SingleTypeFiles, features::Features)
+function remove_features(bams::SingleTypeFiles, features::Features; is_reverse_complement=false, overwrite_existing=false, remove_unmapped=true)
+    outnames = String[]
     for bam_file in bams
         startswith(bam_file, "filtered_") && continue
         record = BAM.Record()
         reader = BAM.Reader(open(bam_file))
         h = header(reader)
-        writer = BAM.Writer(BGZFStream(open(joinpath(dirname(bam_file), "filtered_" * basename(bam_file)), "w"), "w"), h)
+        fname = joinpath(dirname(bam_file), "filtered_" * basename(bam_file))
+        push!(outnames, fname)
+        !overwrite_existing && isfile(fname) && continue
+        writer = BAM.Writer(BGZFStream(open(fname, "w"), "w"), h)
         while !eof(reader)
             read!(reader, record)
-            BAM.ismapped(record) && hasoverlap(features, Interval(BAM.refname(record), leftposition(record), rightposition(record), ispositivestrand(record) ? STRAND_POS : STRAND_NEG, Annotation())) && continue
+            current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
+            s = (BAM.ispositivestrand(record) != (current_read === :read2)) ? STRAND_POS : STRAND_NEG
+            BAM.ismapped(record) && hasoverlap(features, Interval(BAM.refname(record), leftposition(record), rightposition(record), s, Annotation())) && continue
             write(writer, record)
         end
         sleep(0.1)
         close(writer)
         close(reader)
+        run(`$sam_bin index $fname`)
+        run(pipeline(`$sam_bin stats $fname`, stdout=fname * ".log"))
     end
+    return SingleTypeFiles(outnames)
 end
 
 function transcriptional_startsites(texreps::SingleTypeFiles, notexreps::SingleTypeFiles, results_gff::String)
@@ -135,7 +144,7 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type)
             println("Building graph for replicate $replicate_id...")
-           append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types)
+            append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types)
             empty!(alignments)
         end
         println("Found $(sum(interactions.edges[!, :nb_ints])) chimeras in $(nrow(interactions.edges)) interactions.")
