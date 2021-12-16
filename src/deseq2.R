@@ -10,7 +10,6 @@
 # this: featureCounts -a genes.gtf -o counts.txt -T 12 -t exon -g gene_id
 
 deseq2pipeline <- function(x, output_path, num_ctl, num_exp) {
-    # dirn <- dirname(x)
     filen <- basename(x)
 
     dispersion_plot_file <- paste(output_path, substr(filen, 1, nchar(filen) - 4),

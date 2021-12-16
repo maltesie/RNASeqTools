@@ -198,7 +198,7 @@ function deseq2_R(
 
     rawcounts_path = joinpath(results_path, "raw_counts")
     mkpath(rawcounts_path) # create path if nonexistent
-    feature_count(features, bams, conditions,  raw_counts; between_conditions)
+    feature_count(features, bams, conditions,  rawcounts_path; between_conditions)
 
     R"source($deseq2_script)"
     for (cond1, cond2) in between_conditions
