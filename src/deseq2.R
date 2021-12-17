@@ -9,8 +9,9 @@
 # Import data from featureCounts Previously ran at command line something like
 # this: featureCounts -a genes.gtf -o counts.txt -T 12 -t exon -g gene_id
 
-deseq2pipeline <- function(x, output_path, num_ctl, num_exp) {
+deseq2pipeline <- function(x, num_ctl, num_exp) {
     filen <- basename(x)
+    output_path <- paste(dirname(x), "/", sep="")
 
     dispersion_plot_file <- paste(output_path, substr(filen, 1, nchar(filen) - 4),
         "_dispersion.png", sep = "")
@@ -36,7 +37,6 @@ deseq2pipeline <- function(x, output_path, num_ctl, num_exp) {
     }
 
     countdata <- as.matrix(countdata)
-    print(head(countdata))
 
     # if (length(colnames(countdata)) == (2 * num_replicates)) {
     (condition <- factor(c(rep("ctl", num_ctl), rep("exp", num_exp))))
@@ -48,7 +48,6 @@ deseq2pipeline <- function(x, output_path, num_ctl, num_exp) {
     # ?DESeqDataSetFromMatrix
     (coldata <- data.frame(row.names = colnames(countdata), condition))
     dds <- DESeqDataSetFromMatrix(countData = countdata, colData = coldata, design = ~condition)
-    dds
 
     # Run the DESeq pipeline
     dds <- DESeq(dds)
@@ -60,8 +59,6 @@ deseq2pipeline <- function(x, output_path, num_ctl, num_exp) {
 
     # Regularized log transformation for clustering/heatmaps, etc
     rld <- rlogTransformation(dds)
-    head(assay(rld))
-    hist(assay(rld))
 
     # Colors for plots below Ugly: Use RColorBrewer, better
     library(RColorBrewer)
@@ -90,7 +87,6 @@ deseq2pipeline <- function(x, output_path, num_ctl, num_exp) {
                      as.data.frame(counts(dds, normalized = TRUE)),
                      by = "row.names", sort = FALSE)
     names(resdata)[1] <- "Gene"
-    head(resdata)
     ## Write results
     write.csv(resdata, file = result_file)
 

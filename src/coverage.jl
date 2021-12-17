@@ -119,7 +119,7 @@ end
 refvalues(feature::Interval{ErrorAnnotation}) = feature.metadata.ref
 refpercentage(feature::Interval{ErrorAnnotation}) = refvalues(feature) ./ totalvalues(feature)
 
-function compute_coverage(bam_file::String; norm=0, only_unique_alignments=true, is_reverse_complement=false, max_temp_length=500)
+function compute_coverage(bam_file::String; norm=1000000, only_unique_alignments=true, is_reverse_complement=false, max_temp_length=500)
     reader = BAM.Reader(open(bam_file), index = bam_file*".bai") # needed for names
     chromosome_list = [n for n in zip(
         bam_chromosome_names(reader), bam_chromosome_lengths(reader)
