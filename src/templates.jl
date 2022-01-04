@@ -185,7 +185,6 @@ end
 
 """
 DESeq2 pipeline wrapper.
-Needs deseq2.R script in the same dir.
 """
 function deseq2_R(
     results_path::String,
@@ -200,7 +199,7 @@ function deseq2_R(
     mkpath(rawcounts_path) # create path if nonexistent
     feature_count(features, bams, conditions,  rawcounts_path; between_conditions)
 
-    R"source($deseq2_script)"
+    rcall(:source, deseq2_script)
     for (cond1, cond2) in between_conditions
         file = joinpath(rawcounts_path, cond1 * "_vs_" * cond2 * ".csv")
         num_ctl, num_exp = length(conditions[cond1]), length(conditions[cond2])
