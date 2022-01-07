@@ -188,18 +188,6 @@ DESeq2 pipeline wrapper.
 """
 function deseq2_R(
     features::Features,
-<<<<<<< HEAD
-    conditions::Dict,
-    between_conditions::Tuple,
-)
-    deseq2_script = joinpath(@__DIR__, "deseq2.R")
-
-    rawcounts_path = joinpath(results_path, "raw_counts")
-    mkpath(rawcounts_path) # create path if nonexistent
-    feature_count(features, bams, conditions,  rawcounts_path; between_conditions)
-
-    rcall(:source, deseq2_script)
-=======
     bams::SingleTypeFiles,
     conditions::Dict{String, UnitRange{Int}},
     between_conditions::Vector{Tuple{String, String}},
@@ -209,9 +197,7 @@ function deseq2_R(
     all(isfile(joinpath(results_path, cond1 * "_vs_" * cond2 * ".csv")) for (cond1, cond2) in between_conditions) || 
         feature_count(features, bams, conditions,  results_path; between_conditions=between_conditions, is_reverse_complement=is_reverse_complement)
     
-    script_path = joinpath(@__DIR__, "deseq2.R")
-    R"source($script_path)"
->>>>>>> 6e41292 (fix deseq2_R)
+    rcall(:source, joinpath(@__DIR__, "deseq2.R"))
     for (cond1, cond2) in between_conditions
         file = joinpath(results_path, cond1 * "_vs_" * cond2 * ".csv")
         num_ctl, num_exp = length(conditions[cond1]), length(conditions[cond2])
