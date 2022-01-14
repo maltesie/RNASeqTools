@@ -124,7 +124,13 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_scor
     tmp_reads = tempname()
     tmp_reads2 = tempname()
     tmp_genome = tempname()
-    write(tmp_reads, reads)
+    if reads isa PairedSequences 
+        write(tmp_reads, tmp_reads2, reads) 
+    elseif reads isa Sequences 
+        write(tmp_reads, reads)
+    else
+        throw(AssertionError("reads can only be Sequences or PairedSequences."))
+    end
     for (i,genome) in enumerate(genomes)
         write(tmp_genome, genome)
         this_out_file = out_file
@@ -503,11 +509,22 @@ end
 """
     Base.show(part::AlignedPart)::IO 
 
+Generates string with information on the AlignedPart.
+"""
+function summarize(part::AlignedPart) 
+    s = "[$(first(part.seq)), $(last(part.seq))] on $(part.read) - "
+    s *= "[$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) "
+    s *= "with $(part.nms) $(part.nms == 1 ? "missmatch" : "missmatches") - "
+    s *= isempty(annotation(part)) ? "not annotated." : "$(type(part)):$(name(part)) ($(overlap(part))% in annotation)"
+    return s
+end
+"""
+    Base.show(part::AlignedPart)::IO 
+
 Function for structured printing of the content of AlignedPart
 """
 function Base.show(part::AlignedPart)
-    print("   [$(first(part.seq)), $(last(part.seq))] on $(part.read) - [$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) with $(part.nms) $(part.nms == 1 ? "missmatch" : "missmatches") - ")
-    isempty(annotation(part)) ? println("not annotated.") : println("$(type(part)):$(name(part)) ($(overlap(part))% in annotation)")
+    println(summarize(part))
 end
 
 """
@@ -551,7 +568,15 @@ Availble only after using annotate! on Alignments.
 overlap(aln::AlignedPart) = annotation(aln).overlap
 
 """
-    overlap(aln::AlignedPart)::Interval{AlignmentAnnotation}
+    overlap(aln::AlignedPart)::UInt8
+
+Returns the percentage of the sequence on the read contained within the annotation assigned to it.
+Availble only after using annotate! on Alignments.
+"""
+missmatchcount(aln::AlignedPart) = aln.nms
+
+"""
+    refinterval(aln::AlignedPart)::Interval{AlignmentAnnotation}
 
 Returns the Interval{AlignmentAnnotation} that contains information on the reference sequence part of the alignment. 
 Availble only after using annotate! on Alignments.
@@ -714,12 +739,9 @@ function ispositivestrand(alnread::AlignedRead)
     return s === STRAND_POS
 end
 
+summarize(alnread::AlignedRead) = "Alignment with $(length(alnread)) part(s):\n   " * join([summarize(part) for part in alnread], "\n   ")
 function Base.show(alnread::AlignedRead)
-    println("Alignment with $(length(alnread)) part(s):")
-    for part in alnread
-        show(part)
-    end
-    print("\n")
+    println(summarize(alnread))
 end
 
 refname(i::Interval) = i.seqname

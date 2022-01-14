@@ -116,11 +116,10 @@ function full_annotation(features::Features, texdict::Dict{String,Coverage}, not
     write(results_gff, features)
 end
 
-function conserved_features(features::Features, source_genome::Genome, targets::SingleTypeFiles, results_path::String)
-    target_genomes = [Genome(genome_file) for genome_file in targets]
+function conserved_features(features::Features, source_genome::Genome, target_genomes::SingleTypeFiles, results_path::String)
+    targets = [Genome(genome_file) for genome_file in target_genomes]
     seqs = featureseqs(features, source_genome)
-    align_mem(seqs, target_genomes, joinpath(results_path, "utrs.bam"))
-    alignments = Alignments(joinpath(results_path, "utrs.bam"))
+    alignments = align_mem(seqs, targets, joinpath(results_path, "utrs.bam"))
     annotate!(features, alignments)
     write(joinpath(results_path, "features.gff"), features)
 end
