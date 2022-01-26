@@ -74,8 +74,8 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             interactions.edges[iindex, :maxright1] = max(interactions.edges[iindex, :maxright1], right1)
             interactions.edges[iindex, :minleft2] = min(interactions.edges[iindex, :minleft2], left2)
             interactions.edges[iindex, :maxright2] = max(interactions.edges[iindex, :maxright2], right2)
-            nms1 > 1 && (interactions.edges[iindex, :nms1] += 1)
-            nms2 > 1 && (interactions.edges[iindex, :nms2] += 1)
+            nms1 > 0 && (interactions.edges[iindex, :nms1] += 1)
+            nms2 > 0 && (interactions.edges[iindex, :nms2] += 1)
             for (s,v) in zip((:meanleft1, :meanright1, :meanleft2, :meanright2, :meanlength1, :meanlength2, :meanmiss1, :meanmiss2), 
                              (left1, right1, left2, right2, right1 - left1 + 1, right2 - left2 + 1, nms1, nms2))
                 interactions.edges[iindex, s] = (interactions.edges[iindex, s] * (interactions.edges[iindex, :nb_ints] - 1) + v) / interactions.edges[iindex, :nb_ints]
@@ -137,8 +137,8 @@ function annotate!(interactions::Interactions, features::Features; method=:dispa
         p2 = collect(edge_row[[(isnegative1 ? :meanright2 : :meanleft2), :minleft2, :maxright2]])
         (relpos1, relmin1, relmax1) = min.(1.0, max.(0.0, (p1 .- feature1_left) ./ (feature1_right - feature1_left)))
         (relpos2, relmin2, relmax2) = min.(1.0, max.(0.0, (p2 .- feature2_left) ./ (feature2_right - feature2_left)))
-        isnegative1 && (relpos1 = 1-relpos1; relmin1 = 1-relmax1; relmax1 = 1-relmin1)
-        isnegative2 && (relpos2 = 1-relpos2; relmin2 = 1-relmax2; relmax2 = 1-relmin2)
+        isnegative1 && ((relpos1, relmin1, relmax1) = (1-relpos1, 1-relmax1, 1-relmin1))
+        isnegative2 && ((relpos2, relmin2, relmax2) = (1-relpos2, 1-relmax2, 1-relmin2))
         edge_row[[:relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2]] = 
             round.((relpos1, relpos2, relmin1, relmin2, relmax1, relmax2); digits=4)
     end

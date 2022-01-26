@@ -346,18 +346,6 @@ function paironsamestrand(record::BAM.Record, invert::Symbol)::Bool
     (ispositivestrand(record) != (invert in (:both, :read1))) == (mateispositivestrand(record) != (invert in (:both, :read2)))
 end
 
-function is_bitstring_bam(file::String)
-    reader = BAM.Reader(open(file))
-    tempname = ""
-    for record in reader
-        tempname = BAM.tempname(record)
-        break
-    end
-    close(reader)
-    ((length(tempname) == 64) && all([c in ['0', '1'] for c in tempname])) && (return true)
-    return false
-end
-
 @inline function translateddata(data::SubArray{UInt8,1})
     for i in 1:length(data)
         (data[i] == 0x00) && (return data[1:i-1])
@@ -424,7 +412,7 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
                 resize!(z, length(z)+10000) 
             end
         end
-        n= hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
+        n = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
         (l,r) = (BAM.leftposition(record), BAM.rightposition(record))
         (ref,s) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
         nm = nmtag(record)
@@ -507,7 +495,7 @@ function AlignedPart(xapart::Union{String, SubString{String}}; read=:read1)
 end
 
 """
-    Base.show(part::AlignedPart)::IO 
+    Base.summarize(part::AlignedPart)::IO 
 
 Generates string with information on the AlignedPart.
 """
@@ -592,6 +580,20 @@ Availble only after using annotate! on Alignments.
 refname(aln::AlignedPart) = aln.ref.seqname
 
 """
+    refrange(aln::AlignedPart)::UnitRange
+
+Returns the Interval of the alignment on the reference sequence as a UnitRange.
+"""
+refrange(aln::AlignedPart) = leftposition(aln):rightposition(aln)
+
+"""
+    refsequence(aln::AlignedPart, genome::Genome)::LongDNASeq
+
+Returns the part of the reference sequence that the aln::AlignedPart belongs to.
+"""
+refsequence(aln::AlignedPart, genome::Genome)::LongDNASeq = genome[refname(aln)][refrange(aln)]
+
+"""
     leftposition(aln::AlignedPart)::Int
 
 Returns the leftmost position of the alignment on the reference sequence.
@@ -631,11 +633,21 @@ Returns the Interval of the alignment on the read sequence as a UnitRange.
 readrange(aln::AlignedPart) = aln.seq
 
 """
-    refrange(aln::AlignedPart)::UnitRange
+    refsequence(aln::AlignedPart, genome::Genome)::LongDNASeq
 
-Returns the Interval of the alignment on the reference sequence as a UnitRange.
+Returns the part of the read sequence that the aln::AlignedPart belongs to.
 """
-refrange(aln::AlignedPart) = leftposition(aln):rightposition(aln)
+function readsequence(aln::AlignedPart, seqs::Sequences)::LongDNASeq
+    r = searchsorted(seqs.seqnames, name(aln))
+    if length(r) === 2
+        s = aln.read === :read1 ? seqs.seq[seqs.ranges[first(r)]] : seqs.seq[seqs.ranges[last(r)]] 
+        return s[readrange(aln)]
+    elseif length(r) === 1
+        return seqs.seq[seqs.ranges[first(r)]][readrange(aln)]
+    else
+        throw(KeyError)
+    end
+end
 
 """
     leftposition(rang::UnitRange)::Int

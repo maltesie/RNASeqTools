@@ -129,8 +129,8 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
                             is_reverse_complement=true, only_unique_alignments=true, model=:fisher, min_interactions=5, max_fdr=0.05,
                             overwrite_existing=false)
 
-    isdir(joinpath(results_path, "interactions")) || mkdir(joinpath(results_path, "interactions"))
-    isdir(joinpath(results_path, "singles")) || mkdir(joinpath(results_path, "singles"))
+    isdir(joinpath(results_path, "interactions")) || mkpath(joinpath(results_path, "interactions"))
+    isdir(joinpath(results_path, "singles")) || mkpath(joinpath(results_path, "singles"))
     for (condition, r) in conditions
         !overwrite_existing && isfile(joinpath(results_path, "interactions", "$(condition).csv")) && isfile(joinpath(results_path, "singles", "$(condition).csv")) && continue
         replicate_ids = Vector{Symbol}()
