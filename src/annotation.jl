@@ -202,11 +202,13 @@ function maxsignalposition(leftpos::Int, rightpos::Int, chr::String, st::Strand,
 end
 
 function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage},Nothing}=nothing, term_positions::Union{Dict{String,Coverage},Nothing}=nothing,
-                    cds_type="CDS", five_type="5UTR", three_type="3UTR", max_utr_length=250, min_utr_length=25, guess_missing=true)
+                    cds_type="CDS", five_type="5UTR", three_type="3UTR", max_utr_length=150, min_utr_length=25, guess_missing=true)
 
     new_features = Vector{Interval{Annotation}}()
-    base_features_pos = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_POS)]
-    base_features_neg = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_NEG)]
+    #base_features_pos = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_POS)]
+    #base_features_neg = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_NEG)]
+    base_features_pos = [feature for feature in features if (feature.strand == STRAND_POS)]
+    base_features_neg = [feature for feature in features if (feature.strand == STRAND_NEG)]
     first_feature, last_feature = base_features_pos[1], base_features_pos[end]
     stop, start = leftposition(first_feature), rightposition(last_feature)
     push!(new_features, Interval(refname(last_feature), start+1, start+max_utr_length, STRAND_POS, Annotation(three_type, name(last_feature), params(last_feature))))
@@ -230,23 +232,32 @@ function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage}
             elseif  stop - start > 2 * max_utr_length + 1
                 threestart, threestop = start+1, start+max_utr_length
                 fivestart, fivestop = stop-max_utr_length, stop-1
-            elseif stop - start > 2 * min_utr_length
-                new_utr_length = floor(Int, (stop-start)/2)
+            elseif stop - start > min_utr_length
+                new_utr_length = 0
+                if (type(feature) == cds_type) && (type(next_feature) == cds_type) && (stop - start > 2 * min_utr_length + 1)
+                    new_utr_length = floor(Int, (stop-start)/2)
+                elseif (type(feature) != cds_type) || (type(next_feature) != cds_type)
+                    new_utr_length = min(stop-start-1, max_utr_length)
+                else 
+                    continue
+                end
                 threestart, threestop = start+1, start+new_utr_length
                 fivestart, fivestop = stop-new_utr_length, stop-1
             else
                 continue
             end
 
-            stran === STRAND_NEG && ((threestart, fivestart, threestop, fivestop, threename, threeref) = (fivestart, threestart, fivestop, threestop, fivename, fiveref))
-
+            stran === STRAND_NEG && ((threestart, fivestart, threestop, fivestop, threename, fivename, threeref, fiveref) = 
+                                        (fivestart, threestart, fivestop, threestop, fivename, threename, fiveref, threeref))
+            check_five = stran === STRAND_NEG ? type(feature) == cds_type : type(next_feature) == cds_type
+            check_three = stran === STRAND_NEG ? type(next_feature) == cds_type : type(feature) == cds_type
             isnothing(tss_positions) ? (found_five_in="guess") :
             ((fivestart, fivestop, found_five_in) = maxsignalposition(fivestart, fivestop, fiveref, stran, tss_positions, stran === STRAND_POS ? :left : :right))
             isnothing(term_positions) ? (found_three_in="guess") :
             ((threestart, threestop, found_three_in) = maxsignalposition(threestart, threestop, threeref, stran, term_positions, stran === STRAND_POS ? :right : :left))
-            (guess_missing || (found_five_in != "guess")) && push!(new_features, Interval(fiveref, fivestart, fivestop, stran,
+            ((guess_missing || (found_five_in != "guess")) && check_five) && push!(new_features, Interval(fiveref, fivestart, fivestop, stran,
                 Annotation(five_type, fivename, merge(Dict("source"=>found_five_in), copy(stran === STRAND_NEG ? params(feature) : params(next_feature))))))
-            (guess_missing || (found_three_in != "guess")) && push!(new_features, Interval(threeref, threestart, threestop, stran,
+            ((guess_missing || (found_three_in != "guess")) && check_three) && push!(new_features, Interval(threeref, threestart, threestop, stran,
                 Annotation(three_type, threename, merge(Dict("source"=>found_three_in), copy(stran === STRAND_NEG ? params(next_feature) : params(feature))))))
         end
     end
@@ -255,7 +266,7 @@ function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage}
     end
 end
 
-function addigrs!(features::Features; igr_type="IGR", min_igr_length=50)
+function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
     new_features = Vector{Interval{Annotation}}()
     base_features_pos = [feature for feature in features if (feature.strand == STRAND_POS)]
     base_features_neg = [feature for feature in features if (feature.strand == STRAND_NEG)]

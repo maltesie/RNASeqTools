@@ -118,7 +118,13 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_scor
     tmp_reads = tempname()
     tmp_reads2 = tempname()
     tmp_genome = tempname()
-    write(tmp_reads, reads)
+    if reads isa PairedSequences 
+        write(tmp_reads, tmp_reads2, reads) 
+    elseif reads isa Sequences 
+        write(tmp_reads, reads)
+    else
+        throw(AssertionError("reads can only be Sequences or PairedSequences."))
+    end
     for (i,genome) in enumerate(genomes)
         write(tmp_genome, genome)
         this_out_file = out_file
@@ -216,12 +222,14 @@ function partsindex(ranges::Vector{UnitRange{Int}}, sorted_index::Vector{Int}, r
         for i in view(sorted_index, r)
             c = 0
             for ii in view(sorted_index, r)
+                i === ii && continue
                 if reads[i] === :read1
-                    reads[ii] === :read2 && continue
-                    read_leftpos[ii] >= read_leftpos[i] && continue
+                    reads[ii] === :read2 && continue 
+                    (read_leftpos[ii] > read_leftpos[i]) && continue
                 else
-                    (reads[ii] === :read2) && (read_leftpos[ii] >= read_leftpos[i]) && continue
+                    (reads[ii] === :read2) && (read_leftpos[ii] > read_leftpos[i]) && continue
                 end
+                (reads[i] === reads[ii]) && (read_leftpos[i] === read_leftpos[ii]) && (i>ii) && continue 
                 c += 1
             end
             pindex[first(r) + c] = i
@@ -332,18 +340,6 @@ function paironsamestrand(record::BAM.Record, invert::Symbol)::Bool
     (ispositivestrand(record) != (invert in (:both, :read1))) == (mateispositivestrand(record) != (invert in (:both, :read2)))
 end
 
-function is_bitstring_bam(file::String)
-    reader = BAM.Reader(open(file))
-    tempname = ""
-    for record in reader
-        tempname = BAM.tempname(record)
-        break
-    end
-    close(reader)
-    ((length(tempname) == 64) && all([c in ['0', '1'] for c in tempname])) && (return true)
-    return false
-end
-
 @inline function translateddata(data::SubArray{UInt8,1})
     for i in 1:length(data)
         (data[i] == 0x00) && (return data[1:i-1])
@@ -410,7 +406,7 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
                 resize!(z, length(z)+10000)
             end
         end
-        n= hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
+        n = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
         (l,r) = (BAM.leftposition(record), BAM.rightposition(record))
         (ref,s) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
         nm = nmtag(record)
@@ -445,10 +441,12 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
     end
     close(reader)
     nindex = sortperm(ns)
+    #println(nindex[nindex .< 1])
     ns = ns[nindex]
     ranges = samevalueintervals(ns)
     pindex = partsindex(ranges, nindex, rls, rds)
-    return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex],
+    #println(pindex[pindex .< 1])
+    return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex], 
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
 end
 
@@ -491,13 +489,25 @@ function AlignedPart(xapart::Union{String, SubString{String}}; read=:read1)
 end
 
 """
-    Base.show(part::AlignedPart)::IO
+
+    Base.summarize(part::AlignedPart)::IO 
+
+Generates string with information on the AlignedPart.
+"""
+function summarize(part::AlignedPart) 
+    s = "[$(first(part.seq)), $(last(part.seq))] on $(part.read) - "
+    s *= "[$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) "
+    s *= "with $(part.nms) $(part.nms == 1 ? "missmatch" : "missmatches") - "
+    s *= isempty(annotation(part)) ? "not annotated." : "$(type(part)):$(name(part)) ($(overlap(part))% in annotation)"
+    return s
+end
+"""
+    Base.show(part::AlignedPart)::IO 
 
 Function for structured printing of the content of AlignedPart
 """
 function Base.show(part::AlignedPart)
-    print("   [$(first(part.seq)), $(last(part.seq))] on $(part.read) - [$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) with $(part.nms) $(part.nms == 1 ? "missmatch" : "missmatches") - ")
-    isempty(annotation(part)) ? println("not annotated.") : println("$(type(part)):$(name(part)) ($(overlap(part))% in annotation)")
+    println(summarize(part))
 end
 
 """
@@ -541,7 +551,15 @@ Availble only after using annotate! on Alignments.
 overlap(aln::AlignedPart) = annotation(aln).overlap
 
 """
-    overlap(aln::AlignedPart)::Interval{AlignmentAnnotation}
+    overlap(aln::AlignedPart)::UInt8
+
+Returns the percentage of the sequence on the read contained within the annotation assigned to it.
+Availble only after using annotate! on Alignments.
+"""
+missmatchcount(aln::AlignedPart) = aln.nms
+
+"""
+    refinterval(aln::AlignedPart)::Interval{AlignmentAnnotation}
 
 Returns the Interval{AlignmentAnnotation} that contains information on the reference sequence part of the alignment.
 Availble only after using annotate! on Alignments.
@@ -555,6 +573,20 @@ Returns the id of the reference sequence the annotation comes from as found in t
 Availble only after using annotate! on Alignments.
 """
 refname(aln::AlignedPart) = aln.ref.seqname
+
+"""
+    refrange(aln::AlignedPart)::UnitRange
+
+Returns the Interval of the alignment on the reference sequence as a UnitRange.
+"""
+refrange(aln::AlignedPart) = leftposition(aln):rightposition(aln)
+
+"""
+    refsequence(aln::AlignedPart, genome::Genome)::LongDNASeq
+
+Returns the part of the reference sequence that the aln::AlignedPart belongs to.
+"""
+refsequence(aln::AlignedPart, genome::Genome)::LongDNASeq = genome[refname(aln)][refrange(aln)]
 
 """
     leftposition(aln::AlignedPart)::Int
@@ -596,11 +628,21 @@ Returns the Interval of the alignment on the read sequence as a UnitRange.
 readrange(aln::AlignedPart) = aln.seq
 
 """
-    refrange(aln::AlignedPart)::UnitRange
+    refsequence(aln::AlignedPart, genome::Genome)::LongDNASeq
 
-Returns the Interval of the alignment on the reference sequence as a UnitRange.
+Returns the part of the read sequence that the aln::AlignedPart belongs to.
 """
-refrange(aln::AlignedPart) = leftposition(aln):rightposition(aln)
+function readsequence(aln::AlignedPart, seqs::Sequences)::LongDNASeq
+    r = searchsorted(seqs.seqnames, name(aln))
+    if length(r) === 2
+        s = aln.read === :read1 ? seqs.seq[seqs.ranges[first(r)]] : seqs.seq[seqs.ranges[last(r)]] 
+        return s[readrange(aln)]
+    elseif length(r) === 1
+        return seqs.seq[seqs.ranges[first(r)]][readrange(aln)]
+    else
+        throw(KeyError)
+    end
+end
 
 """
     leftposition(rang::UnitRange)::Int
@@ -704,12 +746,9 @@ function ispositivestrand(alnread::AlignedRead)
     return s === STRAND_POS
 end
 
+summarize(alnread::AlignedRead) = "Alignment with $(length(alnread)) part(s):\n   " * join([summarize(part) for part in alnread], "\n   ")
 function Base.show(alnread::AlignedRead)
-    println("Alignment with $(length(alnread)) part(s):")
-    for part in alnread
-        show(part)
-    end
-    print("\n")
+    println(summarize(alnread))
 end
 
 refname(i::Interval) = i.seqname

@@ -71,22 +71,31 @@ function unmapped_reads(bams::SingleTypeFiles)
     end
 end
 
-function remove_features(bams::SingleTypeFiles, features::Features)
+function remove_features(bams::SingleTypeFiles, features::Features; is_reverse_complement=false, overwrite_existing=false, remove_unmapped=true)
+    outnames = String[]
     for bam_file in bams
         startswith(bam_file, "filtered_") && continue
         record = BAM.Record()
         reader = BAM.Reader(open(bam_file))
         h = header(reader)
-        writer = BAM.Writer(BGZFStream(open(joinpath(dirname(bam_file), "filtered_" * basename(bam_file)), "w"), "w"), h)
+        fname = joinpath(dirname(bam_file), "filtered_" * basename(bam_file))
+        push!(outnames, fname)
+        !overwrite_existing && isfile(fname) && continue
+        writer = BAM.Writer(BGZFStream(open(fname, "w"), "w"), h)
         while !eof(reader)
             read!(reader, record)
-            BAM.ismapped(record) && hasoverlap(features, Interval(BAM.refname(record), leftposition(record), rightposition(record), ispositivestrand(record) ? STRAND_POS : STRAND_NEG, Annotation())) && continue
+            current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
+            s = (BAM.ispositivestrand(record) != (current_read === :read2)) ? STRAND_POS : STRAND_NEG
+            BAM.ismapped(record) && hasoverlap(features, Interval(BAM.refname(record), leftposition(record), rightposition(record), s, Annotation())) && continue
             write(writer, record)
         end
         sleep(0.1)
         close(writer)
         close(reader)
+        run(`$sam_bin index $fname`)
+        run(pipeline(`$sam_bin stats $fname`, stdout=fname * ".log"))
     end
+    return SingleTypeFiles(outnames)
 end
 
 function transcriptional_startsites(texreps::SingleTypeFiles, notexreps::SingleTypeFiles, results_gff::String)
@@ -107,11 +116,10 @@ function full_annotation(features::Features, texdict::Dict{String,Coverage}, not
     write(results_gff, features)
 end
 
-function conserved_features(features::Features, source_genome::Genome, targets::SingleTypeFiles, results_path::String)
-    target_genomes = [Genome(genome_file) for genome_file in targets]
+function conserved_features(features::Features, source_genome::Genome, target_genomes::SingleTypeFiles, results_path::String)
+    targets = [Genome(genome_file) for genome_file in target_genomes]
     seqs = featureseqs(features, source_genome)
-    align_mem(seqs, target_genomes, joinpath(results_path, "utrs.bam"))
-    alignments = Alignments(joinpath(results_path, "utrs.bam"))
+    alignments = align_mem(seqs, targets, joinpath(results_path, "utrs.bam"))
     annotate!(features, alignments)
     write(joinpath(results_path, "features.gff"), features)
 end
@@ -121,8 +129,8 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
                             is_reverse_complement=true, only_unique_alignments=true, model=:fisher, min_interactions=5, max_fdr=0.05,
                             overwrite_existing=false)
 
-    isdir(joinpath(results_path, "interactions")) || mkdir(joinpath(results_path, "interactions"))
-    isdir(joinpath(results_path, "singles")) || mkdir(joinpath(results_path, "singles"))
+    isdir(joinpath(results_path, "interactions")) || mkpath(joinpath(results_path, "interactions"))
+    isdir(joinpath(results_path, "singles")) || mkpath(joinpath(results_path, "singles"))
     for (condition, r) in conditions
         !overwrite_existing && isfile(joinpath(results_path, "interactions", "$(condition).csv")) && isfile(joinpath(results_path, "singles", "$(condition).csv")) && continue
         replicate_ids = Vector{Symbol}()
@@ -176,19 +184,22 @@ end
 
 """
 DESeq2 pipeline wrapper.
-Needs deseq2.R script in the same dir.
 """
 function deseq2_R(
-    results_path::String,
-    bams::SingleTypeFiles,
     features::Features,
-    conditions::Dict,
-    between_conditions::Tuple,
-)
-
-    raw_counts = joinpath(results_path, "raw_counts")
-    mkpath(raw_counts) # create path if nonexistent
-    feature_count(features, bams, conditions,  raw_counts; between_conditions)
-    num_replicates = length.(values(conditions))[1]
-    run(`Rscript deseq2.R $raw_counts $results_path $num_replicates`)
+    bams::SingleTypeFiles,
+    conditions::Dict{String, UnitRange{Int}},
+    between_conditions::Vector{Tuple{String, String}},
+    results_path::String;
+    is_reverse_complement=false
+)   
+    all(isfile(joinpath(results_path, cond1 * "_vs_" * cond2 * ".csv")) for (cond1, cond2) in between_conditions) || 
+        feature_count(features, bams, conditions,  results_path; between_conditions=between_conditions, is_reverse_complement=is_reverse_complement)
+    
+    rcall(:source, joinpath(@__DIR__, "deseq2.R"))
+    for (cond1, cond2) in between_conditions
+        file = joinpath(results_path, cond1 * "_vs_" * cond2 * ".csv")
+        num_ctl, num_exp = length(conditions[cond1]), length(conditions[cond2])
+        rcall(:deseq2pipeline, file, num_ctl, num_exp)
+    end
 end

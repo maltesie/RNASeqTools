@@ -92,166 +92,163 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
     end
 end
 
-function is_bitstring_fasta(file::String)
-    (endswith(file, ".fasta") || endswith(file, ".fasta.gz")) || (return false)
-    f = endswith(file, ".fasta.gz") ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
-    first_line = readline(f)
+struct Sequences
+    seq::LongDNASeq
+    seqnames::Vector{UInt64}
+    ranges::Vector{UnitRange{Int}}
+end
+
+function Sequences()
+    Sequences(LongDNASeq(""), UInt64[], UnitRange{Int}[])
+end
+
+function Sequences(file::String; is_reverse_complement=false)
+    read_reads(file; is_reverse_complement=is_reverse_complement)
+end
+
+function Sequences(file1::String, file2::String; is_reverse_complement=false)
+    read_reads(file1, file2; is_reverse_complement=is_reverse_complement)
+end
+
+function Base.getindex(seqs::Sequences, index::UInt) 
+    r = searchsorted(seqs.seqnames, index)
+    if length(r) === 2
+        return (seqs.seq[seqs.ranges[first(r)]], seqs.seq[seqs.ranges[last(r)]]) 
+    elseif length(r) === 1
+        return seqs.seq[seqs.ranges[first(r)]]
+    else
+        throw(KeyError)
+    end
+end
+
+function Base.getindex(seqs::Sequences, index::String) 
+    seqs[hash(UInt8.(index))]
+end
+Base.length(seqs::Sequences) = length(seqs.seqnames)
+Base.iterate(seqs::Sequences) = (seqs.seq[seqs.ranges[1]], 2)
+Base.iterate(seqs::Sequences, state::Int) = state === length(seqs.ranges) ? nothing : (seqs.seq[seqs.ranges[state]], state+1)
+eachpair(seqs::Sequences) = partition(seqs, 2)
+Base.empty!(seqs::Sequences) = (empty!(seqs.seq); empty!(seqs.seqnames); empty!(seqs.ranges))
+
+function Base.filter!(seqs::Sequences, ids::Vector{UInt})
+    bitindex = (in).(seqs.seqnames, Ref(ids))
+    n_seqs = sum(bitindex)
+    seqs.ranges[1:n_seqs] = seqs.ranges[bitindex]
+    seqs.seqnames[1:n_seqs] = seqs.seqnames[bitindex]
+    resize!(seqs.ranges, n_seqs)
+    resize!(seqs.seqnames, n_seqs)
+end
+
+function Base.write(fasta_file::String, seqs::Sequences)
+    f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")
+    for (i, read) in enumerate(seqs)
+        write(f, ">$(seqs.seqnames[i])\n$(String(read))\n")
+    end
     close(f)
-    ((length(first_line) == 65) && all([c in ['0', '1'] for c in first_line[2:end]])) && (return true)
-    return false
 end
 
-struct PairedSequences{T} <: SequenceContainer
-    dict::Dict{T, LongDNASeqPair}
-end
-
-PairedSequences(::T) where T  = PairedSequences(Dict{T, LongDNASeqPair}())
-
-Base.getindex(reads::PairedSequences, index::UInt) = reads.dict[index]
-Base.getindex(reads::PairedSequences, index::String) = reads.dict[index]
-Base.length(reads::PairedSequences) = length(reads.dict)
-Base.keys(reads::PairedSequences) = keys(reads.dict)
-Base.values(reads::PairedSequences) = values(reads.dict)
-Base.iterate(reads::PairedSequences) = iterate(reads.dict)
-Base.iterate(reads::PairedSequences, state::Int) = iterate(reads.dict, state)
-Base.empty!(seqs::PairedSequences) = empty!(seqs.dict)
-
-function PairedSequences(file1::String, file2::String; stop_at=nothing, is_reverse_complement=false, hash_id=true)
-    read_reads(file1, file2; nb_reads=stop_at, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
-end
-
-function Base.write(fasta_file1::String, fasta_file2::String, reads::PairedSequences)
+function Base.write(fasta_file1::String, fasta_file2::String, seqs::Sequences)
     f1 = endswith(fasta_file1, ".gz") ? GzipCompressorStream(open(fasta_file1, "w")) : open(fasta_file1, "w")
     f2 = endswith(fasta_file2, ".gz") ? GzipCompressorStream(open(fasta_file2, "w")) : open(fasta_file2, "w")
-    for (key, (read1, read2)) in reads.dict
-        str_key = bitstring(key)
-        write(f1, ">$str_key\n$(String(read1))\n")
-        write(f2, ">$str_key\n$(String(read2))\n")
+    for (i, (read1, read2)) in enumerate(eachpair(seqs))
+        h = seqs.seqnames[2*i]
+        write(f1, ">$h\n$(String(read1))\n")
+        write(f2, ">$h\n$(String(read2))\n")
     end
     close(f1)
     close(f2)
 end
 
-struct Sequences{T} <: SequenceContainer
-    dict::Dict{T, LongDNASeq}
-end
-
-Base.getindex(reads::Sequences, index::UInt) = reads.dict[index]
-Base.getindex(reads::Sequences, index::String) = reads.dict[index]
-Base.length(reads::Sequences) = length(reads.dict)
-Base.keys(reads::Sequences) = keys(reads.dict)
-Base.values(reads::Sequences) = values(reads.dict)
-Base.iterate(reads::Sequences) = iterate(reads.dict)
-Base.iterate(reads::Sequences, state::Int) = iterate(reads.dict, state)
-Base.empty!(seqs::Sequences) = empty!(seqs.dict)
-
-function Base.write(fasta_file::String, reads::Sequences{T}) where T
-    f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")
-    for (key, read) in reads.dict
-        T === String ? write(f, ">$key\n$(String(read))\n") : write(f, ">$(bitstring(key))\n$(String(read))\n")
-    end
-    close(f)
-end
-
-Sequences(seqs::Vector{LongDNASeq}) = Sequences(Dict(i=>seq for (i::UInt,seq) in enumerate(seqs)))
-Sequences(::T) where T  = Sequences(Dict{T, LongDNASeq}())
-
-function Sequences(file::String; stop_at=nothing, is_reverse_complement=false, hash_id=true)
-    reads = read_reads(file, nb_reads=stop_at, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
-    Sequences(reads)
-end
-
-function Sequences(f, paired_reads::PairedSequences{T}; use_when_tied=:none) where T
-    @assert use_when_tied in [:none, :read1, :read2]
-    reads = Dict{T, LongDNASeq}()
-    for (key, (read1, read2)) in paired_reads
-        if use_when_tied == :read1
-            f(read1) ? push!(reads, key=>copy(read1)) : (f(read2) && push!(reads, key=>copy(read2)))
-        elseif use_when_tied == :read2
-            f(read2) ? push!(reads, key=>copy(read2)) : (f(read1) && push!(reads, key=>copy(read1)))
-        elseif use_when_tied == :none
-            check1, check2 = f(read1), f(read2)
-            check1 && check2 && continue
-            check1 && push!(reads, key=>copy(read1))
-            check2 && push!(reads, key=>copy(read2))
-        end
-    end
-    Sequences(reads)
-end
-
-function read_reads(file::String; nb_reads=nothing, is_reverse_complement=false, hash_id=true)
-    @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
-    reads::Dict{hash_id ? UInt : String, LongDNASeq} = Dict()
+function read_reads(file::String; is_reverse_complement=false)::Sequences
+    seqs::Sequences = Sequences()
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped = endswith(file, ".gz")
-    is_bitstring = is_bitstring_fasta(file)
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
     reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
     record = is_fastq ? FASTQ.Record() : FASTA.Record()
-    read_counter = 0
+    i::Int64 = 0
+    current_range::UnitRange{Int64} = 1:0 
     while !eof(reader)
         read!(reader, record)
-        id = !hash_id ? identifier(record) : 
-                (is_bitstring ? parse(UInt, identifier(record); base=2) : hash(@view(record.data[record.identifier])))
-        push!(reads, id => is_reverse_complement ? reverse_complement(LongDNASeq(record.data[record.sequence])) : LongDNASeq(record.data[record.sequence]))
-        read_counter += 1
-        isnothing(nb_reads) || (read_counter >= nb_reads && break)
+        id = hash(@view(record.data[record.identifier]))
+        s = LongDNASeq(@view(record.data[record.sequence]))
+        is_reverse_complement && reverse_complement!(s)
+        i += 1
+        current_range = last(current_range)+1:last(current_range)+length(record.sequence)
+        length(seqs.seq) < last(current_range) && resize!(seqs.seq, length(seqs.seq)+max(1000000, last(current_range)-length(seqs.seq)))
+        length(seqs.seqnames) < i && (resize!(seqs.seqnames, length(seqs.seqnames)+10000);resize!(seqs.ranges, length(seqs.ranges)+10000))
+        seqs.seqnames[i] = id
+        seqs.ranges[i] = current_range
+        seqs.seq[current_range] = s
     end
+    resize!(seqs.seq, last(current_range))
+    resize!(seqs.seqnames, i)
+    resize!(seqs.ranges, i)
+    sort_index = sortperm(seqs.seqnames)
+    seqs.seqnames[1:end] = seqs.seqnames[sort_index]
+    seqs.ranges[1:end] = seqs.ranges[sort_index]
     close(reader)
-    return reads
+    return seqs
 end
 
-function read_reads(file1::String, file2::String; nb_reads=nothing, is_reverse_complement=false, hash_id=true)
-    @assert any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
-    reads::Dict{hash_id ? UInt : String, LongDNASeqPair} = Dict()
+function read_reads(file1::String, file2::String; is_reverse_complement=false)::Sequences
+    any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]]) && 
+    any([endswith(file2, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]]) ||
+    throw(AssertionError("Accepted filetypes are: .fastq, .fastq.gz, .fasta and .fasta.gz"))
+    seqs::Sequences = Sequences()
     
     is_fastq1 = any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped1 = endswith(file1, ".gz")
-    is_bitstring1 = is_bitstring_fasta(file1)
     f1 = is_zipped1 ? GzipDecompressorStream(open(file1, "r")) : open(file1, "r")
     reader1 = is_fastq1 ? FASTQ.Reader(f1) : FASTA.Reader(f1)
     record1 = is_fastq1 ? FASTQ.Record() : FASTA.Record()
     
-    @assert any([endswith(file2, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
     is_fastq2 = any([endswith(file2, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped2 = endswith(file2, ".gz")
-    is_bitstring2 = is_bitstring_fasta(file2)
     f2 = is_zipped2 ? GzipDecompressorStream(open(file2, "r")) : open(file2, "r")
     reader2 = is_fastq2 ? FASTQ.Reader(f2) : FASTA.Reader(f2)
     record2 = is_fastq2 ? FASTQ.Record() : FASTA.Record()
     
-    read_counter = 1
-    while !eof(reader1)
+    i::Int64 = 0
+    current_range::UnitRange{Int64} = 1:0 
+    while !eof(reader1) && !eof(reader2)
         read!(reader1, record1)
-        id1 = !hash_id ? identifier(record1) : 
-                (is_bitstring1 ? parse(UInt, identifier(record1); base=2) : hash(@view(record1.data[record1.identifier])))
         read!(reader2, record2)
-        id2 = !hash_id ? identifier(record2) : 
-                (is_bitstring2 ? parse(UInt, identifier(record2); base=2) : hash(@view(record2.data[record2.identifier])))
-        id1 == id2 || throw(AssertionError("entry identifiers do not match for entry $read_counter."))
-        is_reverse_complement ?
-        push!(reads, id1 => (LongDNASeq(record2.data[record2.sequence]), reverse_complement(LongDNASeq(record1.data[record1.sequence])))) : 
-        push!(reads, id1 => (LongDNASeq(record1.data[record1.sequence]), reverse_complement(LongDNASeq(record2.data[record2.sequence]))))
-        read_counter += 1
-        isnothing(nb_reads) || (read_counter > nb_reads && break)
+        id1 = hash(@view record1.data[record1.identifier])
+        id2 = hash(@view record2.data[record2.identifier])
+        id1 === id2 || throw(
+            AssertionError("tempnames of read1 and read2 do not match: $(String(record1.data[record1.identifier])) != $(String(record2.data[record2.identifier]))")
+        )
+        s1 = LongDNASeq(@view record1.data[record1.sequence])
+        s2 = LongDNASeq(@view record2.data[record2.sequence])
+        is_reverse_complement && ((s1,s2) = (s2,s1))
+        reverse_complement!(s2)
+        i += 1
+        current_range = last(current_range)+1:last(current_range)+length(s1)
+        paired_end = last(current_range) + length(s2)
+        length(seqs.seq) < paired_end && resize!(seqs.seq, length(seqs.seq)+max(1000000, paired_end-length(seqs.seq)))
+        length(seqs.seqnames) < i+1 && (resize!(seqs.seqnames, length(seqs.seqnames)+10000);resize!(seqs.ranges, length(seqs.ranges)+10000))
+        seqs.seqnames[i] = id1
+        seqs.ranges[i] = current_range
+        seqs.seq[current_range] = s1
+        i += 1
+        current_range = last(current_range)+1:last(current_range)+length(s2)
+        seqs.seqnames[i] = id2
+        seqs.ranges[i] = current_range
+        seqs.seq[current_range] = s2
     end
+    resize!(seqs.seq, last(current_range))
+    resize!(seqs.seqnames, i)
+    resize!(seqs.ranges, i)
+    si = sortperm(seqs.seqnames[1:2:end])
+    sort_index = zeros(Int, 2*length(si))
+    sort_index[1:2:end] = si .* 2 .- 1
+    sort_index[2:2:end] = si .* 2
+    seqs.seqnames[1:end] = seqs.seqnames[sort_index]
+    seqs.ranges[1:end] = seqs.ranges[sort_index]
     close(reader1)
     close(reader2)
-    return reads
-end
-
-function rev_comp!(reads::Sequences)
-    for read in reads
-        BioSequences.reverse_complement!(read)
-    end
-end
-
-function rev_comp!(reads::PairedSequences; treat=:both)
-    @assert treat in [:both, :read1, :read2]
-    for (read1, read2) in reads
-        treat in [:both, :read1] && BioSequences.reverse_complement!(read1)
-        treat in [:both, :read2] && BioSequences.reverse_complement!(read2)
-    end
+    return seqs
 end
 
 function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
@@ -276,98 +273,11 @@ function cut!(read::LongDNASeq, int::Tuple{Int, Int})
     reverse!(resize!(reverse!(resize!(read, last(int), true)), length(read)-first(int)+1, true))
 end
 
-function cut!(reads::Sequences, pos::Int; keep=:left, from=:left)
-    for read in reads
-        cut!(read, pos; keep=keep, from=from)
-    end
-end
-
-function cut!(reads::PairedSequences, pos::Int; keep=:left, from=:left)
-    for (read1, read2) in reads
-        ((pos > length(read1)) && (pos > length(read2))) && continue
-        cut!(read1, pos; keep=keep, from=from)
-        cut!(read2, pos; keep=keep, from=from)
-    end
-end
-
-function cut!(reads::Sequences, seq::LongDNASeq; keep=:left_of_query, from=:left)
-    @assert keep in [:left_of_query, :right_of_query, :left_and_query, :right_and_query]
-    @assert from in [:left, :right]
-    for read in reads
-        s = from == :left ? findfirst(seq, read) : findlast(seq, read)
-        isnothing(s) && continue
-        (start, stop) = s
-        if keep == :right_of_query
-            cut!(read, stop; keep=:right)
-        elseif keep == :left_of_query
-            cut!(read, start-1; keep=:left)
-        elseif keep == :right_and_query
-            cut!(read, start-1; keep=:right)
-        elseif keep == :left_and_query
-            cut!(read, stop; keep=:left)
-        end
-    end
-end
-
-function cut!(reads::PairedSequences, seq::LongDNASeq; keep=:left_of_query, from=:left, treat=:both)
-    @assert keep in [:left_of_query, :right_of_query, :left_and_query, :right_and_query]
-    @assert treat in [:read1, :read2, :both]
-    @assert from in [:left, :right]
-    for (read1, read2) in reads
-        s1 = treat in [:both, :read1] ? (from == :left ? findfirst(seq, read1) : findlast(seq, read1)) : nothing
-        s2 = treat in [:both, :read2] ? (from == :left ? findfirst(seq, read2) : findlast(seq, read2)) : nothing
-        if !isnothing(s1)
-            start1, stop1 = s1
-            if keep == :right_of_query
-                cut!(read1, stop1; keep=:right)
-            elseif keep == :left_of_query
-                cut!(read1, start1-1; keep=:left)
-            elseif keep == :right_and_query
-                cut!(read1, start1-1; keep=:right)
-            elseif keep == :left_and_query
-                cut!(read1, stop1; keep=:left)
-            end
-        end
-        if !isnothing(s2)
-            start2, stop2 = s2
-            if keep == :right_of_query
-                cut!(read2, stop2; keep=:right)
-            elseif keep == :left_of_query
-                cut!(read2, start2-1; keep=:left)
-            elseif keep == :right_and_query
-                cut!(read2, start2-1; keep=:right)
-            elseif keep == :left_and_query
-                cut!(read2, stop2; keep=:left)
-            end
-        end
-    end
-end
-
 function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1)
     return approxsearch(s2, s1, k) != 0:-1
 end
 
-function Base.filter!(f, reads::Sequences)
-    for (key, read) in reads.dict
-        f(read) || delete!(reads.dict, key)
-    end
-end
-
-function Base.filter!(f, reads::PairedSequences; logic=:or)
-    @assert logic in [:or, :xor, :and]
-    for (key, (read1, read2)) in reads.dict
-        if logic == :and
-            f(read1) && f(read2) || delete!(reads.dict, key)
-        elseif logic == :or
-            f(read1) || f(read2) || delete!(reads.dict, key)
-        elseif logic == :xor
-            check1, check2 = f(read1), f(read2)
-            ((check1 && !check2) || (!check1 && check2)) || delete!(reads.dict, key)
-        end
-    end
-end
-
-occurences(test_sequence::LongDNASeq, seqs::Sequences{T}, similarity_cut::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1)) where T =
+occurences(test_sequence::LongDNASeq, seqs::Sequences, similarity_cut::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1)) =
     sum(similarity(test_sequence, seq; score_model=score_model) > similarity_cut for seq in seqs)
 
 function similarity(read1::LongDNASeq, read2::LongDNASeq; score_model=nothing)
@@ -377,19 +287,10 @@ function similarity(read1::LongDNASeq, read2::LongDNASeq; score_model=nothing)
     return max(BioAlignments.score(aln), 0.0)/length(short_seq)
 end
 
-function similarity(reads::PairedSequences{T}) where T
-    similarities = Dict{T, Float64}()
-    score_model = AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1)
-    for (read1, read2) in reads
-        push!(similarities, key=>similarity(read1, read2; score_model=score_model))
-    end
-    return similarities
-end
-
-function nucleotidecount(reads::Sequences; normalize=true)
-    max_length = maximum([length(read) for read in reads])
+function nucleotidecount(seqs::Sequences; normalize=true)
+    max_length = maximum([length(read) for read in seqs])
     count = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
-    for read in reads
+    for read in seqs
         (align==:left) ?
         (index = 1:length(read)) :
         (index = (max_length - length(read) + 1):max_length)
@@ -399,31 +300,8 @@ function nucleotidecount(reads::Sequences; normalize=true)
     end
     if normalize
         for (_, c) in count
-            c /= length(reads)
+            c /= length(seqs)
         end
     end
     return count
-end
-
-function nucleotidecount(reads::PairedSequences; normalize=true)
-    max_length = maximum(vcat([[length(read1) length(read2)] for (read1, read2) in reads]...))
-    count1 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
-    count2 = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
-    nb_reads = length(reads)
-    for (read1, read2) in reads
-        (align==:left) ?
-        (index1 = 1:length(read1); index2 = 1:length(read2)) :
-        (index1 = (max_length - length(read1) + 1):max_length; index2 = (max_length - length(read2) + 1):max_length)
-        for ((i1, n1),(i2, n2)) in zip(zip(index1, read1), zip(index2, read2))
-            count1[n1][i1] += 1
-            count2[n2][i2] += 1
-        end
-    end
-    if normalize
-        for ((key1, c1), (key2, c2)) in zip(count1, count2)
-            c1 /= length(reads)
-            c2 /= length(reads)
-        end
-    end
-    return count1, count2
 end
