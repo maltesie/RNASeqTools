@@ -49,9 +49,6 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
     min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
     min_seed_len=19, reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools")
 
-    tmp_bwa = tempname()
-    tmp_view = tempname()
-
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
     params = ["-A", match, "-B", mismatch, "-O", gap_open, "-E", gap_extend, "-T", min_score, "-L", clipping_penalty, "-r", reseeding_factor, "-k", min_seed_len]
@@ -59,23 +56,20 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
     is_ont && append!(params, ["-x", "ont2d"])
     unpair_rescue && push!(params, "-P")
     fileparams = isnothing(in_file2) ? [genome_file, in_file1] : [genome_file, in_file1, in_file2]
-    cmd = pipeline(`$bwa_bin mem -v 1 -t 6 $params $fileparams`, stdout=tmp_bwa)
-    run(cmd)
-    cmd = pipeline(`$sam_bin view -u $tmp_bwa`, stdout=tmp_view)
-    run(cmd)
-    cmd = pipeline(`$sam_bin sort $tmp_view -o $out_file`)
-    run(cmd)
-    cmd = pipeline(`$sam_bin index $out_file`)
-    run(cmd)
     stats_file = out_file * ".log"
-    cmd = pipeline(`$sam_bin stats $out_file`, stdout=stats_file)
-    run(cmd)
-
-    rm(tmp_bwa)
-    rm(tmp_view)
+    run(pipeline(
+        `$bwa_bin mem -v 1 -t 6 $params $fileparams`,
+        stdout = pipeline(
+            `$sam_bin view -u`,
+            stdout = pipeline(
+                `$sam_bin sort -o $out_file`))))
+    run(pipeline(
+        `$sam_bin index $out_file`,
+        `$sam_bin stats $out_file`,
+        stats_file))
 end
 align_mem(in_file::String, out_file::String, genome_file::String;
-    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=19, 
+    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=19,
     reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools") =
     align_mem(in_file, nothing, out_file::String, genome_file::String;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, min_seed_len=min_seed_len,
@@ -85,7 +79,7 @@ align_mem(in_file::String, out_file::String, genome_file::String;
     Helper dispatch of align_mem, which is a wrapper for bwa-mem2. Runs align_mem on `read_files::T`
     where T is a FileCollection and aligns it against `genome::Genome`. This enables easy handling of
     whole folders containing sequence files and the manipulation of a genome using Genome.
-"""   
+"""
 function align_mem(read_files::T, genome::Genome; min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, reseeding_factor=1.5,
                     min_seed_len=19, unpair_rescue=false, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
     tmp_genome = tempname()
@@ -116,9 +110,9 @@ end
     Helper dispatch of align_mem, which is a wrapper for bwa-mem2. Runs align_mem on `reads::T` where T
     is a SequenceContainer and aligns it against `genomes::Vector{Genome}`. This enables easy handling
     of Sequences and their alignment against multiple genomes.
-"""  
+"""
 function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5,
-                unpair_penalty=9, unpair_rescue=false, min_seed_len=19, reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools", 
+                unpair_penalty=9, unpair_rescue=false, min_seed_len=19, reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools",
                 overwrite_existing=false) where T<:SequenceContainer
     (isfile(out_file) && !overwrite_existing) && return
     tmp_reads = tempname()
@@ -166,7 +160,7 @@ align_mem(reads::T, genome::Genome, out_file::String;
     unpair_rescue=false, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where T<:SequenceContainer =
         align_mem(reads, [genome], out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty,
-            unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, 
+            unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont,
             bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
 struct Alignments
@@ -191,10 +185,10 @@ end
 
 Base.length(alns::Alignments) = length(alns.tempnames)
 
-function Base.iterate(alns::Alignments) 
+function Base.iterate(alns::Alignments)
     return isempty(alns.ranges) ? nothing : (AlignedRead(alns.ranges[1], alns), 2)
 end
-function Base.iterate(alns::Alignments, state::Int) 
+function Base.iterate(alns::Alignments, state::Int)
     return state > length(alns.ranges) ? nothing : (AlignedRead(alns.ranges[state], alns), state+1)
 end
 
@@ -223,7 +217,7 @@ function partsindex(ranges::Vector{UnitRange{Int}}, sorted_index::Vector{Int}, r
             c = 0
             for ii in view(sorted_index, r)
                 if reads[i] === :read1
-                    reads[ii] === :read2 && continue 
+                    reads[ii] === :read2 && continue
                     read_leftpos[ii] >= read_leftpos[i] && continue
                 else
                     (reads[ii] === :read2) && (read_leftpos[ii] >= read_leftpos[i]) && continue
@@ -403,7 +397,7 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
     rls = Vector{Int}(undef, 10000)
     rrs = Vector{Int}(undef, 10000)
     rds = Vector{Symbol}(undef, 10000)
-    index::Int = 0 
+    index::Int = 0
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
@@ -413,7 +407,7 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
         index += 1
         if index > length(ns)
             for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
-                resize!(z, length(z)+10000) 
+                resize!(z, length(z)+10000)
             end
         end
         n= hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
@@ -447,14 +441,14 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
         (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) = (n, l, r, ref, s, rl, rr, current_read, nm)
     end
     for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
-        resize!(z, index) 
+        resize!(z, index)
     end
     close(reader)
     nindex = sortperm(ns)
     ns = ns[nindex]
     ranges = samevalueintervals(ns)
     pindex = partsindex(ranges, nindex, rls, rds)
-    return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex], 
+    return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex],
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
 end
 
@@ -466,15 +460,15 @@ struct AlignedPart
 end
 
 AlignedPart(alns::Alignments, i::Int) = AlignedPart(
-                                            Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i], 
+                                            Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i],
                                                 AlignmentAnnotation(
                                                     isassigned(alns.antypes, i) ? alns.antypes[i] : "",
                                                     isassigned(alns.annames, i) ? alns.annames[i] : "",
                                                     alns.anols[i]
                                                 )
-                                            ),  
-                                            alns.read_leftpos[i]:alns.read_rightpos[i], 
-                                            alns.nms[i], 
+                                            ),
+                                            alns.read_leftpos[i]:alns.read_rightpos[i],
+                                            alns.nms[i],
                                             alns.reads[i]
                                         )
 
@@ -497,7 +491,7 @@ function AlignedPart(xapart::Union{String, SubString{String}}; read=:read1)
 end
 
 """
-    Base.show(part::AlignedPart)::IO 
+    Base.show(part::AlignedPart)::IO
 
 Function for structured printing of the content of AlignedPart
 """
@@ -509,7 +503,7 @@ end
 """
     read(aln::AlignedPart)::Symbol
 
-Returns the read from which the alignment comes. If is_reverse_complement is true, the reads will be 
+Returns the read from which the alignment comes. If is_reverse_complement is true, the reads will be
 inverted (:read1 will be :read2 and vice versa).
 """
 sameread(aln1::AlignedPart, aln2::AlignedPart) = aln1.read === aln2.read
@@ -549,7 +543,7 @@ overlap(aln::AlignedPart) = annotation(aln).overlap
 """
     overlap(aln::AlignedPart)::Interval{AlignmentAnnotation}
 
-Returns the Interval{AlignmentAnnotation} that contains information on the reference sequence part of the alignment. 
+Returns the Interval{AlignmentAnnotation} that contains information on the reference sequence part of the alignment.
 Availble only after using annotate! on Alignments.
 """
 refinterval(aln::AlignedPart) = aln.ref
@@ -663,10 +657,10 @@ struct AlignedRead
     alns::Alignments
 end
 
-function Base.iterate(alnread::AlignedRead) 
+function Base.iterate(alnread::AlignedRead)
     return isnothing(alnread.range) ? nothing : (AlignedPart(alnread.alns, first(alnread.range)), first(alnread.range)+1)
 end
-function Base.iterate(alnread::AlignedRead, state::Int) 
+function Base.iterate(alnread::AlignedRead, state::Int)
     return state > last(alnread.range) ? nothing : (AlignedPart(alnread.alns, state), state+1)
 end
 Base.getindex(alnread::AlignedRead, i::Int) = alnread.alns[alnread.range[i]]
@@ -685,12 +679,12 @@ hasannotation(alnread::AlignedRead) = any(isassigned(alnread.alns.annames, i) &&
 annotatedcount(alnread::AlignedRead) = sum(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
 annotationcount(alnread::AlignedRead) = length(Set(name(part) for part in alnread))
 isfullyannotated(alnread::AlignedRead) = all(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
-function GenomicFeatures.leftposition(alnread::AlignedRead) 
+function GenomicFeatures.leftposition(alnread::AlignedRead)
     check_refname = alnread.alns.refnames[first(alnread.range)]
     all(v .== check_refname for v in view(alnread.alns.refnames, alnread.range)) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
     minimum(view(alnread.alns.leftpos, alnread.range))
 end
-function GenomicFeatures.rightposition(alnread::AlignedRead) 
+function GenomicFeatures.rightposition(alnread::AlignedRead)
     check_refname = alnread.alns.refnames[first(alnread.range)]
     all(v .== check_refname for v in view(alnread.alns.refnames, alnread.range)) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
     maximum(view(alnread.alns.rightpos, alnread.range))
@@ -724,13 +718,13 @@ Base.length(i::Interval{T}) where {T<:AnnotationStyle} = rightposition(i) - left
 """
     overlapdistance(i1::Interval, i2::Interval)::Float64
 
-Returns the negative distance between two AlignedParts on the reference sequence or the positive overlap if it exists. 
+Returns the negative distance between two AlignedParts on the reference sequence or the positive overlap if it exists.
 Returns -Inf if the alignments do not share the same reference id or lie on different strands.
 """
 function overlapdistance(i1::Interval{T}, i2::Interval{I})::Float64 where {T,I}
     (!(strand(i1) === strand(i2)) || !(refname(i1) === refname(i2))) && return -Inf
     return min(
-        min(rightposition(i1) - leftposition(i1) + 1, rightposition(i2) - leftposition(i2) + 1), 
+        min(rightposition(i1) - leftposition(i1) + 1, rightposition(i2) - leftposition(i2) + 1),
         min(rightposition(i1) - leftposition(i2) + 1, rightposition(i2) - leftposition(i1) + 1)
     )
 end
@@ -746,15 +740,15 @@ distance(i1::Interval, i2::Interval)::Float64 = -min(-0.0, overlapdistance(i1,i2
 function distance(l1::Int, r1::Int, l2::Int, r2::Int)::Int
     l2>r1 && (return l2-r1)
     l1>r2 && (return l1-r2)
-    return 0 
+    return 0
 end
 function countchimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true)
     length(alnread) > 1 || (return 0)
     c = 0
     for (i1, i2) in combinations(alnread.range, 2)
-        (check_annotation && isassigned(alnread.alns.annames, i1) &&  isassigned(alnread.alns.annames, i2) && 
+        (check_annotation && isassigned(alnread.alns.annames, i1) &&  isassigned(alnread.alns.annames, i2) &&
             (alnread.alns.annames[i1] === alnread.alns.annames[i2])) && continue
-        ((alnread.alns.refnames[i1] === alnread.alns.refnames[i2]) && (alnread.alns.strands[i1] === alnread.alns.strands[i2]) && 
+        ((alnread.alns.refnames[i1] === alnread.alns.refnames[i2]) && (alnread.alns.strands[i1] === alnread.alns.strands[i2]) &&
             distance(alnread.alns.leftpos[i1], alnread.alns.rightpos[i1], alnread.alns.leftpos[i2], alnread.alns.rightpos[i2]) < min_distance) && continue
         c += 1
     end
@@ -844,9 +838,9 @@ annotate_filter(a::Interval{Annotation}, b::Interval{Nothing}) = strand(a) === s
 function annotate!(alns::Alignments, features::Features; prioritize_type=nothing, overwrite_type=nothing)
     myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(annotate_filter), Annotation}(
                                     annotate_filter,
-                                    GenomicFeatures.ICTreeIntersection{Annotation}(), 
-                                    features.list.trees[refn], 
-                                    Interval("", 1, 1, STRAND_NA, Annotation())) 
+                                    GenomicFeatures.ICTreeIntersection{Annotation}(),
+                                    features.list.trees[refn],
+                                    Interval("", 1, 1, STRAND_NA, Annotation()))
                             for refn in refnames(features))
 
     for i::Int in 1:length(alns)
@@ -854,13 +848,13 @@ function annotate!(alns::Alignments, features::Features; prioritize_type=nothing
         myiterator = myiterators[alns.refnames[i]]
         myiterator.query = Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i])
         for feature_interval in myiterator
-            olp = round(UInt8, (min(min(feature_interval.last - feature_interval.first + 1, alns.rightpos[i] - alns.leftpos[i] + 1), 
-                                    min(feature_interval.last - alns.leftpos[i] + 1, alns.rightpos[i] - feature_interval.first + 1)) / 
+            olp = round(UInt8, (min(min(feature_interval.last - feature_interval.first + 1, alns.rightpos[i] - alns.leftpos[i] + 1),
+                                    min(feature_interval.last - alns.leftpos[i] + 1, alns.rightpos[i] - feature_interval.first + 1)) /
                                 (alns.rightpos[i] - alns.leftpos[i] + 1)) * 100)
-            
+
             priority = !isnothing(prioritize_type) && (type(feature_interval) === prioritize_type) && (olp > 90)
             overwrite = !isnothing(overwrite_type) && isassigned(alns.antypes, i) && (alns.antypes[i] === overwrite_type)
-            
+
             if  priority || overwrite || alns.anols[i]<olp
                 alns.antypes[i] = type(feature_interval)
                 alns.annames[i] = name(feature_interval)
