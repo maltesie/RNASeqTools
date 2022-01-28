@@ -5,6 +5,8 @@ mutable struct Interactions <: InteractionContainer
     replicate_ids::Vector{Symbol}
 end
 
+
+
 """
 Method of write function which saves the Interactions struct in a jld2 file.
 """
@@ -40,9 +42,7 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
         for (i,part) in enumerate(alnparts)
             hasannotation(part) || continue
             any(samename(part, formerpart) for formerpart in alnparts[1:i-1]) && continue
-            #any(alignments.annames[i] === alignments.annames[ii] 
-            #    for ii in first(alignment.range):alignment.range[i]-1 
-            #        if (isassigned(alignments.annames, i) && isassigned(alignments.annames, ii))) && continue
+
             h = myhash(part)
             if !(h in keys(trans))
                 trans[h] = length(trans) + 1
@@ -57,7 +57,6 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
                                                                             for (i, part) in enumerate(alnparts))], 2)
             (hasannotation(part1) && hasannotation(part2)) || continue
             ischimeric(part1, part2; min_distance=min_distance) || continue
-            #((myhash(part1) in keys(trans)) && (myhash(part2) in keys(trans))) || println("$(show(part1))\n$(show(part2))")
             a, b = trans[myhash(part1)], trans[myhash(part2)]
             interactions.nodes[a, :nb_ints] += 1
             interactions.nodes[b, :nb_ints] += 1
@@ -145,10 +144,10 @@ function annotate!(interactions::Interactions, features::Features; method=:dispa
     return interactions
 end
 
-function asdataframe(interactions::Interactions; output=:edges, min_interactions=5, max_fdr=0.05)
+function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max_fdr=0.05)
     out_df = copy(interactions.edges)
+    filter!(:nb_ints => >=(min_reads), out_df)
     "fdr" in names(out_df) && filter!(:fdr => <=(max_fdr), out_df)
-    filter!(:nb_ints => >=(min_interactions), out_df)
     if output === :edges
         out_df[!, :meanleft1] = Int.(floor.(out_df[!, :meanleft1]))
         out_df[!, :meanright1] = Int.(floor.(out_df[!, :meanright1]))

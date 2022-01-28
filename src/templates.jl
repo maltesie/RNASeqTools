@@ -126,11 +126,12 @@ end
 
 function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String; conditions::Dict{String, UnitRange{Int}}=Dict("chimeras"=>1:length(bams)),
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR",
-                            is_reverse_complement=true, only_unique_alignments=true, model=:fisher, min_interactions=5, max_fdr=0.05,
+                            is_reverse_complement=true, only_unique_alignments=true, model=:fisher, min_reads=5, max_fdr=0.05,
                             overwrite_existing=false)
 
     isdir(joinpath(results_path, "interactions")) || mkpath(joinpath(results_path, "interactions"))
     isdir(joinpath(results_path, "singles")) || mkpath(joinpath(results_path, "singles"))
+    isdir(joinpath(results_path, "graphs")) || mkpath(joinpath(results_path, "graphs"))
     for (condition, r) in conditions
         !overwrite_existing && isfile(joinpath(results_path, "interactions", "$(condition).csv")) && isfile(joinpath(results_path, "singles", "$(condition).csv")) && continue
         replicate_ids = Vector{Symbol}()
@@ -149,9 +150,10 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
         println("Found $(sum(interactions.edges[!, :nb_ints])) chimeras in $(nrow(interactions.edges)) interactions.")
         println("Computing significance levels and filtering...")
         annotate!(interactions, features; method=model)
+        write(joinpath(results_path, "graphs", "$(condition).jld2"), interactions)
         println("Found $(sum(interactions.edges[interactions.edges.fdr .<= max_fdr, :nb_ints])) significant (level 0.95) chimeras in $(sum(interactions.edges.fdr .<= max_fdr)) interactions.")
-        write(joinpath(results_path, "interactions", "$(condition).csv"), asdataframe(interactions; output=:edges, min_interactions=min_interactions, max_fdr=max_fdr))
-        write(joinpath(results_path, "singles", "$(condition).csv"), asdataframe(interactions; output=:nodes, min_interactions=min_interactions, max_fdr=max_fdr))
+        write(joinpath(results_path, "interactions", "$(condition).csv"), asdataframe(interactions; output=:edges, min_reads=min_reads, max_fdr=max_fdr))
+        write(joinpath(results_path, "singles", "$(condition).csv"), asdataframe(interactions; output=:nodes, min_reads=min_reads, max_fdr=max_fdr))
     end
     (!overwrite_existing && isfile(joinpath(results_path, "singles.xlsx")) && isfile(joinpath(results_path, "interactions.xlsx"))) && return
     println("Writing tables...")

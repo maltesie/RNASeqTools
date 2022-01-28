@@ -781,6 +781,7 @@ function distance(l1::Int, r1::Int, l2::Int, r2::Int)::Int
     l1>r2 && (return l1-r2)
     return 0
 end
+
 function countchimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true)
     length(alnread) > 1 || (return 0)
     c = 0
@@ -795,7 +796,15 @@ function countchimeric(alnread::AlignedRead; min_distance=1000, check_annotation
 end
 
 function ischimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true)
-    countchimeric(alnread; min_distance=min_distance, check_annotation=check_annotation) > 0
+    length(alnread) > 1 || (return false)
+    for (i1, i2) in combinations(alnread.range, 2)
+        (check_annotation && isassigned(alnread.alns.annames, i1) &&  isassigned(alnread.alns.annames, i2) && 
+            (alnread.alns.annames[i1] === alnread.alns.annames[i2])) && continue
+        ((alnread.alns.refnames[i1] === alnread.alns.refnames[i2]) && (alnread.alns.strands[i1] === alnread.alns.strands[i2]) && 
+            distance(alnread.alns.leftpos[i1], alnread.alns.rightpos[i1], alnread.alns.leftpos[i2], alnread.alns.rightpos[i2]) < min_distance) && continue
+        return true
+    end
+    return false
 end
 
 function ischimeric(part1::AlignedPart, part2::AlignedPart; min_distance=1000, check_annotation=true)
@@ -803,8 +812,8 @@ function ischimeric(part1::AlignedPart, part2::AlignedPart; min_distance=1000, c
     return distance(refinterval(part1), refinterval(part2)) > min_distance
 end
 
-function ismulti(alnread::AlignedRead; min_distance=1000, check_annotation=true)
-    countchimeric(alnread; min_distance=min_distance, check_annotation=check_annotation) >= length(alnread)
+function ismulti(alnread::AlignedRead)
+    return (annotationcount(alnread) >= 3)
 end
 
 function Base.empty!(alns::Alignments)
@@ -890,8 +899,8 @@ function annotate!(alns::Alignments, features::Features; prioritize_type=nothing
             olp = round(UInt8, (min(min(feature_interval.last - feature_interval.first + 1, alns.rightpos[i] - alns.leftpos[i] + 1),
                                     min(feature_interval.last - alns.leftpos[i] + 1, alns.rightpos[i] - feature_interval.first + 1)) /
                                 (alns.rightpos[i] - alns.leftpos[i] + 1)) * 100)
-
-            priority = !isnothing(prioritize_type) && (type(feature_interval) === prioritize_type) && (olp > 90)
+            
+            priority = !isnothing(prioritize_type) && (type(feature_interval) === prioritize_type) && (olp > 80)
             overwrite = !isnothing(overwrite_type) && isassigned(alns.antypes, i) && (alns.antypes[i] === overwrite_type)
 
             if  priority || overwrite || alns.anols[i]<olp

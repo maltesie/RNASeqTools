@@ -52,6 +52,15 @@ function Base.iterate(genome::Genome, state::Int)
     end
 end
 
+function merge(genomes::Genome ...)
+    length(genomes) == 1 && return genomes[1]
+    merged = genomes[1]
+    for genome in genomes[2:end]
+        merged *= genome
+    end
+    return merged
+end
+
 function Base.:*(genome1::Genome, genome2::Genome)
     return Genome(genome1.seq*genome2.seq, merge(genome1.chroms, Dict(key=>(range .+ length(genome1)) for (key, range) in genome2.chroms)))
 end
@@ -100,6 +109,23 @@ end
 
 function Sequences()
     Sequences(LongDNASeq(""), UInt64[], UnitRange{Int}[])
+end
+
+function Sequences(seqs::Vector{LongDNASeq}; seqnames=Vector{UInt}[])
+    if isempty(seqnames)
+        seqnames = UInt.(1:length(seqs))
+    else
+        length(seqnames != length(seqs)) && throw(AssertionError("number of sequence names must match the number of sequences!"))
+    end
+    ranges = Vector{UnitRange{Int}}(undef, length(seqs))
+    seq = LongDNASeq(undef, sum(length(s) for s in seqs))
+    current_range = 1:0
+    for (i,s) in enumerate(seqs)
+        current_range = last(current_range)+1:last(current_range)+length(s)
+        seq[current_range] = seq
+        ranges[i] = current_range
+    end
+    return Sequences(seq, seqnames, ranges)
 end
 
 function Sequences(file::String; is_reverse_complement=false)
