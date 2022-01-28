@@ -20,7 +20,7 @@ function Genome(sequence::LongDNASeq, name::String)
 end
 
 function Genome(genome_fasta::String)
-    (name, sequences) = read_genomic_fasta(genome_fasta)
+    sequences = read_genomic_fasta(genome_fasta)
     chrs::Dict{String, UnitRange} = Dict()
     total_seq = ""
     temp_start = 1
@@ -73,10 +73,8 @@ function read_genomic_fasta(fasta_file::String)
     genome::Dict{String, String} = Dict()
     chrs = String[]
     start_ids = Int[]
-    name = ""
     open(fasta_file, "r") do file
         lines = readlines(file)
-        startswith(lines[1], ">") && (name = join(split(lines[1])[2:end]))
         for (i,line) in enumerate(lines)
             startswith(line, ">") &&  (push!(chrs, split(line," ")[1][2:end]); push!(start_ids, i))
         end
@@ -85,7 +83,7 @@ function read_genomic_fasta(fasta_file::String)
             genome[chr] = join(lines[from+1:to-1])
         end
     end
-    return name, genome
+    return genome
 end
 
 function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; name=nothing, chars_per_row=80)
@@ -101,9 +99,9 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
     end
 end
 
-struct Sequences
+struct Sequences{T}
     seq::LongDNASeq
-    seqnames::Vector{UInt64}
+    seqnames::Vector{T}
     ranges::Vector{UnitRange{Int}}
 end
 
@@ -111,21 +109,23 @@ function Sequences()
     Sequences(LongDNASeq(""), UInt64[], UnitRange{Int}[])
 end
 
-function Sequences(seqs::Vector{LongDNASeq}; seqnames=Vector{UInt}[])
+function Sequences(seqs::Vector{LongDNASeq}; seqnames=Vector{T}[]) where {T <: Union{String, UInt}}
     if isempty(seqnames)
         seqnames = UInt.(1:length(seqs))
     else
-        length(seqnames != length(seqs)) && throw(AssertionError("number of sequence names must match the number of sequences!"))
+        (length(seqnames) == length(seqs) == length(unique(seqnames))) || throw(AssertionError("number of unique names must match the number of sequences!"))
     end
     ranges = Vector{UnitRange{Int}}(undef, length(seqs))
-    seq = LongDNASeq(undef, sum(length(s) for s in seqs))
+    seq = LongDNASeq("")
+    resize!(seq, sum(length(s) for s in seqs))
     current_range = 1:0
     for (i,s) in enumerate(seqs)
         current_range = last(current_range)+1:last(current_range)+length(s)
-        seq[current_range] = seq
+        seq[current_range] = s
         ranges[i] = current_range
     end
-    return Sequences(seq, seqnames, ranges)
+    sortindex = sortperm(T isa String ? hash.(seqnames) : seqnames)
+    return Sequences(seq, seqnames[sortindex], ranges[sortindex])
 end
 
 function Sequences(file::String; is_reverse_complement=false)

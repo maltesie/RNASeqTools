@@ -304,13 +304,15 @@ ispositivestrand(feature::Interval{T}) where T<:AnnotationStyle = strand(feature
 
 typenamekey(feature::Interval{Annotation}) = type(feature) * ":" * name(feature)
 function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
-    seqs = Dict{String, LongDNASeq}()
+    seqs = Vector{LongDNASeq}()
+    names = Vector{String}()
     for feature in features
         seq = genome[refname(feature)][leftposition(feature):rightposition(feature)]
         strand(feature) == STRAND_NEG && reverse_complement!(seq)
-        push!(seqs, key_gen(feature) => seq)
+        push!(seqs, seq)
+        push!(names, key_gen(feature))
     end
-    return Sequences{String}(seqs)
+    return Sequences(seqs; seqnames=names)
 end
 
 function annotate!(features::Features, from_reps::Vector{Coverage}, to_reps::Vector{Coverage})
