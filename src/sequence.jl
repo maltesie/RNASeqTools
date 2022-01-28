@@ -105,8 +105,8 @@ struct Sequences{T} where {T<:Uninon{String, UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
-function Sequences()
-    Sequences(LongDNASeq(""), UInt64[], UnitRange{Int}[])
+function Sequences(::Type{T}) where {T<:Union{String, UInt}}
+    Sequences(LongDNASeq(""), T[], UnitRange{Int}[])
 end
 
 function Sequences(seqs::Vector{LongDNASeq}; seqnames=Vector{T}[]) where {T <: Union{String, UInt}}
@@ -148,8 +148,16 @@ function Base.getindex(seqs::Sequences, index::UInt)
 end
 
 function Base.getindex(seqs::Sequences, index::String) 
-    seqs[hash(UInt8.(index))]
+    i = findfirst(x->x===index, seqs.seqnames)
+    if seq.seqnames[i] === seq.seqnames[i+1]
+        return (seqs.seq[seqs.ranges[first(r)]], seqs.seq[seqs.ranges[last(r)]]) 
+    elseif i
+        return seqs.seq[seqs.ranges[first(r)]]
+    else
+        throw(KeyError)
+    end
 end
+
 Base.length(seqs::Sequences) = length(seqs.seqnames)
 Base.iterate(seqs::Sequences) = (seqs.seq[seqs.ranges[1]], 2)
 Base.iterate(seqs::Sequences, state::Int) = state === length(seqs.ranges) ? nothing : (seqs.seq[seqs.ranges[state]], state+1)
@@ -185,7 +193,7 @@ function Base.write(fasta_file1::String, fasta_file2::String, seqs::Sequences)
     close(f2)
 end
 
-function read_reads(file::String; is_reverse_complement=false)::Sequences
+function read_reads(file::String; is_reverse_complement=false, hash_ids=false)::Sequences
     seqs::Sequences = Sequences()
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped = endswith(file, ".gz")
@@ -196,7 +204,7 @@ function read_reads(file::String; is_reverse_complement=false)::Sequences
     current_range::UnitRange{Int64} = 1:0 
     while !eof(reader)
         read!(reader, record)
-        id = hash(@view(record.data[record.identifier]))
+        id = hash_ids ? hash(@view(record.data[record.identifier])) : tempname(record)
         s = LongDNASeq(@view(record.data[record.sequence]))
         is_reverse_complement && reverse_complement!(s)
         i += 1
