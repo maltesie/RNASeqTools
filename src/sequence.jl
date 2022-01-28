@@ -52,7 +52,7 @@ function Base.iterate(genome::Genome, state::Int)
     end
 end
 
-function merge(genomes::Genome ...)
+function Base.merge(genomes::Genome ...)
     length(genomes) == 1 && return genomes[1]
     merged = genomes[1]
     for genome in genomes[2:end]
@@ -99,7 +99,7 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
     end
 end
 
-struct Sequences{T}
+struct Sequences{T} where {T<:Uninon{String, UInt}}
     seq::LongDNASeq
     seqnames::Vector{T}
     ranges::Vector{UnitRange{Int}}
@@ -128,12 +128,12 @@ function Sequences(seqs::Vector{LongDNASeq}; seqnames=Vector{T}[]) where {T <: U
     return Sequences(seq, seqnames[sortindex], ranges[sortindex])
 end
 
-function Sequences(file::String; is_reverse_complement=false)
-    read_reads(file; is_reverse_complement=is_reverse_complement)
+function Sequences(file::String; is_reverse_complement=false, hash_ids=true)
+    read_reads(file; is_reverse_complement=is_reverse_complement, hash_ids=hash_ids)
 end
 
-function Sequences(file1::String, file2::String; is_reverse_complement=false)
-    read_reads(file1, file2; is_reverse_complement=is_reverse_complement)
+function Sequences(file1::String, file2::String; is_reverse_complement=false, hash_ids=true)
+    read_reads(file1, file2; is_reverse_complement=is_reverse_complement, hash_ids=hash_ids)
 end
 
 function Base.getindex(seqs::Sequences, index::UInt) 

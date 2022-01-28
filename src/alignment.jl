@@ -169,8 +169,8 @@ align_mem(reads::T, genome::Genome, out_file::String;
             unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont,
             bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
-struct Alignments
-    tempnames::Vector{UInt}
+struct Alignments{T} where {T<:Union{String, UInt}}
+    tempnames::Vector{T}
     leftpos::Vector{Int}
     rightpos::Vector{Int}
     read_leftpos::Vector{Int}
