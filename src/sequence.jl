@@ -99,10 +99,14 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
     end
 end
 
-struct Sequences{T} where {T<:Union{String, UInt}}
+struct Sequences{T<:Union{String, UInt}}
     seq::LongDNASeq
     seqnames::Vector{T}
     ranges::Vector{UnitRange{Int}}
+end
+
+function Sequences()
+    Sequences(LongDNASeq(""), UInt[], UnitRange{Int}[])
 end
 
 function Sequences(::Type{T}) where {T<:Union{String, UInt}}
@@ -128,12 +132,12 @@ function Sequences(seqs::Vector{LongDNASeq}; seqnames=Vector{T}[]) where {T <: U
     return Sequences(seq, seqnames[sortindex], ranges[sortindex])
 end
 
-function Sequences(file::String; is_reverse_complement=false, hash_ids=true)
-    read_reads(file; is_reverse_complement=is_reverse_complement, hash_ids=hash_ids)
+function Sequences(file::String; is_reverse_complement=false, hash_id=true)
+    read_reads(file; is_reverse_complement=is_reverse_complement, hash_id=hash_id)
 end
 
-function Sequences(file1::String, file2::String; is_reverse_complement=false, hash_ids=true)
-    read_reads(file1, file2; is_reverse_complement=is_reverse_complement, hash_ids=hash_ids)
+function Sequences(file1::String, file2::String; is_reverse_complement=false, hash_id=true)
+    read_reads(file1, file2; is_reverse_complement=is_reverse_complement, hash_id=hash_id)
 end
 
 function Base.getindex(seqs::Sequences, index::UInt)
@@ -164,7 +168,7 @@ Base.iterate(seqs::Sequences, state::Int) = state === length(seqs.ranges) ? noth
 eachpair(seqs::Sequences) = partition(seqs, 2)
 Base.empty!(seqs::Sequences) = (empty!(seqs.seq); empty!(seqs.seqnames); empty!(seqs.ranges))
 
-function Base.filter!(seqs::Sequences, ids::Vector{UInt})
+function Base.filter!(seqs::Sequences{T}, ids::Vector{T}) where {T<:Union{String, UInt}}
     bitindex = (in).(seqs.seqnames, Ref(ids))
     n_seqs = sum(bitindex)
     seqs.ranges[1:n_seqs] = seqs.ranges[bitindex]
@@ -193,8 +197,8 @@ function Base.write(fasta_file1::String, fasta_file2::String, seqs::Sequences)
     close(f2)
 end
 
-function read_reads(file::String; is_reverse_complement=false, hash_ids=false)::Sequences
-    seqs::Sequences = Sequences()
+function read_reads(file::String; is_reverse_complement=false, hash_id=true)::Sequences
+    seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped = endswith(file, ".gz")
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
@@ -204,7 +208,7 @@ function read_reads(file::String; is_reverse_complement=false, hash_ids=false)::
     current_range::UnitRange{Int64} = 1:0
     while !eof(reader)
         read!(reader, record)
-        id = hash_ids ? hash(@view(record.data[record.identifier])) : tempname(record)
+        id = hash_id ? hash(@view(record.data[record.identifier])) : FASTX.identifier(record)
         s = LongDNASeq(@view(record.data[record.sequence]))
         is_reverse_complement && reverse_complement!(s)
         i += 1
@@ -225,11 +229,11 @@ function read_reads(file::String; is_reverse_complement=false, hash_ids=false)::
     return seqs
 end
 
-function read_reads(file1::String, file2::String; is_reverse_complement=false)::Sequences
+function read_reads(file1::String, file2::String; is_reverse_complement=false, hash_id=true)::Sequences
     any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]]) &&
     any([endswith(file2, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]]) ||
     throw(AssertionError("Accepted filetypes are: .fastq, .fastq.gz, .fasta and .fasta.gz"))
-    seqs::Sequences = Sequences()
+    seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
 
     is_fastq1 = any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped1 = endswith(file1, ".gz")
@@ -248,8 +252,8 @@ function read_reads(file1::String, file2::String; is_reverse_complement=false)::
     while !eof(reader1) && !eof(reader2)
         read!(reader1, record1)
         read!(reader2, record2)
-        id1 = hash(@view record1.data[record1.identifier])
-        id2 = hash(@view record2.data[record2.identifier])
+        id1 = hash_id ? hash(@view record1.data[record1.identifier]) : FASTX.identifier(record1)
+        id2 = hash_id ? hash(@view record2.data[record2.identifier]) : FASTX.identifier(record2)
         id1 === id2 || throw(
             AssertionError("tempnames of read1 and read2 do not match: $(String(record1.data[record1.identifier])) != $(String(record2.data[record2.identifier]))")
         )

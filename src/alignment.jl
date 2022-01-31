@@ -169,7 +169,7 @@ align_mem(reads::T, genome::Genome, out_file::String;
             unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont,
             bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
-struct Alignments{T} where {T<:Union{String, UInt}}
+struct Alignments{T<:Union{String, UInt}}
     tempnames::Vector{T}
     leftpos::Vector{Int}
     rightpos::Vector{Int}
@@ -185,8 +185,8 @@ struct Alignments{T} where {T<:Union{String, UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
-function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
-    return read_bam(bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
+function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
+    return read_bam(bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
 end
 
 Base.length(alns::Alignments) = length(alns.tempnames)
@@ -381,10 +381,10 @@ function nmtag(record::BAM.Record)
     return record.data[BAM.auxdata_position(record)+3]
 end
 
-function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_complement=false)
+function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
-    ns = Vector{UInt}(undef, 10000)
+    ns = Vector{hash_id ? UInt : String}(undef, 10000)
     ls = Vector{Int}(undef, 10000)
     rs = Vector{Int}(undef, 10000)
     is = Vector{String}(undef, 10000)
@@ -406,7 +406,7 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
                 resize!(z, length(z)+10000)
             end
         end
-        n = hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)]))
+        n::(hash_id ? UInt : String) = hash_id ? hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)])) : BAM.tempname(record)
         (l,r) = (BAM.leftposition(record), BAM.rightposition(record))
         (ref,s) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
         nm = nmtag(record)
@@ -441,11 +441,9 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
     end
     close(reader)
     nindex = sortperm(ns)
-    #println(nindex[nindex .< 1])
     ns = ns[nindex]
     ranges = samevalueintervals(ns)
     pindex = partsindex(ranges, nindex, rls, rds)
-    #println(pindex[pindex .< 1])
     return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex], 
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
 end
