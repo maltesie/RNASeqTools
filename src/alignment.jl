@@ -114,23 +114,23 @@ end
 function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5,
                 unpair_penalty=9, unpair_rescue=false, min_seed_len=19, reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools",
                 overwrite_existing=false) where {T<:Sequences}
+    
     (isfile(out_file) && !overwrite_existing) && return
     tmp_reads = tempname()
     tmp_reads2 = tempname()
     tmp_genome = tempname()
-    if reads isa PairedSequences 
+    ispaired = reads.tempnames[1:2:end] == reads.tempnames[2:2:end]
+    if ispaired
         write(tmp_reads, tmp_reads2, reads) 
-    elseif reads isa Sequences 
-        write(tmp_reads, reads)
     else
-        throw(AssertionError("reads can only be Sequences or PairedSequences."))
+        write(tmp_reads, reads)    
     end
     for (i,genome) in enumerate(genomes)
         write(tmp_genome, genome)
         this_out_file = out_file
         length(genomes) > 1 && (this_out_file = joinpath(dirname(out_file), "$(i)_" * basename(out_file)))
 
-        isa(reads, Sequences) ?
+        !ispaired ?
         align_mem(tmp_reads, this_out_file, tmp_genome;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
