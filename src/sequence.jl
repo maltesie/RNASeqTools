@@ -99,7 +99,7 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
     end
 end
 
-struct Sequences{T} where {T<:Uninon{String, UInt}}
+struct Sequences{T} where {T<:Union{String, UInt}}
     seq::LongDNASeq
     seqnames::Vector{T}
     ranges::Vector{UnitRange{Int}}
@@ -136,10 +136,10 @@ function Sequences(file1::String, file2::String; is_reverse_complement=false, ha
     read_reads(file1, file2; is_reverse_complement=is_reverse_complement, hash_ids=hash_ids)
 end
 
-function Base.getindex(seqs::Sequences, index::UInt) 
+function Base.getindex(seqs::Sequences, index::UInt)
     r = searchsorted(seqs.seqnames, index)
     if length(r) === 2
-        return (seqs.seq[seqs.ranges[first(r)]], seqs.seq[seqs.ranges[last(r)]]) 
+        return (seqs.seq[seqs.ranges[first(r)]], seqs.seq[seqs.ranges[last(r)]])
     elseif length(r) === 1
         return seqs.seq[seqs.ranges[first(r)]]
     else
@@ -147,10 +147,10 @@ function Base.getindex(seqs::Sequences, index::UInt)
     end
 end
 
-function Base.getindex(seqs::Sequences, index::String) 
+function Base.getindex(seqs::Sequences, index::String)
     i = findfirst(x->x===index, seqs.seqnames)
     if seq.seqnames[i] === seq.seqnames[i+1]
-        return (seqs.seq[seqs.ranges[first(r)]], seqs.seq[seqs.ranges[last(r)]]) 
+        return (seqs.seq[seqs.ranges[first(r)]], seqs.seq[seqs.ranges[last(r)]])
     elseif i
         return seqs.seq[seqs.ranges[first(r)]]
     else
@@ -201,7 +201,7 @@ function read_reads(file::String; is_reverse_complement=false, hash_ids=false)::
     reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
     record = is_fastq ? FASTQ.Record() : FASTA.Record()
     i::Int64 = 0
-    current_range::UnitRange{Int64} = 1:0 
+    current_range::UnitRange{Int64} = 1:0
     while !eof(reader)
         read!(reader, record)
         id = hash_ids ? hash(@view(record.data[record.identifier])) : tempname(record)
@@ -226,25 +226,25 @@ function read_reads(file::String; is_reverse_complement=false, hash_ids=false)::
 end
 
 function read_reads(file1::String, file2::String; is_reverse_complement=false)::Sequences
-    any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]]) && 
+    any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]]) &&
     any([endswith(file2, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]]) ||
     throw(AssertionError("Accepted filetypes are: .fastq, .fastq.gz, .fasta and .fasta.gz"))
     seqs::Sequences = Sequences()
-    
+
     is_fastq1 = any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped1 = endswith(file1, ".gz")
     f1 = is_zipped1 ? GzipDecompressorStream(open(file1, "r")) : open(file1, "r")
     reader1 = is_fastq1 ? FASTQ.Reader(f1) : FASTA.Reader(f1)
     record1 = is_fastq1 ? FASTQ.Record() : FASTA.Record()
-    
+
     is_fastq2 = any([endswith(file2, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped2 = endswith(file2, ".gz")
     f2 = is_zipped2 ? GzipDecompressorStream(open(file2, "r")) : open(file2, "r")
     reader2 = is_fastq2 ? FASTQ.Reader(f2) : FASTA.Reader(f2)
     record2 = is_fastq2 ? FASTQ.Record() : FASTA.Record()
-    
+
     i::Int64 = 0
-    current_range::UnitRange{Int64} = 1:0 
+    current_range::UnitRange{Int64} = 1:0
     while !eof(reader1) && !eof(reader2)
         read!(reader1, record1)
         read!(reader2, record2)
