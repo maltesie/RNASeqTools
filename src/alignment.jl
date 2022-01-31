@@ -119,7 +119,7 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_scor
     tmp_reads = tempname()
     tmp_reads2 = tempname()
     tmp_genome = tempname()
-    ispaired = reads.tempnames[1:2:end] == reads.tempnames[2:2:end]
+    ispaired = reads.seqnames[1:2:end] == reads.seqnames[2:2:end]
     if ispaired
         write(tmp_reads, tmp_reads2, reads) 
     else
