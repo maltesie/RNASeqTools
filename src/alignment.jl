@@ -198,6 +198,10 @@ function Base.iterate(alns::Alignments, state::Int)
     return state > length(alns.ranges) ? nothing : (AlignedRead(alns.ranges[state], alns), state+1)
 end
 
+function Base.filter!(seqs::Sequences{T}, alns::Alignments{T}) where {T<:Union{String, UInt}}
+    filter!(seqs, Set(alns.tempnames))
+end
+
 function samevalueintervals(d::Vector{T}) where T
     index::Int = 1
     rindex::Int = 1
