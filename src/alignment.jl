@@ -113,7 +113,7 @@ end
 """
 function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5,
                 unpair_penalty=9, unpair_rescue=false, min_seed_len=19, reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools",
-                overwrite_existing=false) where T<:Sequences
+                overwrite_existing=false) where {T<:Sequences}
     (isfile(out_file) && !overwrite_existing) && return
     tmp_reads = tempname()
     tmp_reads2 = tempname()
@@ -163,7 +163,7 @@ function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_scor
 end
 align_mem(reads::T, genome::Genome, out_file::String;
     min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, unpair_penalty=9, min_seed_len=19, reseeding_factor=1.5,
-    unpair_rescue=false, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where T<:Sequences =
+    unpair_rescue=false, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:Sequences} =
         align_mem(reads, [genome], out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty,
             unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont,
