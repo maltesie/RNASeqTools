@@ -111,19 +111,19 @@ end
     is a SequenceContainer and aligns it against `genomes::Vector{Genome}`. This enables easy handling
     of Sequences and their alignment against multiple genomes.
 """
-function align_mem(reads::T, genomes::Vector{Genome}, out_file::String; min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5,
+function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String; min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5,
                 unpair_penalty=9, unpair_rescue=false, min_seed_len=19, reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools",
-                overwrite_existing=false) where {T<:Sequences}
-    
+                overwrite_existing=false)
+
     (isfile(out_file) && !overwrite_existing) && return
     tmp_reads = tempname()
     tmp_reads2 = tempname()
     tmp_genome = tempname()
     ispaired = reads.seqnames[1:2:end] == reads.seqnames[2:2:end]
     if ispaired
-        write(tmp_reads, tmp_reads2, reads) 
+        write(tmp_reads, tmp_reads2, reads)
     else
-        write(tmp_reads, reads)    
+        write(tmp_reads, reads)
     end
     for (i,genome) in enumerate(genomes)
         write(tmp_genome, genome)
@@ -228,12 +228,12 @@ function partsindex(ranges::Vector{UnitRange{Int}}, sorted_index::Vector{Int}, r
             for ii in view(sorted_index, r)
                 i === ii && continue
                 if reads[i] === :read1
-                    reads[ii] === :read2 && continue 
+                    reads[ii] === :read2 && continue
                     (read_leftpos[ii] > read_leftpos[i]) && continue
                 else
                     (reads[ii] === :read2) && (read_leftpos[ii] > read_leftpos[i]) && continue
                 end
-                (reads[i] === reads[ii]) && (read_leftpos[i] === read_leftpos[ii]) && (i>ii) && continue 
+                (reads[i] === reads[ii]) && (read_leftpos[i] === read_leftpos[ii]) && (i>ii) && continue
                 c += 1
             end
             pindex[first(r) + c] = i
@@ -448,7 +448,7 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
     ns = ns[nindex]
     ranges = samevalueintervals(ns)
     pindex = partsindex(ranges, nindex, rls, rds)
-    return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex], 
+    return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex],
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
 end
 
@@ -492,11 +492,11 @@ end
 
 """
 
-    Base.summarize(part::AlignedPart)::IO 
+    Base.summarize(part::AlignedPart)::IO
 
 Generates string with information on the AlignedPart.
 """
-function summarize(part::AlignedPart) 
+function summarize(part::AlignedPart)
     s = "[$(first(part.seq)), $(last(part.seq))] on $(part.read) - "
     s *= "[$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) "
     s *= "with $(part.nms) $(part.nms == 1 ? "missmatch" : "missmatches") - "
@@ -504,7 +504,7 @@ function summarize(part::AlignedPart)
     return s
 end
 """
-    Base.show(part::AlignedPart)::IO 
+    Base.show(part::AlignedPart)::IO
 
 Function for structured printing of the content of AlignedPart
 """
@@ -637,7 +637,7 @@ Returns the part of the read sequence that the aln::AlignedPart belongs to.
 function readsequence(aln::AlignedPart, seqs::Sequences)::LongDNASeq
     r = searchsorted(seqs.seqnames, name(aln))
     if length(r) === 2
-        s = aln.read === :read1 ? seqs.seq[seqs.ranges[first(r)]] : seqs.seq[seqs.ranges[last(r)]] 
+        s = aln.read === :read1 ? seqs.seq[seqs.ranges[first(r)]] : seqs.seq[seqs.ranges[last(r)]]
         return s[readrange(aln)]
     elseif length(r) === 1
         return seqs.seq[seqs.ranges[first(r)]][readrange(aln)]
@@ -800,9 +800,9 @@ end
 function ischimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true)
     length(alnread) > 1 || (return false)
     for (i1, i2) in combinations(alnread.range, 2)
-        (check_annotation && isassigned(alnread.alns.annames, i1) &&  isassigned(alnread.alns.annames, i2) && 
+        (check_annotation && isassigned(alnread.alns.annames, i1) &&  isassigned(alnread.alns.annames, i2) &&
             (alnread.alns.annames[i1] === alnread.alns.annames[i2])) && continue
-        ((alnread.alns.refnames[i1] === alnread.alns.refnames[i2]) && (alnread.alns.strands[i1] === alnread.alns.strands[i2]) && 
+        ((alnread.alns.refnames[i1] === alnread.alns.refnames[i2]) && (alnread.alns.strands[i1] === alnread.alns.strands[i2]) &&
             distance(alnread.alns.leftpos[i1], alnread.alns.rightpos[i1], alnread.alns.leftpos[i2], alnread.alns.rightpos[i2]) < min_distance) && continue
         return true
     end
@@ -901,7 +901,7 @@ function annotate!(alns::Alignments, features::Features; prioritize_type=nothing
             olp = round(UInt8, (min(min(feature_interval.last - feature_interval.first + 1, alns.rightpos[i] - alns.leftpos[i] + 1),
                                     min(feature_interval.last - alns.leftpos[i] + 1, alns.rightpos[i] - feature_interval.first + 1)) /
                                 (alns.rightpos[i] - alns.leftpos[i] + 1)) * 100)
-            
+
             priority = !isnothing(prioritize_type) && (type(feature_interval) === prioritize_type) && (olp > 80)
             overwrite = !isnothing(overwrite_type) && isassigned(alns.antypes, i) && (alns.antypes[i] === overwrite_type)
 

@@ -55,7 +55,7 @@ function Features(gff_file::String, type::Vector{String}; name_key="Name", fallb
     for feature in features
         if GFF3.isdirective(feature)
             line = GFF3.content(feature)
-            if startswith(line, "sequence-region") 
+            if startswith(line, "sequence-region")
                 seqid, _, rp = split(line)[2:4]
                 push!(chroms, seqid => parse(Int, rp))
             end
@@ -238,7 +238,7 @@ function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage}
                     new_utr_length = floor(Int, (stop-start)/2)
                 elseif (type(feature) != cds_type) || (type(next_feature) != cds_type)
                     new_utr_length = min(stop-start-1, max_utr_length)
-                else 
+                else
                     continue
                 end
                 threestart, threestop = start+1, start+new_utr_length
@@ -247,7 +247,7 @@ function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage}
                 continue
             end
 
-            stran === STRAND_NEG && ((threestart, fivestart, threestop, fivestop, threename, fivename, threeref, fiveref) = 
+            stran === STRAND_NEG && ((threestart, fivestart, threestop, fivestop, threename, fivename, threeref, fiveref) =
                                         (fivestart, threestart, fivestop, threestop, fivename, threename, fiveref, threeref))
             check_five = stran === STRAND_NEG ? type(feature) == cds_type : type(next_feature) == cds_type
             check_three = stran === STRAND_NEG ? type(next_feature) == cds_type : type(feature) == cds_type

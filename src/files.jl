@@ -11,7 +11,7 @@ end
 
 function SingleTypeFiles(files::Vector{String})
     endings = [fname[findlast('.', fname):end] for fname in files]
-    length(unique(endings)) <= 1 
+    length(unique(endings)) <= 1
     SingleTypeFiles(files, isempty(endings) ? "" : endings[1])
 end
 

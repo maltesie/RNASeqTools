@@ -52,8 +52,8 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             is_chimeric || (interactions.nodes[trans[h], :nb_single] += 1)
         end
 
-        for (part1, part2) in combinations(alnparts[collect(!any(samename(part, formerpart) 
-                                                                        for formerpart in alnparts[1:i-1]) 
+        for (part1, part2) in combinations(alnparts[collect(!any(samename(part, formerpart)
+                                                                        for formerpart in alnparts[1:i-1])
                                                                             for (i, part) in enumerate(alnparts))], 2)
             (hasannotation(part1) && hasannotation(part2)) || continue
             ischimeric(part1, part2; min_distance=min_distance) || continue
@@ -75,7 +75,7 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             interactions.edges[iindex, :maxright2] = max(interactions.edges[iindex, :maxright2], right2)
             nms1 > 0 && (interactions.edges[iindex, :nms1] += 1)
             nms2 > 0 && (interactions.edges[iindex, :nms2] += 1)
-            for (s,v) in zip((:meanleft1, :meanright1, :meanleft2, :meanright2, :meanlength1, :meanlength2, :meanmiss1, :meanmiss2), 
+            for (s,v) in zip((:meanleft1, :meanright1, :meanleft2, :meanright2, :meanlength1, :meanlength2, :meanmiss1, :meanmiss2),
                              (left1, right1, left2, right2, right1 - left1 + 1, right2 - left2 + 1, nms1, nms2))
                 interactions.edges[iindex, s] = (interactions.edges[iindex, s] * (interactions.edges[iindex, :nb_ints] - 1) + v) / interactions.edges[iindex, :nb_ints]
             end
@@ -138,7 +138,7 @@ function annotate!(interactions::Interactions, features::Features; method=:dispa
         (relpos2, relmin2, relmax2) = min.(1.0, max.(0.0, (p2 .- feature2_left) ./ (feature2_right - feature2_left)))
         isnegative1 && ((relpos1, relmin1, relmax1) = (1-relpos1, 1-relmax1, 1-relmin1))
         isnegative2 && ((relpos2, relmin2, relmax2) = (1-relpos2, 1-relmax2, 1-relmin2))
-        edge_row[[:relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2]] = 
+        edge_row[[:relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2]] =
             round.((relpos1, relpos2, relmin1, relmin2, relmax1, relmax2); digits=4)
     end
     return interactions
