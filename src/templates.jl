@@ -71,14 +71,14 @@ function unmapped_reads(bams::SingleTypeFiles)
     end
 end
 
-function remove_features(bams::SingleTypeFiles, features::Features; is_reverse_complement=false, overwrite_existing=false, remove_unmapped=true)
+function remove_features(bams::SingleTypeFiles, features::Features; sam_bin="samtools", is_reverse_complement=false, overwrite_existing=false, remove_unmapped=true, prefix="filtered_")
     outnames = String[]
     for bam_file in bams
-        startswith(bam_file, "filtered_") && continue
+        startswith(bam_file, prefix) && continue
         record = BAM.Record()
         reader = BAM.Reader(open(bam_file))
         h = header(reader)
-        fname = joinpath(dirname(bam_file), "filtered_" * basename(bam_file))
+        fname = joinpath(dirname(bam_file), prefix * basename(bam_file))
         push!(outnames, fname)
         !overwrite_existing && isfile(fname) && continue
         writer = BAM.Writer(BGZFStream(open(fname, "w"), "w"), h)
@@ -86,6 +86,7 @@ function remove_features(bams::SingleTypeFiles, features::Features; is_reverse_c
             read!(reader, record)
             current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
             s = (BAM.ispositivestrand(record) != (current_read === :read2)) ? STRAND_POS : STRAND_NEG
+            (BAM.ismapped(record) == remove_unmapped) || continue
             BAM.ismapped(record) && hasoverlap(features, Interval(BAM.refname(record), leftposition(record), rightposition(record), s, Annotation())) && continue
             write(writer, record)
         end
@@ -205,3 +206,31 @@ function deseq2_R(
         rcall(:deseq2pipeline, file, num_ctl, num_exp)
     end
 end
+
+function direct_rna_pipeline(seqs_file::String, genome_file::String, annotation_file::Union{String, Nothing};
+                                minimap2_bin="minimap2", sam_bin="samtools", filter_types=["rRNA"],
+                                prefix="filtered_", overwrite_existing=false)
+    ending = ""
+    occursin(".fasta", seqs_file) && (ending=".fasta")
+    occursin(".fastq", seqs_file) && (ending=".fastq")
+    endswith(seqs_file, ".gz") && (ending*=".gz")
+    ending == ".gz" && throw(AssertionError("Only .fasta, .fastq, .fasta.gz and .fastq.gz allowed!"))
+    dir_name = dirname(seqs_file)
+    out_file = joinpath(dir_name, basename(seqs_file)[1:end-length(ending)] * ".bam")
+    stats_file = out_file * ".log"
+    (overwrite_existing || !isfile(out_file)) &&
+        run(pipeline(`$minimap2_bin -ax map-ont -k14 --MD -Y $genome_file $seqs_file`, stdout=pipeline(`$sam_bin view -u`, stdout=pipeline(`$sam_bin sort -o $out_file`))))
+    (overwrite_existing || !isfile(stats_file)) &&
+        run(pipeline(`$sam_bin index $out_file`, `$sam_bin stats $out_file`, stats_file))
+    compute_coverage(out_file; overwrite_existing=overwrite_existing)
+
+    if !isnothing(annotation_file) && (!isnothing(filter_types) && length(filter_types) > 0)
+        features = Features(annotation_file, filter_types)
+        remove_features(SingleTypeFiles([out_file]), features; prefix=prefix, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
+        compute_coverage(joinpath(dir_name, prefix * basename(seqs_file)[1:end-length(ending)] * ".bam"); overwrite_existing=overwrite_existing)
+    end
+end
+direct_rna_pipeline(seqs_file::String; minimap2_bin="minimap2", sam_bin="samtools", filter_types=["rRNA"], prefix="filtered_", overwrite_existing=false) =
+    direct_rna_pipeline(seqs_file, GENOME_VCH, ANNOTATION_VCH; minimap2_bin=minimap2_bin, sam_bin=sam_bin, filter_types=filter_types, prefix=prefix, overwrite_existing=overwrite_existing)
+direct_rna_pipeline(seqs_file::String, genome_file::String; minimap2_bin="minimap2", sam_bin="samtools", overwrite_existing=false) =
+    direct_rna_pipeline(seqs_file, genome_file, nothing; minimap2_bin=minimap2_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)

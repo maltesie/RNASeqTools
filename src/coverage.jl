@@ -106,7 +106,7 @@ function ErrorFeatures(gff_file::String, bam_file::String, genome::Genome)
         count = ispositivestrand(feature) ? errorcov.fcount : errorcov.rcount
         r = ispositivestrand(feature) ? (left:right) : (right:-1:left)
         ref = Int[(seq[i] in (DNA_A, DNA_T, DNA_G, DNA_C)) ? count[seq[i]][ii] : 0 for (i, ii) in enumerate(r)]
-        annotation = ErrorAnnotation(type(feature), name(feature), ref, count[DNA_A][r], count[DNA_T][r], count[DNA_G][r], count[DNA_C][r], count[DNA_Gap][r]) 
+        annotation = ErrorAnnotation(type(feature), name(feature), ref, count[DNA_A][r], count[DNA_T][r], count[DNA_G][r], count[DNA_C][r], count[DNA_Gap][r])
         push!(new_intervals, Interval(refname(feature), left, right, strand(feature), annotation))
     end
     return ErrorFeatures(IntervalCollection(new_intervals, true), genome.chroms)
@@ -119,8 +119,13 @@ end
 refvalues(feature::Interval{ErrorAnnotation}) = feature.metadata.ref
 refpercentage(feature::Interval{ErrorAnnotation}) = refvalues(feature) ./ totalvalues(feature)
 
-function compute_coverage(bam_file::String; norm=1000000, only_unique_alignments=true, is_reverse_complement=false, max_temp_length=500)
-    reader = BAM.Reader(open(bam_file), index = bam_file*".bai") # needed for names
+function compute_coverage(bam_file::String; norm=1000000, only_unique_alignments=true, is_reverse_complement=false, max_temp_length=500,
+                                overwrite_existing=false, suffix_forward="_forward", suffix_reverse="_reverse")
+
+    filename_f = bam_file[1:end-4] * suffix_forward * ".bw"
+    filename_r = bam_file[1:end-4] * suffix_reverse * ".bw"
+    !overwrite_existing && (isfile(filename_f) || isfile(filename_r)) && (return nothing)
+    reader = BAM.Reader(open(bam_file), index = bam_file*".bai")
     chromosome_list = [n for n in zip(
         bam_chromosome_names(reader), bam_chromosome_lengths(reader)
     )]
@@ -146,8 +151,7 @@ function compute_coverage(bam_file::String; norm=1000000, only_unique_alignments
     end
     norm_factor = norm > 0 ? norm/count : 1.0
     coverage = Coverage(vals_f, vals_r, chromosome_list)
-    filename_f = bam_file[1:end-4] * "_forward.bw"
-    filename_r = bam_file[1:end-4] * "_reverse.bw"
+
     writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
     writer_r = BigWig.Writer(open(filename_r, "w"), chromosome_list)
     for interval in coverage
@@ -160,7 +164,7 @@ function compute_coverage(bam_file::String; norm=1000000, only_unique_alignments
     close(writer_r)
 end
 
-function compute_coverage(files::SingleTypeFiles; norm=0, only_unique_alignments=true, overwrite_existing=false, is_reverse_complement=false)
+function compute_coverage(files::SingleTypeFiles; norm=1000000, only_unique_alignments=true, overwrite_existing=false, is_reverse_complement=false)
     files.type == ".bam" || throw(AssertionError("Only .bam files accepted for alignments."))
     bw_files = Vector{Tuple{String, String}}()
     for file in files
