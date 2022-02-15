@@ -15,35 +15,35 @@ function download_sra(sra_ids::Vector{String}, output_path::String; fastqdump_bi
     rm(f)
 end
 
-function split_libs(infile1::String, prefixfile1::Union{String,Nothing}, infile2::Union{String,Nothing}, barcodes::Dict{String,String}, output_path::String; overwrite_existing=false)
+function split_libs(infile1::String, prefixfile1::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String)
 
-    dplxr = Demultiplexer(LongDNASeq.(collect(values(barcodes))), n_max_errors=1, distance=:hamming)
-    bc_len = [length(v) for v in values(barcodes)][1]
-    output_files = isnothing(infile2) ? 
-    [joinpath(output_path, "$(name).fastq.gz") for name in keys(barcodes)] :
-    [[joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")] for name in keys(barcodes)]
+    dplxr = Demultiplexer(collect(values(libname_to_barcode)), n_max_errors=1, distance=:hamming)
+    bc_len = [length(v) for v in values(libname_to_barcode)][1]
+    output_files = isnothing(infile2) ?
+    [joinpath(output_path, "$(name).fastq.gz") for name in keys(libname_to_barcode)] :
+    [[joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")] for name in keys(libname_to_barcode)]
     for file in output_files
         isnothing(infile2) ?
         (isfile(file) && return) :
         ((isfile(file[1]) || isfile(file[2])) && return)
     end
-    stats::Array{Int,1} = zeros(Int, length(barcodes))
+    stats::Array{Int,1} = zeros(Int, length(libname_to_barcode))
     record1::FASTQ.Record = FASTQ.Record()
     isnothing(infile2) || (record2::FASTQ.Record = FASTQ.Record())
     isnothing(prefixfile1) || (recordp::FASTQ.Record = FASTQ.Record())
     endswith(infile1, ".gz") ? reader1 = FASTQ.Reader(GzipDecompressorStream(open(infile1, "r"))) : reader1 = FASTQ.Reader(open(infile1, "r"))
-    isnothing(infile2) || (endswith(infile2, ".gz") ? 
-                            reader2 = FASTQ.Reader(GzipDecompressorStream(open(infile2, "r"))) : 
+    isnothing(infile2) || (endswith(infile2, ".gz") ?
+                            reader2 = FASTQ.Reader(GzipDecompressorStream(open(infile2, "r"))) :
                             reader2 = FASTQ.Reader(open(infile2, "r")))
-    isnothing(prefixfile1) || (endswith(prefixfile1, ".gz") ? 
-                                readerp = FASTQ.Reader(GzipDecompressorStream(open(prefixfile1, "r"))) : 
+    isnothing(prefixfile1) || (endswith(prefixfile1, ".gz") ?
+                                readerp = FASTQ.Reader(GzipDecompressorStream(open(prefixfile1, "r"))) :
                                 readerp = FASTQ.Reader(open(prefixfile1, "r")))
     writers = isnothing(infile2) ?
                 [FASTQ.Writer(GzipCompressorStream(open(outfile1, "w"), level=2))
                 for outfile1 in output_files] :
                 [[FASTQ.Writer(GzipCompressorStream(open(outfile1, "w"), level=2)),
-                FASTQ.Writer(GzipCompressorStream(open(outfile2, "w"), level=2))] 
-                for (outfile1, outfile2) in output_files] 
+                FASTQ.Writer(GzipCompressorStream(open(outfile2, "w"), level=2))]
+                for (outfile1, outfile2) in output_files]
     unidentified_writer = FASTQ.Writer(GzipCompressorStream(open(joinpath(output_path, "unidentified.fastq.gz"), "w"), level=2))
     c = 0
     while !eof(reader1)
@@ -55,7 +55,7 @@ function split_libs(infile1::String, prefixfile1::Union{String,Nothing}, infile2
         isnothing(prefixfile1) || (prefix = LongDNASeq(FASTQ.sequence(recordp)); (library_id, nb_errors) = demultiplex(dplxr, prefix))
         if (nb_errors == -1)
             read = LongDNASeq(FASTQ.sequence(record1))
-            (library_id, nb_errors) = demultiplex(dplxr, read[1:bc_len])
+            (library_id, nb_errors) = demultiplex(dplxr, @view(read[1:bc_len]))
             (nb_errors == -1) && (write(unidentified_writer, record1); isnothing(infile2) || write(unidentified_writer, record2); continue)
         end
         stats[library_id] += 1
@@ -71,21 +71,21 @@ function split_libs(infile1::String, prefixfile1::Union{String,Nothing}, infile2
         close(w) :
         (close(w[1]);close(w[2]))
     end
-    count_string = join(["$(name) - $(stat)\n" for (name, stat) in zip(barcodes, stats)])
+    count_string = join(["$(name) - $(stat)\n" for (name, stat) in zip(libname_to_barcode, stats)])
     count_string *= "\nnot identifyable - $(c-sum(stats))\n"
     count_string = "Counted $c entries in total\n\n$count_string\n"
     write(infile1 * ".log", count_string)
 end
 
-function split_libs(infile1::String, infile2::String, barcodes::Dict{String,String}, output_path::String)
-    split_libs(infile1, nothing, infile2, barcodes, output_path)
+function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String)
+    split_libs(infile1, nothing, infile2, libname_to_barcode, output_path)
 end
 
-function split_libs(infile::String, barcodes::Dict{String,String}, output_path::String)
-    split_libs(infile, nothing, nothing, barcodes, output_path)
+function split_libs(infile::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String)
+    split_libs(infile, nothing, nothing, libname_to_barcode, output_path)
 end
 
-function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}}; 
+function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, umi_loc=:read1, min_length=nothing,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=nothing, filter_complexity=nothing,
     average_window_quality=nothing, skip_quality_filtering=false, overwrite_existing=false)
@@ -121,31 +121,31 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
         !isnothing(in_file2) && append!(file_params, ["--in2=$in_file2", "--out2=$out_file2"])
         cmd = `$fastp_bin $file_params $params`
         run(cmd)
-    end 
+    end
 end
 
-function trim_fastp(input_files::SingleTypeFiles; 
+function trim_fastp(input_files::SingleTypeFiles;
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, min_length=25, max_length=nothing,
     cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, skip_quality_filtering=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}([(file, nothing) for file in input_files])
-    trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=:read1, 
-                min_length=min_length, max_length=max_length, cut_front=cut_front, cut_tail=cut_tail, 
-                trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, 
+    trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=:read1,
+                min_length=min_length, max_length=max_length, cut_front=cut_front, cut_tail=cut_tail,
+                trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity,
                 average_window_quality=average_window_quality, skip_quality_filtering=skip_quality_filtering)
     return SingleTypeFiles([joinpath(dirname(file),prefix*basename(file)) for file in input_files if !startswith(basename(file), prefix)], input_files.type)
 end
 
-function trim_fastp(input_files::PairedSingleTypeFiles; 
+function trim_fastp(input_files::PairedSingleTypeFiles;
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, umi=nothing, umi_loc=:read1, min_length=25, max_length=nothing,
     cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, skip_quality_filtering=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}(input_files.list)
-    trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=umi_loc, 
-                min_length=min_length, max_length=max_length, cut_front=cut_front, cut_tail=cut_tail, 
-                trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity, 
+    trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, umi=umi, umi_loc=umi_loc,
+                min_length=min_length, max_length=max_length, cut_front=cut_front, cut_tail=cut_tail,
+                trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity,
                 average_window_quality=average_window_quality, skip_quality_filtering=skip_quality_filtering)
     return PairedSingleTypeFiles([(joinpath(dirname(file1),prefix*basename(file1)), joinpath(dirname(file2),prefix*basename(file2))) for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
 end
@@ -155,7 +155,7 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
 
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
     is_zipped = endswith(file, ".gz")
-    
+
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
     reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
     record = is_fastq ? FASTQ.Record() : FASTA.Record()
