@@ -166,9 +166,24 @@ function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max
         out_df[:, :strand1] = interactions.nodes[out_df[!,:src], :strand]
         out_df[:, :strand2] = interactions.nodes[out_df[!,:dst], :strand]
         out_df[:, :in_libs] = sum(eachcol(out_df[!, interactions.replicate_ids]))
-        return sort(out_df[!, [:name1, :type1, :ref1, :name2, :type2, :ref2, :nb_ints, :nb_multi, :p_value, :fdr, :in_libs, :strand1,
-                            :meanleft1, :meanright1, :meanleft2, :meanright2, :strand2, :meanlength1, :meanlength2, :minleft1, :maxright1,
-                            :minleft2, :maxright2, :relmean1, :relmean2, :relmin1, :relmax1, :relmin2, :relmax2, :nms1, :nms2, :meanmiss1, :meanmiss2]], :nb_ints; rev=true)
+        out_columns = [:name1, :type1, :ref1, :name2, :type2, :ref2, :nb_ints, :nb_multi, :p_value, :fdr, :in_libs, :strand1,
+        :meanleft1, :meanright1, :meanleft2, :meanright2, :strand2, :meanlength1, :meanlength2, :minleft1, :maxright1,
+        :minleft2, :maxright2, :nms1, :nms2, :meanmiss1, :meanmiss2]
+        annotated_colnames = (:relmean1, :relmean2, :relmin1, :relmax1, :relmin2, :relmax2)
+        if all(string(c) in names(out_df) for c in annotated_colnames)
+            append!(out_columns, annotated_colnames)
+            type1_cds = out_df[:, :type1] .=== "CDS"
+            type1_5utr = type1_cds .& (out_df[:, :relmean1] .=== 0.0)
+            type1_3utr = type1_cds .& (out_df[:, :relmean1] .=== 1.0)
+            type2_cds = out_df[:, :type2] .=== "CDS"
+            type2_5utr = type2_cds .& (out_df[:, :relmean2] .=== 0.0)
+            type2_3utr = type2_cds .& (out_df[:, :relmean2] .=== 1.0)
+            out_df[type1_5utr, :type1] .= "5UTR"
+            out_df[type1_3utr, :type1] .= "3UTR"
+            out_df[type2_5utr, :type2] .= "5UTR"
+            out_df[type2_3utr, :type2] .= "3UTR"
+        end
+        return sort(out_df[!, out_columns], :nb_ints; rev=true)
     elseif output === :nodes
         out_nodes = copy(interactions.nodes)
         for (i,row) in enumerate(eachrow(out_nodes))
