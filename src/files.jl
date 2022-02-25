@@ -126,6 +126,7 @@ FastagzFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fasta.g
 GenomeFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fna"; prefix=prefix)
 BamFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".bam"; prefix=prefix)
 GffFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".gff"; prefix=prefix)
+GraphFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".jld2"; prefix=prefix)
 PairedFastqFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fastq"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
 PairedFastqgzFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fastq.gz"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
 PairedFastaFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fasta"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)

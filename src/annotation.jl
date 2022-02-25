@@ -96,9 +96,9 @@ function Features(gff_file::String; name_key="Name", fallback_key=nothing, same_
     return Features(gff_file, String[], name_key=name_key, fallback_key=fallback_key, same_name_rule=same_name_rule)
 end
 
-function Features(coverage::Coverage; type="VAL")
+function Features(coverage::Coverage; type="COV")
     chroms = Dict(seq=>val for (seq,val) in coverage.chroms)
-    return Features([Interval(refname(i), leftposition(i), rightposition(i), strand(i), Annotation(type, "", Dict{String,String}("Value"=>"$(value(i))"))) for i in coverage], chroms)
+    return Features([Interval(refname(i), leftposition(i), rightposition(i), strand(i), Annotation(type, "", Dict{String,String}("Coverage"=>"$(value(i))"))) for i in coverage], chroms)
 end
 
 type(features::Features) = Set(type(f) for f in features)

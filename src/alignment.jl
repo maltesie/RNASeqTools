@@ -169,39 +169,6 @@ align_mem(reads::T, genome::Genome, out_file::String;
             unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont,
             bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
-struct Alignments{T<:Union{String, UInt}}
-    tempnames::Vector{T}
-    leftpos::Vector{Int}
-    rightpos::Vector{Int}
-    read_leftpos::Vector{Int}
-    read_rightpos::Vector{Int}
-    reads::Vector{Symbol}
-    nms::Vector{UInt8}
-    refnames::Vector{String}
-    strands::Vector{Strand}
-    annames::Vector{String}
-    antypes::Vector{String}
-    anols::Vector{UInt8}
-    ranges::Vector{UnitRange{Int}}
-end
-
-function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
-    return read_bam(bam_file; only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement, hash_id=hash_id)
-end
-
-Base.length(alns::Alignments) = length(alns.tempnames)
-
-function Base.iterate(alns::Alignments)
-    return isempty(alns.ranges) ? nothing : (AlignedRead(alns.ranges[1], alns), 2)
-end
-function Base.iterate(alns::Alignments, state::Int)
-    return state > length(alns.ranges) ? nothing : (AlignedRead(alns.ranges[state], alns), state+1)
-end
-
-function Base.filter!(seqs::Sequences{T}, alns::Alignments{T}) where {T<:Union{String, UInt}}
-    filter!(seqs, Set(alns.tempnames))
-end
-
 function samevalueintervals(d::Vector{T}) where T
     index::Int = 1
     rindex::Int = 1
@@ -385,7 +352,23 @@ function nmtag(record::BAM.Record)
     return record.data[BAM.auxdata_position(record)+3]
 end
 
-function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
+struct Alignments{T<:Union{String, UInt}}
+    tempnames::Vector{T}
+    leftpos::Vector{Int}
+    rightpos::Vector{Int}
+    read_leftpos::Vector{Int}
+    read_rightpos::Vector{Int}
+    reads::Vector{Symbol}
+    nms::Vector{UInt8}
+    refnames::Vector{String}
+    strands::Vector{Strand}
+    annames::Vector{String}
+    antypes::Vector{String}
+    anols::Vector{UInt8}
+    ranges::Vector{UnitRange{Int}}
+end
+
+function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     ns = Vector{hash_id ? UInt : String}(undef, 10000)
@@ -450,6 +433,19 @@ function read_bam(bam_file::String; only_unique_alignments=true, is_reverse_comp
     pindex = partsindex(ranges, nindex, rls, rds)
     return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex],
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
+end
+
+Base.length(alns::Alignments) = length(alns.tempnames)
+
+function Base.iterate(alns::Alignments)
+    return isempty(alns.ranges) ? nothing : (AlignedRead(alns.ranges[1], alns), 2)
+end
+function Base.iterate(alns::Alignments, state::Int)
+    return state > length(alns.ranges) ? nothing : (AlignedRead(alns.ranges[state], alns), state+1)
+end
+
+function Base.filter!(seqs::Sequences{T}, alns::Alignments{T}) where {T<:Union{String, UInt}}
+    filter!(seqs, Set(alns.tempnames))
 end
 
 struct AlignedPart

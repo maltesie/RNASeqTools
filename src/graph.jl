@@ -28,7 +28,7 @@ end
 
 function Base.append!(interactions::Interactions, alignments::Alignments, replicate_id::Symbol; min_distance=1000, filter_types=[])
     myhash(part::AlignedPart) = hash(name(part))
-    interactions.edges[:, replicate_id] = repeat([0], nrow(interactions.edges))
+    interactions.edges[:, replicate_id] = repeat([false], nrow(interactions.edges))
     push!(interactions.replicate_ids, replicate_id)
     trans = Dict{UInt, Int}(interactions.nodes[i, :hash]=>i for i in 1:nrow(interactions.nodes))
     trans_edges = Dict{Tuple{Int,Int},Int}((interactions.edges[i, :src],interactions.edges[i, :dst])=>i for i in 1:nrow(interactions.edges))
@@ -66,20 +66,19 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             left2, right2 = leftestposition(part2, alignment), rightestposition(part2, alignment)
             nms1, nms2 = missmatchcount(part1), missmatchcount(part2)
             iindex > nrow(interactions.edges) &&
-                push!(interactions.edges, (a, b, 0, 0, left1, right1, left2, right2, 0, 0, 0, 0, 0, 0, 0, 0, (nms1>1 ? 1 : 0), (nms2>1 ? 1 : 0), (0 for i in 1:length(interactions.replicate_ids))...))
+                push!(interactions.edges, (a, b, 0, 0, left1, right1, left2, right2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                            (nms1>1 ? 1.0 : 0.0), (nms2>1 ? 1.0 : 0.0), (false for i in 1:length(interactions.replicate_ids))...))
             interactions.edges[iindex, :nb_ints] += 1
             is_multi && (interactions.edges[iindex, :nb_multi] += 1)
             interactions.edges[iindex, :minleft1] = min(interactions.edges[iindex, :minleft1], left1)
             interactions.edges[iindex, :maxright1] = max(interactions.edges[iindex, :maxright1], right1)
             interactions.edges[iindex, :minleft2] = min(interactions.edges[iindex, :minleft2], left2)
             interactions.edges[iindex, :maxright2] = max(interactions.edges[iindex, :maxright2], right2)
-            nms1 > 0 && (interactions.edges[iindex, :nms1] += 1)
-            nms2 > 0 && (interactions.edges[iindex, :nms2] += 1)
-            for (s,v) in zip((:meanleft1, :meanright1, :meanleft2, :meanright2, :meanlength1, :meanlength2, :meanmiss1, :meanmiss2),
-                             (left1, right1, left2, right2, right1 - left1 + 1, right2 - left2 + 1, nms1, nms2))
-                interactions.edges[iindex, s] = (interactions.edges[iindex, s] * (interactions.edges[iindex, :nb_ints] - 1) + v) / interactions.edges[iindex, :nb_ints]
+            for (s,v) in zip((:meanleft1, :meanright1, :meanleft2, :meanright2, :meanlength1, :meanlength2, :meanmiss1, :meanmiss2, :nms1, :nms2),
+                             (left1, right1, left2, right2, right1 - left1 + 1, right2 - left2 + 1, nms1, nms2, Int(nms1>0), Int(nms2>0)))
+                interactions.edges[iindex, s] += (v - interactions.edges[iindex, s]) / interactions.edges[iindex, :nb_ints]
             end
-            interactions.edges[iindex, replicate_id] = 1
+            interactions.edges[iindex, replicate_id] = true
         end
     end
     return interactions
@@ -89,8 +88,8 @@ function Interactions()
     nodes = DataFrame(:name=>String[], :type=>String[], :ref=>String[], :nb_single=>Int[], :nb_ints=>Int[], :strand=>Char[], :hash=>UInt[])
     edges = DataFrame(:src=>Int[], :dst=>Int[], :nb_ints=>Int[], :nb_multi=>Int[], :minleft1=>Int[], :maxright1=>Int[], :minleft2=>Int[],
                         :maxright2=>Int[], :meanlength1=>Float64[], :meanlength2=>Float64[], :meanleft1=>Float64[], :meanleft2=>Float64[],
-                        :meanright1=>Float64[], :meanright2=>Float64[], :nms1=>Int[], :nms2=>Int[], :meanmiss1=>Float64[], :meanmiss2=>Float64[])
-    return Interactions(SimpleDiGraph(), nodes, edges, [])
+                        :meanright1=>Float64[], :meanright2=>Float64[], :nms1=>Float64[], :nms2=>Float64[], :meanmiss1=>Float64[], :meanmiss2=>Float64[])
+    return Interactions(SimpleDiGraph(), nodes, edges, Symbol[])
 end
 
 function Interactions(alignments::Alignments; replicate_id=:first, min_distance=1000, filter_types=[])
@@ -101,6 +100,55 @@ end
 Load Interactions struct from jld2 file.
 """
 Interactions(filepath::String) = load(filepath, "interactions")
+
+function checkinteractions(ints::Interactions, verified_pairs::Vector{Tuple{String,String}}; min_reads=5, max_fdr=0.05, check_uppercase=true)
+	verified_dict = merge(Dict(pair=>zeros(2) for pair in verified_pairs),
+							Dict(reverse(pair)=>zeros(2) for pair in verified_pairs))
+    check_uppercase && (verified_dict = Dict((uppercase(p[1]), uppercase(p[2]))=>v for (p,v) in verified_dict))
+	df = asdataframe(ints; min_reads=min_reads, max_fdr=max_fdr)
+    for row in eachrow(df)
+        key = (row[:name1], row[:name2])
+        check_uppercase && (key = (uppercase(key[1]), uppercase(key[2])))
+        if key in keys(verified_dict)
+            verified_dict[key][1] = row[:in_libs]
+            verified_dict[key][2] = row[:nb_ints]
+        end
+    end
+
+	sorted_keys = vcat([[pair, reverse(pair)] for pair in verified_pairs]...)
+    check_uppercase && (sorted_keys = [(uppercase(p[1]), uppercase(p[2])) for p in sorted_keys])
+	m = reduce(hcat, [verified_dict[key] for key in sorted_keys])'
+	verified_stats = DataFrame(
+		name1=String[n[1] for n in verified_pairs],
+		name2=String[n[2] for n in verified_pairs],
+		libs=max.(m[:,1][1:2:end], m[:,1][2:2:end]), count=m[:,2][1:2:end] .+ m[:,2][2:2:end]
+		)
+	return verified_stats
+end
+function checkinteractions(conditions::Vector{Interactions}, verified_pairs::Vector{Tuple{String,String}}; min_reads=5, max_fdr=0.05)
+    verified_stats = DataFrame(name1=String[p[1] for p in verified_pairs], name2=String[p[2] for p in verified_pairs])
+    for ints in conditions
+        verified_stats = innerjoin(verified_stats, checkinteractions(ints, verified_pairs; min_reads=min_reads, max_fdr=max_fdr); on=[:name1, :name2], makeunique=true)
+    end
+    return verified_stats
+end
+function checkinteractions(graph_files::SingleTypeFiles, verified_pairs::Vector{Tuple{String,String}}; min_reads=5, max_fdr=0.05)
+    graph_files.type === ".jld2" || throw(AssertionError("Can only read .jld2 files!"))
+    conds = [Interactions(graph_file) for graph_file in graph_files]
+    return checkinteractions(conds, verified_pairs; min_reads=min_reads, max_fdr=max_fdr)
+end
+function checkinteractions(graph_files::SingleTypeFiles, verified_pairs_file::String; min_reads=5, max_fdr=0.05)
+    graph_files.type === ".jld2" || throw(AssertionError("Can only read .jld2 files!"))
+    conds = [Interactions(graph_file) for graph_file in graph_files]
+    df = DataFrame(CSV.File(verified_pairs_file; stringtype=String))
+    verified_pairs = [(a,b) for (a,b) in eachrow(df)]
+    return checkinteractions(conds, verified_pairs; min_reads=min_reads, max_fdr=max_fdr)
+end
+
+function uniqueinteractions(ints::Interactions; min_reads=5, max_fdr=0.05)
+    df = asdataframe(ints; min_reads=min_reads, max_fdr=max_fdr)
+    Set(Set((a,b)) for (a,b) in zip(df[!, :name1], df[!, :name2]))
+end
 
 function annotate!(interactions::Interactions, features::Features; method=:disparity)
     @assert method in (:disparity, :fisher)
@@ -149,14 +197,16 @@ function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max
     filter!(:nb_ints => >=(min_reads), out_df)
     "fdr" in names(out_df) && filter!(:fdr => <=(max_fdr), out_df)
     if output === :edges
-        out_df[!, :meanleft1] = Int.(floor.(out_df[!, :meanleft1]))
-        out_df[!, :meanright1] = Int.(floor.(out_df[!, :meanright1]))
-        out_df[!, :meanleft2] = Int.(floor.(out_df[!, :meanleft2]))
-        out_df[!, :meanright2] = Int.(floor.(out_df[!, :meanright2]))
-        out_df[!, :meanlength1] = Int.(floor.(out_df[!, :meanlength1]))
-        out_df[!, :meanlength2] = Int.(floor.(out_df[!, :meanlength2]))
+        out_df[!, :meanleft1] = Int.(round.(out_df[!, :meanleft1]))
+        out_df[!, :meanright1] = Int.(round.(out_df[!, :meanright1]))
+        out_df[!, :meanleft2] = Int.(round.(out_df[!, :meanleft2]))
+        out_df[!, :meanright2] = Int.(round.(out_df[!, :meanright2]))
+        out_df[!, :meanlength1] = Int.(round.(out_df[!, :meanlength1]))
+        out_df[!, :meanlength2] = Int.(round.(out_df[!, :meanlength2]))
         out_df[!, :meanmiss1] = round.(out_df[!, :meanmiss1], digits=4)
         out_df[!, :meanmiss2] = round.(out_df[!, :meanmiss2], digits=4)
+        out_df[!, :nms1] = round.(out_df[!, :nms1], digits=4)
+        out_df[!, :nms2] = round.(out_df[!, :nms2], digits=4)
         out_df[:, :name1] = interactions.nodes[out_df[!,:src], :name]
         out_df[:, :name2] = interactions.nodes[out_df[!,:dst], :name]
         out_df[:, :ref1] = interactions.nodes[out_df[!,:src], :ref]

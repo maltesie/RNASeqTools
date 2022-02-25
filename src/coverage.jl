@@ -14,14 +14,14 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-struct ErrorCoverage <: AnnotationContainer
+struct BaseCoverage <: AnnotationContainer
     ref_seq::LongDNASeq
     chroms::Dict{String, UnitRange}
     fcount::Dict{DNA, Vector{Int}}
     rcount::Dict{DNA, Vector{Int}}
 end
 
-function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=false)
+function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=false)
     function add_nucleotide(c::Matrix{Int}, base::DNA, i::Int)
         base === DNA_A && (c[1,i]+=1;return)
         base === DNA_T && (c[2,i]+=1;return)
@@ -75,10 +75,10 @@ function ErrorCoverage(bam_file::String, genome::Genome; is_reverse_complement=f
     end
     fdict = Dict{DNA, Vector{Int}}(s=>fcount[i,:] for (i,s) in enumerate((DNA_A, DNA_T, DNA_C, DNA_G, DNA_Gap)))
     rdict = Dict{DNA, Vector{Int}}(s=>rcount[i,:] for (i,s) in enumerate((DNA_A, DNA_T, DNA_C, DNA_G, DNA_Gap)))
-    return ErrorCoverage(genome.seq, genome.chroms, fdict, rdict)
+    return BaseCoverage(genome.seq, genome.chroms, fdict, rdict)
 end
 
-struct ErrorAnnotation <: AnnotationStyle
+struct BaseAnnotation <: AnnotationStyle
     type::String
     name::String
     ref::Vector{Int}
@@ -86,38 +86,37 @@ struct ErrorAnnotation <: AnnotationStyle
     t::Vector{Int}
     g::Vector{Int}
     c::Vector{Int}
-    del::Vector{Int}
+    gap::Vector{Int}
 end
 
-struct ErrorFeatures <: AnnotationContainer
-    list::IntervalCollection{ErrorAnnotation}
-    chroms::Dict{String, UnitRange{Int}}
+function BaseAnnotation(feature::Interval{Annotation}, base_coverage::BaseCoverage)
+    left = leftposition(feature)
+    right = rightposition(feature)
+    seq = base_coverage.ref_seq[left:right]
+    ispositivestrand(feature) || reverse_complement!(seq)
+    count = ispositivestrand(feature) ? errorcov.fcount : errorcov.rcount
+    r = ispositivestrand(feature) ? (left:right) : (right:-1:left)
+    ref = Int[(seq[i] in (DNA_A, DNA_T, DNA_G, DNA_C)) ? count[seq[i]][ii] : 0 for (i, ii) in enumerate(r)]
+    BaseAnnotation(type(feature), name(feature), ref, count[DNA_A][r], count[DNA_T][r], count[DNA_G][r], count[DNA_C][r], count[DNA_Gap][r])
 end
 
-function ErrorFeatures(gff_file::String, bam_file::String, genome::Genome)
-    new_intervals = Interval{ErrorAnnotation}[]
+function Features(gff_file::String, bam_file::String, genome::Genome)
+    new_intervals = Interval{BaseAnnotation}[]
     features = Features(gff_file)
-    errorcov = ErrorCoverage(bam_file, genome)
+    errorcov = BaseCoverage(bam_file, genome)
     for feature in features
-        left = leftposition(feature)
-        right = rightposition(feature)
-        seq = genome[refname(feature)][left:right]
-        ispositivestrand(feature) || reverse_complement!(seq)
-        count = ispositivestrand(feature) ? errorcov.fcount : errorcov.rcount
-        r = ispositivestrand(feature) ? (left:right) : (right:-1:left)
-        ref = Int[(seq[i] in (DNA_A, DNA_T, DNA_G, DNA_C)) ? count[seq[i]][ii] : 0 for (i, ii) in enumerate(r)]
-        annotation = ErrorAnnotation(type(feature), name(feature), ref, count[DNA_A][r], count[DNA_T][r], count[DNA_G][r], count[DNA_C][r], count[DNA_Gap][r])
-        push!(new_intervals, Interval(refname(feature), left, right, strand(feature), annotation))
+        annotation = BaseAnnotation(feature, errorcov)
+        push!(new_intervals, Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), annotation))
     end
-    return ErrorFeatures(IntervalCollection(new_intervals, true), genome.chroms)
+    return Features(IntervalCollection(new_intervals, true), genome.chroms)
 end
 
-function totalvalues(feature::Interval{ErrorAnnotation})
+function totalvalues(feature::Interval{BaseAnnotation})
     return [feature.metadata.a[i]+feature.metadata.t[i]+feature.metadata.g[i]+feature.metadata.c[i]+feature.metadata.del[i] for i in 1:length(feature)]
 end
 
-refvalues(feature::Interval{ErrorAnnotation}) = feature.metadata.ref
-refpercentage(feature::Interval{ErrorAnnotation}) = refvalues(feature) ./ totalvalues(feature)
+refvalues(feature::Interval{BaseAnnotation}) = feature.metadata.ref
+refpercentage(feature::Interval{BaseAnnotation}) = refvalues(feature) ./ totalvalues(feature)
 
 function compute_coverage(bam_file::String; norm=1000000, only_unique_alignments=true, is_reverse_complement=false, max_temp_length=500,
                                 overwrite_existing=false, suffix_forward="_forward", suffix_reverse="_reverse")
@@ -250,6 +249,9 @@ function Coverage(paired_files::PairedSingleTypeFiles)
     (paired_files.type == ".bw") || throw(Assertion("Only .bw files are accepted for coverage."))
     coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in paired_files]
     return merge(coverages...)
+end
+
+function Coverage(bc::BaseCoverage)
 end
 
 value(interval::Interval{Float64}) = interval.metadata
