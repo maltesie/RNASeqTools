@@ -26,6 +26,10 @@ function rightestposition(alnpart::AlignedPart, alnread::AlignedRead)
     maximum(alnread.alns.rightpos[i] for i::Int in alnread.range if (isassigned(alnread.alns.annames, i) && alnread.alns.annames[i] === name(alnpart)))
 end
 
+function Base.append!(interactions::Interactions, alnpair::Tuple{AlignedPart}; min_distance=1000, filter_types=[])
+    trans = Dict{UInt, Int}(interactions.nodes[i, :hash]=>i for i in 1:nrow(interactions.nodes))
+end
+
 function Base.append!(interactions::Interactions, alignments::Alignments, replicate_id::Symbol; min_distance=1000, filter_types=[])
     myhash(part::AlignedPart) = hash(name(part))
     interactions.edges[:, replicate_id] = repeat([false], nrow(interactions.edges))

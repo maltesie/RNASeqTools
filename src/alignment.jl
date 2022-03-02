@@ -436,6 +436,7 @@ function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_co
 end
 
 Base.length(alns::Alignments) = length(alns.tempnames)
+readscount(alns::Alignments) = length(alns.ranges)
 
 function Base.iterate(alns::Alignments)
     return isempty(alns.ranges) ? nothing : (AlignedRead(alns.ranges[1], alns), 2)
@@ -455,18 +456,33 @@ struct AlignedPart
     read::Symbol
 end
 
-AlignedPart(alns::Alignments, i::Int) = AlignedPart(
-                                            Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i],
-                                                AlignmentAnnotation(
-                                                    isassigned(alns.antypes, i) ? alns.antypes[i] : "",
-                                                    isassigned(alns.annames, i) ? alns.annames[i] : "",
-                                                    alns.anols[i]
-                                                )
-                                            ),
-                                            alns.read_leftpos[i]:alns.read_rightpos[i],
-                                            alns.nms[i],
-                                            alns.reads[i]
-                                        )
+AlignedPart(alns::Alignments, i::Int) =
+AlignedPart(
+    Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i],
+        AlignmentAnnotation(
+            isassigned(alns.antypes, i) ? alns.antypes[i] : "",
+            isassigned(alns.annames, i) ? alns.annames[i] : "",
+            alns.anols[i]
+        )
+    ),
+    alns.read_leftpos[i]:alns.read_rightpos[i],
+    alns.nms[i],
+    alns.reads[i]
+)
+
+AlignedPart(alnpart::AlignedPart; new_name::Union{Nothing, String}=nothing, new_type::Union{Nothing, String}=nothing) =
+AlignedPart(
+    Interval(refname(alnpart), leftposition(alnpart), rightposition(alnpart), strand(alnpart),
+        AlignmentAnnotation(
+            isnothing(new_type) ? type(alnpart) : new_type,
+            isnothing(new_name) ? name(alnpart) : new_name,
+            overlap(alnpart)
+        )
+    ),
+    alnpart.seq,
+    alnpart.nms,
+    alnpart.read
+)
 
 Base.getindex(alns::Alignments, i::Int) = AlignedPart(alns, i)
 Base.getindex(alns::Alignments, r::UnitRange{Int}) = [alns[i] for i::Int in r]
@@ -530,7 +546,7 @@ annotation(aln::AlignedPart) = aln.ref.metadata
 Returns the annotation's name as found in the .gff annotation file by the name_key argument of the Features constructor.
 Availble only after using annotate! on Alignments.
 """
-name(aln::AlignedPart) = annotation(aln).name
+name(aln::AlignedPart) = name(annotation(aln))
 
 """
     type(aln::AlignedPart)::String
@@ -538,7 +554,7 @@ name(aln::AlignedPart) = annotation(aln).name
 Returns the annotation's type as found in the .gff annotation file as the feature type.
 Availble only after using annotate! on Alignments.
 """
-type(aln::AlignedPart) = annotation(aln).type
+type(aln::AlignedPart) = type(annotation(aln))
 
 """
     overlap(aln::AlignedPart)::UInt8
@@ -546,12 +562,12 @@ type(aln::AlignedPart) = annotation(aln).type
 Returns the percentage of the sequence on the read contained within the annotation assigned to it.
 Availble only after using annotate! on Alignments.
 """
-overlap(aln::AlignedPart) = annotation(aln).overlap
+overlap(aln::AlignedPart) = overlap(annotation(aln))
 
 """
-    overlap(aln::AlignedPart)::UInt8
+    missmatchcount(aln::AlignedPart)::UInt8
 
-Returns the percentage of the sequence on the read contained within the annotation assigned to it.
+Returns the number of missmatches between the aligned sequence and the reference.
 Availble only after using annotate! on Alignments.
 """
 missmatchcount(aln::AlignedPart) = aln.nms
@@ -691,6 +707,8 @@ Computes the distance between two alignments on the same read. Returns negative 
 if the two parts overlap.
 """
 distanceonread(aln1::AlignedPart, aln2::AlignedPart) = max(first(aln1.seq), first(aln2.seq)) - min(last(aln1.seq), last(aln2.seq))
+
+isfirstread(part::AlignedPart) = part.read === :read1
 
 struct AlignedRead
     range::UnitRange{Int}

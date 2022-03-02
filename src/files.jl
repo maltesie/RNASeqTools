@@ -111,9 +111,9 @@ function Base.show(files::SingleTypeFiles)
 end
 
 function Base.show(files::PairedSingleTypeFiles)
-    s = "SingleTypeFiles with ending $(files.type) and $(length(files)) entries:\n\n"
+    s = "PairedSingleTypeFiles with ending $(files.type) and $(length(files)) entries:\n\n"
     for (i,(file1, file2)) in files
-        s *= "$i:\t$file1, $file2\n"
+        s *= "$(i)$(files.suffix1):\t$file1\n$(i)$(files.suffix2):\t$file2\n"
     end
     println(s)
 end

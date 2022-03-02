@@ -1,7 +1,11 @@
 function prepare_data(data_path::String, genome::Genome; files=FastqgzFiles)
     files = files(data_path)
+    println("Preprocessing files:")
+    show(files)
     trimmed = trim_fastp(files)
+    println("Aligning files...")
     bams = align_mem(trimmed, genome;)
+    println("Computing coverage...")
     compute_coverage(bams)
 end
 

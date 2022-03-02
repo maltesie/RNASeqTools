@@ -28,6 +28,18 @@ Base.isempty(annotation::AlignmentAnnotation) = isempty(annotation.type) && isem
 
 name(annot::T) where {T<:AnnotationStyle} = annot.name
 type(annot::T) where {T<:AnnotationStyle} = annot.type
+overlap(annot::AlignmentAnnotation) = annot.overlap
+
+function BaseAnnotation(feature::Interval{Annotation}, base_coverage::BaseCoverage)
+    left = leftposition(feature)
+    right = rightposition(feature)
+    seq = base_coverage.ref_seq[left:right]
+    ispositivestrand(feature) || reverse_complement!(seq)
+    count = ispositivestrand(feature) ? errorcov.fcount : errorcov.rcount
+    r = ispositivestrand(feature) ? (left:right) : (right:-1:left)
+    ref = Int[(seq[i] in (DNA_A, DNA_T, DNA_G, DNA_C)) ? count[seq[i]][ii] : 0 for (i, ii) in enumerate(r)]
+    BaseAnnotation(type(feature), name(feature), ref, count[DNA_A][r], count[DNA_T][r], count[DNA_G][r], count[DNA_C][r], count[DNA_Gap][r])
+end
 
 struct Features{T} <: AnnotationContainer
     list::IntervalCollection{T}
@@ -99,6 +111,17 @@ end
 function Features(coverage::Coverage; type="COV")
     chroms = Dict(seq=>val for (seq,val) in coverage.chroms)
     return Features([Interval(refname(i), leftposition(i), rightposition(i), strand(i), Annotation(type, "", Dict{String,String}("Coverage"=>"$(value(i))"))) for i in coverage], chroms)
+end
+
+function Features(gff_file::String, bam_file::String, genome::Genome)
+    new_intervals = Interval{BaseAnnotation}[]
+    features = Features(gff_file)
+    errorcov = BaseCoverage(bam_file, genome)
+    for feature in features
+        annotation = BaseAnnotation(feature, errorcov)
+        push!(new_intervals, Interval(refname(feature), leftposition(feature), rightposition(feature), strand(feature), annotation))
+    end
+    return Features(IntervalCollection(new_intervals, true), genome.chroms)
 end
 
 type(features::Features) = Set(type(f) for f in features)
