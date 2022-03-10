@@ -365,6 +365,8 @@ struct Alignments{T<:Union{String, UInt}}
     annames::Vector{String}
     antypes::Vector{String}
     anols::Vector{UInt8}
+    anleftrel::Vector{UInt8}
+    anrightrel::Vector{UInt8}
     ranges::Vector{UnitRange{Int}}
 end
 
@@ -432,7 +434,8 @@ function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_co
     ranges = samevalueintervals(ns)
     pindex = partsindex(ranges, nindex, rls, rds)
     return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex],
-                        Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)), ranges)
+                        Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)),
+                        ones(UInt8,length(ns)) .* 0xff, ones(UInt8,length(ns)) .* 0xff, ranges)
 end
 
 Base.length(alns::Alignments) = length(alns.tempnames)
@@ -641,7 +644,7 @@ Returns the Interval of the alignment on the read sequence as a UnitRange.
 """
 readrange(aln::AlignedPart) = aln.seq
 
-"""
+"""left
     refsequence(aln::AlignedPart, genome::Genome)::LongDNASeq
 
 Returns the part of the read sequence that the aln::AlignedPart belongs to.
@@ -845,6 +848,8 @@ function Base.empty!(alns::Alignments)
     empty!(alns.ranges)
     empty!(alns.read_leftpos)
     empty!(alns.read_rightpos)
+    empty!(alns.anleftrel)
+    empty!(alns.anrightrel)
     empty!(alns.reads)
 end
 
@@ -899,7 +904,7 @@ function annotate!(features::Features, files::SingleTypeFiles; only_unique_align
 end
 
 annotate_filter(a::Interval{Annotation}, b::Interval{Nothing}) = strand(a) === strand(b)
-function annotate!(alns::Alignments, features::Features; prioritize_type=nothing, overwrite_type=nothing)
+function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_type=nothing, overwrite_type=nothing)
     myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(annotate_filter), Annotation}(
                                     annotate_filter,
                                     GenomicFeatures.ICTreeIntersection{Annotation}(),
@@ -922,6 +927,15 @@ function annotate!(alns::Alignments, features::Features; prioritize_type=nothing
             if  priority || overwrite || alns.anols[i]<olp
                 alns.antypes[i] = type(feature_interval)
                 alns.annames[i] = name(feature_interval)
+                feature_length = rightposition(feature_interval) - leftposition(feature_interval) + 1
+                alns.anleftrel[i] = alns.leftpos[i] > leftposition(feature_interval) ?
+                    round(UInt8, (alns.leftpos[i] - leftposition(feature_interval) + 1) / feature_length * 100) : 0x00
+                alns.anrightrel[i] = alns.rightpos[i] < rightposition(feature_interval) ?
+                    round(UInt8, (alns.rightpos[i] - leftposition(feature_interval) + 1) / feature_length * 100) : 0x65
+                if strand(feature_interval) === STRAND_NEG
+                    alns.anleftrel[i] = 0x65 - alns.anleftrel[i]
+                    alns.anrightrel[i] = 0x65 - alns.anrightrel[i]
+                end
                 alns.anols[i] = olp
                 priority && break
             end

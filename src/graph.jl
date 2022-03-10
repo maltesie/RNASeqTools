@@ -1,11 +1,10 @@
-mutable struct Interactions <: InteractionContainer
+struct Interactions <: InteractionContainer
     graph::SimpleDiGraph
     nodes::DataFrame
     edges::DataFrame
+    edgestats::ElasticArray{Int}
     replicate_ids::Vector{Symbol}
 end
-
-
 
 """
 Method of write function which saves the Interactions struct in a jld2 file.
@@ -18,22 +17,34 @@ function Base.write(filepath::String, interactions::Interactions)
     end
 end
 
-function leftestposition(alnpart::AlignedPart, alnread::AlignedRead)
+function leftmostposition(alnpart::AlignedPart, alnread::AlignedRead)
     minimum(alnread.alns.leftpos[i] for i::Int in alnread.range if (isassigned(alnread.alns.annames, i) && alnread.alns.annames[i] === name(alnpart)))
 end
 
-function rightestposition(alnpart::AlignedPart, alnread::AlignedRead)
+function rightmostposition(alnpart::AlignedPart, alnread::AlignedRead)
     maximum(alnread.alns.rightpos[i] for i::Int in alnread.range if (isassigned(alnread.alns.annames, i) && alnread.alns.annames[i] === name(alnpart)))
 end
 
-function Base.append!(interactions::Interactions, alnpair::Tuple{AlignedPart}; min_distance=1000, filter_types=[])
-    trans = Dict{UInt, Int}(interactions.nodes[i, :hash]=>i for i in 1:nrow(interactions.nodes))
+function leftmostrelposition(alnpart::AlignedPart, alnread::AlignedRead; five_type="5UTR", three_type="3UTR")
+    minimum(alnread.alns.antypes[i] === five_type ? 0x00 : (alnread.alns.antypes[i] === three_type ? 0x65 : alnread.alns.anleftrel[i])
+        for i::Int in alnread.range if (isassigned(alnread.alns.annames, i) && alnread.alns.annames[i] === name(alnpart)))
 end
 
-function Base.append!(interactions::Interactions, alignments::Alignments, replicate_id::Symbol; min_distance=1000, filter_types=[])
-    myhash(part::AlignedPart) = hash(name(part))
-    interactions.edges[:, replicate_id] = repeat([false], nrow(interactions.edges))
-    push!(interactions.replicate_ids, replicate_id)
+function rightmostrelposition(alnpart::AlignedPart, alnread::AlignedRead; five_type="5UTR", three_type="3UTR")
+    maximum(alnread.alns.antypes[i] === five_type ? 0x00 : (alnread.alns.antypes[i] === three_type ? 0x65 : alnread.alns.anrightrel[i])
+        for i::Int in alnread.range if (isassigned(alnread.alns.annames, i) && alnread.alns.annames[i] === name(alnpart)))
+end
+
+function myhash(part::AlignedPart; use_type=false)
+    return use_type ? hash(name(part)*type(part)) : hash(name(part))
+end
+
+function Base.append!(interactions::Interactions, alignments::Alignments, replicate_id::Symbol;
+                        min_distance=1000, filter_types=[], merge_annotation_types=true, merge_type="merge", cds_type="CDS", five_type="5UTR", three_type="3UTR")
+    if !(String(replicate_id) in interactions.replicate_ids)
+        interactions.edges[:, replicate_id] = repeat([false], nrow(interactions.edges))
+        push!(interactions.replicate_ids, replicate_id)
+    end
     trans = Dict{UInt, Int}(interactions.nodes[i, :hash]=>i for i in 1:nrow(interactions.nodes))
     trans_edges = Dict{Tuple{Int,Int},Int}((interactions.edges[i, :src],interactions.edges[i, :dst])=>i for i in 1:nrow(interactions.edges))
 
@@ -47,11 +58,11 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             hasannotation(part) || continue
             any(samename(part, formerpart) for formerpart in alnparts[1:i-1]) && continue
 
-            h = myhash(part)
+            h = myhash(part; use_type=!merge_annotation_types)
             if !(h in keys(trans))
                 trans[h] = length(trans) + 1
                 add_vertex!(interactions.graph)
-                push!(interactions.nodes, (name(part), type(part) in ("5UTR", "3UTR") ? "CDS" : type(part), refname(part), 0, 0, strand(part), h))
+                push!(interactions.nodes, (name(part), (merge_annotation_types && (type(part) in (cds_type, three_type, five_type))) ? merge_type : type(part), refname(part), 0, 0, strand(part), h))
             end
             is_chimeric || (interactions.nodes[trans[h], :nb_single] += 1)
         end
@@ -61,18 +72,26 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
                                                                             for (i, part) in enumerate(alnparts))], 2)
             (hasannotation(part1) && hasannotation(part2)) || continue
             ischimeric(part1, part2; min_distance=min_distance) || continue
-            a, b = trans[myhash(part1)], trans[myhash(part2)]
+            a, b = trans[myhash(part1; use_type=!merge_annotation_types)], trans[myhash(part2; use_type=!merge_annotation_types)]
             interactions.nodes[a, :nb_ints] += 1
             interactions.nodes[b, :nb_ints] += 1
-            has_edge(interactions.graph, a, b) || (add_edge!(interactions.graph, a, b); trans_edges[(a,b)] = ne(interactions.graph))
+            if !has_edge(interactions.graph, a, b)
+                add_edge!(interactions.graph, a, b)
+                trans_edges[(a,b)] = ne(interactions.graph)
+            end
             iindex = trans_edges[(a, b)]
-            left1, right1 = leftestposition(part1, alignment), rightestposition(part1, alignment)
-            left2, right2 = leftestposition(part2, alignment), rightestposition(part2, alignment)
+            left1, right1 = leftmostposition(part1, alignment), rightmostposition(part1, alignment)
+            left2, right2 = leftmostposition(part2, alignment), rightmostposition(part2, alignment)
+            statindex1, statindex2 = leftmostrelposition(part1, alignment) + 0x01, rightmostrelposition(part2, alignment) + 0x67
             nms1, nms2 = missmatchcount(part1), missmatchcount(part2)
-            iindex > nrow(interactions.edges) &&
+            if iindex > nrow(interactions.edges)
                 push!(interactions.edges, (a, b, 0, 0, left1, right1, left2, right2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                                             (nms1>1 ? 1.0 : 0.0), (nms2>1 ? 1.0 : 0.0), (false for i in 1:length(interactions.replicate_ids))...))
+                append!(interactions.edgestats, zeros(Int, 204))
+            end
             interactions.edges[iindex, :nb_ints] += 1
+            interactions.edgestats[statindex1, iindex] += 1
+            interactions.edgestats[statindex2, iindex] += 1
             is_multi && (interactions.edges[iindex, :nb_multi] += 1)
             interactions.edges[iindex, :minleft1] = min(interactions.edges[iindex, :minleft1], left1)
             interactions.edges[iindex, :maxright1] = max(interactions.edges[iindex, :maxright1], right1)
@@ -93,7 +112,7 @@ function Interactions()
     edges = DataFrame(:src=>Int[], :dst=>Int[], :nb_ints=>Int[], :nb_multi=>Int[], :minleft1=>Int[], :maxright1=>Int[], :minleft2=>Int[],
                         :maxright2=>Int[], :meanlength1=>Float64[], :meanlength2=>Float64[], :meanleft1=>Float64[], :meanleft2=>Float64[],
                         :meanright1=>Float64[], :meanright2=>Float64[], :nms1=>Float64[], :nms2=>Float64[], :meanmiss1=>Float64[], :meanmiss2=>Float64[])
-    return Interactions(SimpleDiGraph(), nodes, edges, Symbol[])
+    return Interactions(SimpleDiGraph(), nodes, edges, ElasticArray{Int}(undef, 204, 0), Symbol[])
 end
 
 function Interactions(alignments::Alignments; replicate_id=:first, min_distance=1000, filter_types=[])
@@ -154,7 +173,7 @@ function uniqueinteractions(ints::Interactions; min_reads=5, max_fdr=0.05)
     Set(Set((a,b)) for (a,b) in zip(df[!, :name1], df[!, :name2]))
 end
 
-function annotate!(interactions::Interactions, features::Features; method=:disparity)
+function addpvalues!(interactions::Interactions; method=:disparity)
     @assert method in (:disparity, :fisher)
     pvalues = ones(ne(interactions.graph))
     all_interactions = sum(interactions.edges[!, :nb_ints])+1
@@ -176,12 +195,21 @@ function annotate!(interactions::Interactions, features::Features; method=:dispa
     adjp = adjust(PValues(pvalues), BenjaminiHochberg())
     interactions.edges[:, :p_value] = pvalues
     interactions.edges[:, :fdr] = adjp
-    interactions.edges = hcat(interactions.edges, DataFrame(repeat([-Inf -Inf -Inf -Inf -Inf -Inf], nrow(interactions.edges)),
-                                                            [:relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2]))
-    tus = Dict(name(feature)=>(leftposition(feature), rightposition(feature)) for feature in features if !(type(feature) in ("5UTR", "3UTR")))
+    for colname in (:relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2)
+        interactions.edges[:, colname] = ones(Float64, nrow(interactions.edges)) * -Inf
+    end
+    return interactions
+end
+
+function addrelativepositions!(interactions::Interactions, features::Features; has_merge_type=true, merge_type="merge", cds_type="CDS")
+    tus = Dict(name(feature)*type(feature)=>(leftposition(feature), rightposition(feature)) for feature in features)
     for edge_row in eachrow(interactions.edges)
-        (feature1_left, feature1_right) = tus[interactions.nodes[edge_row[:src], :name]]
-        (feature2_left, feature2_right) = tus[interactions.nodes[edge_row[:dst], :name]]
+        name_src = interactions.nodes[edge_row[:src], :name]
+        type_src = has_merge_type && (interactions.nodes[edge_row[:src], :type] === merge_type) ? cds_type : interactions.nodes[edge_row[:src], :type]
+        (feature1_left, feature1_right) = tus[name_src*type_src]
+        name_dst = interactions.nodes[edge_row[:dst], :name]
+        type_dst = has_merge_type && (interactions.nodes[edge_row[:dst], :type] === merge_type) ? cds_type : interactions.nodes[edge_row[:dst], :type]
+        (feature2_left, feature2_right) = tus[name_dst*type_dst]
         isnegative1 = interactions.nodes[edge_row[:src], :strand] === '-'
         isnegative2 = interactions.nodes[edge_row[:dst], :strand] === '-'
         p1 = collect(edge_row[[(isnegative1 ? :meanleft1 : :meanright1), :minleft1, :maxright1]])
@@ -196,10 +224,12 @@ function annotate!(interactions::Interactions, features::Features; method=:dispa
     return interactions
 end
 
-function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max_fdr=0.05)
+function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max_fdr=0.05, include_pvalues=true, include_relative_positions=true,
+                        annotate_type_from_position=true, merge_type="merge", cds_type="CDS", five_type="5UTR", three_type="3UTR")
     out_df = copy(interactions.edges)
-    filter!(:nb_ints => >=(min_reads), out_df)
-    "fdr" in names(out_df) && filter!(:fdr => <=(max_fdr), out_df)
+    filter_index = (out_df[!, :nb_ints] .>= min_reads)
+    "fdr" in names(out_df) && (filter_index .&= (out_df[!, :fdr] .<= max_fdr))
+    out_df = out_df[filter_index, :]
     if output === :edges
         out_df[!, :meanleft1] = Int.(round.(out_df[!, :meanleft1]))
         out_df[!, :meanright1] = Int.(round.(out_df[!, :meanright1]))
@@ -220,22 +250,27 @@ function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max
         out_df[:, :strand1] = interactions.nodes[out_df[!,:src], :strand]
         out_df[:, :strand2] = interactions.nodes[out_df[!,:dst], :strand]
         out_df[:, :in_libs] = sum(eachcol(out_df[!, interactions.replicate_ids]))
-        out_columns = [:name1, :type1, :ref1, :name2, :type2, :ref2, :nb_ints, :nb_multi, :p_value, :fdr, :in_libs, :strand1,
+        out_columns = [:name1, :type1, :ref1, :name2, :type2, :ref2, :nb_ints, :nb_multi, :in_libs, :strand1,
         :meanleft1, :meanright1, :meanleft2, :meanright2, :strand2, :meanlength1, :meanlength2, :minleft1, :maxright1,
         :minleft2, :maxright2, :nms1, :nms2, :meanmiss1, :meanmiss2]
-        annotated_colnames = (:relmean1, :relmean2, :relmin1, :relmax1, :relmin2, :relmax2)
-        if all(string(c) in names(out_df) for c in annotated_colnames)
-            append!(out_columns, annotated_colnames)
-            type1_cds = out_df[:, :type1] .=== "CDS"
-            type1_5utr = type1_cds .& (out_df[:, :relmean1] .=== 0.0)
-            type1_3utr = type1_cds .& (out_df[:, :relmean1] .=== 1.0)
-            type2_cds = out_df[:, :type2] .=== "CDS"
-            type2_5utr = type2_cds .& (out_df[:, :relmean2] .=== 0.0)
-            type2_3utr = type2_cds .& (out_df[:, :relmean2] .=== 1.0)
-            out_df[type1_5utr, :type1] .= "5UTR"
-            out_df[type1_3utr, :type1] .= "3UTR"
-            out_df[type2_5utr, :type2] .= "5UTR"
-            out_df[type2_3utr, :type2] .= "3UTR"
+        include_pvalues && (out_columns = [out_columns[1:9]..., :p_value, :fdr, out_columns[10:end]...])
+        include_relative_positions && (out_columns = [out_columns..., :relmean1, :relmean2, :relmin1, :relmax1, :relmin2, :relmax2])
+        if annotate_type_from_position
+            ("relmean1" in names(out_df)) &&( "relmean2" in names(out_df)) || raise(AssertionError("Cannot annotate type, please run addrelativepositions! first."))
+            type1_merge = out_df[:, :type1] .=== merge_type
+            type1_5utr = type1_merge .& (out_df[:, :relmean1] .=== 0.0)
+            type1_3utr = type1_merge .& (out_df[:, :relmean1] .=== 1.0)
+            type1_cds = type1_merge .& .!(type1_3utr .| type1_5utr)
+            type2_merge = out_df[:, :type2] .=== merge_type
+            type2_5utr = type2_merge .& (out_df[:, :relmean2] .=== 0.0)
+            type2_3utr = type2_merge .& (out_df[:, :relmean2] .=== 1.0)
+            type2_cds = type2_merge .& .!(type2_3utr .| type2_5utr)
+            out_df[type1_5utr, :type1] .= five_type
+            out_df[type1_3utr, :type1] .= three_type
+            out_df[type1_cds, :type1] .= cds_type
+            out_df[type2_5utr, :type2] .= five_type
+            out_df[type2_3utr, :type2] .= three_type
+            out_df[type2_cds, :type2] .= cds_type
         end
         return sort(out_df[!, out_columns], :nb_ints; rev=true)
     elseif output === :nodes
@@ -244,5 +279,15 @@ function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max
             row[:nb_ints] = sum(out_df[(out_df.src .== i) .| (out_df.dst .== i), :nb_ints])
         end
         return sort(out_nodes[!, [:name, :type, :ref, :nb_single, :nb_ints]], :nb_single; rev=true)
+    elseif output === :stats
+        stats_df = DataFrame(Matrix(interactions.edgestats)', ["5UTR_1", ["$(i)_1" for i in 1:100]..., "3UTR_1", "5UTR_2", ["$(i)_2" for i in 1:100]..., "3UTR_2"])[filter_index, :]
+        stats_df[:, :name1] = interactions.nodes[out_df[!,:src], :name]
+        stats_df[:, :name2] = interactions.nodes[out_df[!,:dst], :name]
+        stats_df[:, :type1] = interactions.nodes[out_df[!,:src], :type]
+        stats_df[:, :type2] = interactions.nodes[out_df[!,:dst], :type]
+        stats_df[:, :nb_ints] = out_df[:, :nb_ints]
+        return sort(stats_df, :nb_ints; rev=true)
+    else
+        raise(AssertionError("output has to be one of :edges, :nodes, :stats"))
     end
 end

@@ -338,53 +338,6 @@ function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
     return Sequences(seqs; seqnames=names)
 end
 
-function annotate!(features::Features, from_reps::Vector{Coverage}, to_reps::Vector{Coverage})
-    averages = zeros(Float64, length(features), length(from_reps)+length(to_reps))
-    ps = zeros(Float64, length(features))
-    fc = zeros(Float64, length(features))
-    stop_from = length(from_reps)
-    start_to = stop_from + 1
-    stop_to = stop_from + length(to_reps)
-    averages[:,1:stop_from] = normalizedcount(features, from_reps)
-    averages[:,start_to:stop_to] = normalizedcount(features, to_reps)
-    noise = rand!(similar(averages)) .* 0.0000001
-    averages += noise
-    avf = mean(@view(averages[:,1:stop_from]), dims=2)
-    avt = mean(@view(averages[:,start_to:stop_to]), dims=2)
-    for i in 1:length(features)
-        t = UnequalVarianceTTest(@view(averages[i,1:stop_from]), @view(averages[i,start_to:stop_to]))
-        ps[i] = pvalue(t)
-        isnan(ps[i]) && (ps[i] = 1.0)
-        fc[i] = log2(mean(@view(averages[i,start_to:stop_to]))/mean(@view(averages[i,1:stop_from])))
-        isnan(fc[i]) && (fc[i] = 0.0)
-    end
-    adjps = adjust(PValues(ps), BenjaminiHochberg())
-    for (feature, p, adj_p, fold_change, average_from, average_to) in zip(features, ps, adjps, fc, avf, avt)
-        params(feature)["LogFoldChange"] = "$(round(fold_change; digits=3))"
-        params(feature)["FoldChange"] = "$(round(2^fold_change; digits=3))"
-        params(feature)["PValue"] = "$p"
-        params(feature)["AdjustedPValue"] = "$adj_p"
-        params(feature)["BaseValueFrom"] = "$average_from"
-        params(feature)["BaseValueTo"] = "$average_to"
-    end
-end
-
-function annotate!(features::Features, samples::Vector{Coverage}; count_key="Count")
-    vals = [values(coverage) for coverage in samples]
-    averages = zeros(Float64, length(features), length(samples))
-    for (i,feature) in enumerate(features)
-        for (j,rep) in enumerate(vals)
-            strand_vals = strand(feature) === STRAND_NEG ? last(rep[refname(feature)]) : first(rep[refname(feature)])
-            averages[i,j] = sum(strand_vals[leftposition(feature):rightposition(feature)])
-        end
-    end
-    for (feature, vals) in zip(features, eachrow(averages))
-        for (i,val) in enumerate(vals)
-            params(feature)["$count_key$i"] = "$val"
-        end
-    end
-end
-
 function covratio(features::Features, coverage::Coverage)
     vals = values(coverage)
     total = 0.0
@@ -399,39 +352,6 @@ function covratio(features::Features, coverage::Coverage)
     end
     return s/total
 end
-
-function normalizedcount(features::Features, samples::Vector{Coverage})
-    vals = [values(coverage) for coverage in samples]
-    averages = zeros(Float64, length(features), length(samples))
-    for (i,feature) in enumerate(features)
-        for (j,rep) in enumerate(vals)
-            strand_vals = strand(feature) === STRAND_NEG ? last(rep[refname(feature)]) : first(rep[refname(feature)])
-            averages[i,j] = mean(strand_vals[leftposition(feature):rightposition(feature)])
-        end
-    end
-    avg_sample::Vector{Float64} = [geomean(averages[i, :]) for i in 1:length(features)] .+ 0.000000001
-    norm_factors = [median(averages[:, i] ./ avg_sample) for i in 1:length(samples)]
-    averages ./= norm_factors'
-    return averages
-end
-
-function correlation(features::Features, coverages::Coverage ...)
-    @assert all(coverages[1].chroms == c.chroms for c in coverages[2:end])
-    averages = normalizedcount(features, collect(coverages))
-    correlations = cor(averages, dims=1)
-    return correlations
-end
-correlation(features::Features, coverages::Vector{Coverage}) = correlation(features, coverages...)
-
-function mincorrelation(features::Features, coverages::Coverage ...)
-    corr = correlation(features, coverages)
-    min_corr = 1.0
-    for i in first(size(corr)), j in 1:i
-        min_corr = min(matrix[i,j], min_corr)
-    end
-    return min_corr
-end
-mincorrelation(features::Features, coverages::Vector{Coverage}) = mincorrelation(features, coverages...)
 
 function asdataframe(features::Features; add_keys=:all)
     add_keys === :none && (add_keys = Set())

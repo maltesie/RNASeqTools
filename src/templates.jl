@@ -130,15 +130,21 @@ function conserved_features(features::Features, source_genome::Genome, target_ge
 end
 
 function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String; conditions::Dict{String, UnitRange{Int}}=Dict("chimeras"=>1:length(bams)),
-                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR",
+                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", merge_annotation_types=true,
                             is_reverse_complement=true, only_unique_alignments=true, model=:fisher, min_reads=5, max_fdr=0.05,
                             overwrite_existing=false)
 
     isdir(joinpath(results_path, "interactions")) || mkpath(joinpath(results_path, "interactions"))
+    isdir(joinpath(results_path, "stats")) || mkpath(joinpath(results_path, "stats"))
     isdir(joinpath(results_path, "singles")) || mkpath(joinpath(results_path, "singles"))
     isdir(joinpath(results_path, "graphs")) || mkpath(joinpath(results_path, "graphs"))
     for (condition, r) in conditions
-        !overwrite_existing && isfile(joinpath(results_path, "interactions", "$(condition).csv")) && isfile(joinpath(results_path, "singles", "$(condition).csv")) && continue
+        !overwrite_existing &&
+            isfile(joinpath(results_path, "interactions", "$(condition).csv")) &&
+            isfile(joinpath(results_path, "singles", "$(condition).csv")) &&
+            isfile(joinpath(results_path, "graphs", "$(condition).jld2")) &&
+            isfile(joinpath(results_path, "stats", "$(condition).csv")) &&
+            continue
         replicate_ids = Vector{Symbol}()
         interactions = Interactions()
         for (i, bam) in enumerate(bams[r])
@@ -149,15 +155,27 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type)
             println("Building graph for replicate $replicate_id...")
-            append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types)
+            append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types, merge_annotation_types=merge_annotation_types)
             empty!(alignments)
         end
-        println("Found $(sum(interactions.edges[!, :nb_ints])) chimeras in $(nrow(interactions.edges)) interactions.")
-        println("Computing significance levels and filtering...")
-        annotate!(interactions, features; method=model)
+        println("Computing significance levels...")
+        addpvalues!(interactions; method=model)
+        addrelativepositions!(interactions, features)
+
+        total_reads = sum(interactions.edges[!, :nb_ints])
+        above_min_reads = sum(interactions.edges[interactions.edges.nb_ints .>= min_reads, :nb_ints])
+        total_ints = nrow(interactions.edges)
+        above_min_ints = sum(interactions.edges.nb_ints .>= min_reads)
+        total_sig_reads = sum(interactions.edges[interactions.edges.fdr .<= max_fdr, :nb_ints])
+        above_min_sig_reads = sum(interactions.edges[(interactions.edges.fdr .<= max_fdr) .& (interactions.edges.nb_ints .>= min_reads), :nb_ints])
+        total_sig_ints = sum(interactions.edges.fdr .<= max_fdr)
+        above_min_sig_ints = sum((interactions.edges.fdr .<= max_fdr) .& (interactions.edges.nb_ints .>= min_reads))
+        println("\n\t\ttotal\treads>=$min_reads\tfdr<=$max_fdr\tboth")
+        println("reads:\t\t$total_reads\t$above_min_reads\t\t$total_sig_reads\t\t$above_min_sig_reads")
+        println("interactions:\t$total_ints\t$above_min_ints\t\t$total_sig_ints\t\t$above_min_sig_ints\n")
         write(joinpath(results_path, "graphs", "$(condition).jld2"), interactions)
-        println("Found $(sum(interactions.edges[interactions.edges.fdr .<= max_fdr, :nb_ints])) significant (level 0.95) chimeras in $(sum(interactions.edges.fdr .<= max_fdr)) interactions.")
         write(joinpath(results_path, "interactions", "$(condition).csv"), asdataframe(interactions; output=:edges, min_reads=min_reads, max_fdr=max_fdr))
+        write(joinpath(results_path, "stats", "$(condition).csv"), asdataframe(interactions; output=:stats, min_reads=min_reads, max_fdr=max_fdr))
         write(joinpath(results_path, "singles", "$(condition).csv"), asdataframe(interactions; output=:nodes, min_reads=min_reads, max_fdr=max_fdr))
     end
     (!overwrite_existing && isfile(joinpath(results_path, "singles.xlsx")) && isfile(joinpath(results_path, "interactions.xlsx"))) && return
