@@ -41,17 +41,19 @@ mutable struct PairedSingleTypeFiles <: FileCollection
 end
 
 function PairedSingleTypeFiles(files1::Vector{String}, files2::Vector{String})
-    endingsa = [fname[findlast('.', fname):end] for fname in files1]
-    endingsb = [fname[findlast('.', fname):end] for fname in files2]
-    @assert (length(unique(endingsa)) == 1) && (unique(endingsa) == unique(endingsb))
-    PairedSingleTypeFiles(collect(zip(files1, files2)), endingsa[1], "", "")
+    endingsa = unique([fname[findlast('.', fname):end] for fname in files1])
+    endingsb = unique([fname[findlast('.', fname):end] for fname in files2])
+    @assert (length(endingsa) == 1) && (endingsa == endingsb)
+    typ = endingsa[1]
+    PairedSingleTypeFiles(collect(zip(files1, files2)), typ, "", "")
 end
 
 function PairedSingleTypeFiles(list::Vector{Tuple{String,String}})
-    endingsa = [fname[1][findlast('.', fname[1]):end] for fname in list]
-    endingsb = [fname[2][findlast('.', fname[2]):end] for fname in list]
-    @assert (length(unique(endingsa)) == 1) && (unique(endingsa) == unique(endingsb))
-    PairedSingleTypeFiles(list, endingsa[1], "", "")
+    endingsa = unique([fname[1][findlast('.', fname[1]):end] for fname in list])
+    endingsb = unique([fname[2][findlast('.', fname[2]):end] for fname in list])
+    @assert (length(endingsa) == 1) && (endingsa == endingsb)
+    typ = endingsa[1]
+    PairedSingleTypeFiles(list, typ, "", "")
 end
 
 function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffix2="_2", prefix=nothing)
@@ -70,7 +72,8 @@ Base.iterate(files::T, state::Int) where {T<:FileCollection} = iterate(files.lis
 Base.copy(files::SingleTypeFiles) = SingleTypeFiles(files.list, files.type)
 Base.copy(files::PairedSingleTypeFiles) = PairedSingleTypeFiles(files.list, files.type, files.suffix1, files.suffix2)
 Base.getindex(files::T, i::Int) where {T<:FileCollection} = files.list[i]
-Base.getindex(files::T, u::UnitRange{Int}) where {T<:FileCollection} = T(files.list[u])
+Base.getindex(files::T, u::UnitRange{Int}) where {T<:FileCollection} = T(files.list[u], files.type, files.suffix1, files.suffix2)
+Base.getindex(files::T, index::Vector{Int}) where {T<:FileCollection} = T(files.list[index], files.type, files.suffix1, files.suffix2)
 function Base.:*(filesa::PairedSingleTypeFiles, filesb::PairedSingleTypeFiles)
     @assert type(filesa) == type(filesb)
     suffix1 = filesa.suffix1 == filesb.suffix1 ? filesa.suffix1 : ""

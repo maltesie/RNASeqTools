@@ -9,13 +9,13 @@ function prepare_data(data_path::String, genome::Genome; files=FastqgzFiles)
     compute_coverage(bams)
 end
 
-function de_genes(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, add_keys=["BaseValueFrom", "BaseValueTo", "LogFoldChange", "PValue", "AdjustedPValue"])
-    between_conditions = isnothing(between_conditions) ? combinations(collect(conditions), 2) : [((a,conditions[a]), (b,conditions[b])) for (a,b) in between_conditions]
-    for ((name1, range1), (name2, range2)) in between_conditions
-        annotate!(features, coverages[range1], coverages[range2])
-        write(joinpath(results_path, name1 * "_vs_" * name2 * ".csv"), asdataframe(features, add_keys=add_keys))
-    end
-end
+#function de_genes(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, add_keys=["BaseValueFrom", "BaseValueTo", "LogFoldChange", "PValue", "AdjustedPValue"])
+#    between_conditions = isnothing(between_conditions) ? combinations(collect(conditions), 2) : [((a,conditions[a]), (b,conditions[b])) for (a,b) in between_conditions]
+#    for ((name1, range1), (name2, range2)) in between_conditions
+#        annotate!(features, coverages[range1], coverages[range2])
+#        write(joinpath(results_path, name1 * "_vs_" * name2 * ".csv"), asdataframe(features, add_keys=add_keys))
+#    end
+#end
 
 function feature_count(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
     expnames = Dict{String,Vector{String}}()
@@ -119,6 +119,14 @@ function full_annotation(features::Features, texdict::Dict{String,Coverage}, not
     addutrs!(features; tss_positions=tss_pos, term_positions=term_pos, cds_type=cds_type, five_type=five_type, three_type=three_type)
     addigrs!(features; igr_type=igr_type)
     write(results_gff, features)
+end
+
+function tss_annotation(tex_files::PairedSingleTypeFiles, notex_files::PairedSingleTypeFiles, results_gff::String;
+                            min_tex_ratio=1.3, min_step=10, window_size=10, min_background_ratio=1.2)
+    coverages_tex = merge([Coverage(f1, f2) for (f1, f2) in tex_files])
+    coverages_notex = merge([Coverage(f1, f2) for (f1, f2) in notex_files])
+    tss = tsss(coverages_notex, coverages_tex; min_tex_ratio=min_tex_ratio, min_step=min_step, window_size=window_size, min_background_ratio=min_background_ratio)
+    write(results_gff, Features(tss; type="TSS"))
 end
 
 function conserved_features(features::Features, source_genome::Genome, target_genomes::SingleTypeFiles, results_path::String)

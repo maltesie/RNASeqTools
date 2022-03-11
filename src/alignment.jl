@@ -932,10 +932,7 @@ function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_
                     round(UInt8, (alns.leftpos[i] - leftposition(feature_interval) + 1) / feature_length * 100) : 0x00
                 alns.anrightrel[i] = alns.rightpos[i] < rightposition(feature_interval) ?
                     round(UInt8, (alns.rightpos[i] - leftposition(feature_interval) + 1) / feature_length * 100) : 0x65
-                if strand(feature_interval) === STRAND_NEG
-                    alns.anleftrel[i] = 0x65 - alns.anleftrel[i]
-                    alns.anrightrel[i] = 0x65 - alns.anrightrel[i]
-                end
+                strand(feature_interval) === STRAND_NEG && ((alns.anleftrel[i], alns.anrightrel[i]) = (0x65 - alns.anrightrel[i], 0x65 - alns.anleftrel[i]))
                 alns.anols[i] = olp
                 priority && break
             end

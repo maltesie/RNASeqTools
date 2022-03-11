@@ -256,7 +256,7 @@ function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max
         include_pvalues && (out_columns = [out_columns[1:9]..., :p_value, :fdr, out_columns[10:end]...])
         include_relative_positions && (out_columns = [out_columns..., :relmean1, :relmean2, :relmin1, :relmax1, :relmin2, :relmax2])
         if annotate_type_from_position
-            ("relmean1" in names(out_df)) &&( "relmean2" in names(out_df)) || raise(AssertionError("Cannot annotate type, please run addrelativepositions! first."))
+            ("relmean1" in names(out_df)) &&( "relmean2" in names(out_df)) || throw(AssertionError("Cannot annotate type, please run addrelativepositions! first."))
             type1_merge = out_df[:, :type1] .=== merge_type
             type1_5utr = type1_merge .& (out_df[:, :relmean1] .=== 0.0)
             type1_3utr = type1_merge .& (out_df[:, :relmean1] .=== 1.0)
@@ -287,7 +287,7 @@ function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max
         stats_df[:, :type2] = interactions.nodes[out_df[!,:dst], :type]
         stats_df[:, :nb_ints] = out_df[:, :nb_ints]
         if annotate_type_from_position
-            ("relmean1" in names(out_df)) &&( "relmean2" in names(out_df)) || raise(AssertionError("Cannot annotate type, please run addrelativepositions! first."))
+            ("relmean1" in names(out_df)) &&( "relmean2" in names(out_df)) || throw(AssertionError("Cannot annotate type, please run addrelativepositions! first."))
             type1_merge = stats_df[:, :type1] .=== merge_type
             type1_5utr = type1_merge .& (out_df[:, :relmean1] .=== 0.0)
             type1_3utr = type1_merge .& (out_df[:, :relmean1] .=== 1.0)
@@ -305,6 +305,6 @@ function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max
         end
         return sort(stats_df, :nb_ints; rev=true)
     else
-        raise(AssertionError("output has to be one of :edges, :nodes, :stats"))
+        throw(AssertionError("output has to be one of :edges, :nodes, :stats"))
     end
 end

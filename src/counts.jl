@@ -35,11 +35,18 @@ function normalize!(m::Matrix)
     return m
 end
 
-function diffexptable(counts::Counts, control_condition::String, experiment_condition::String)
-    avg_control = mean(@view(counts[control_condition]), dims=2)
-    avg_experiment = mean(@view(counts[experiment_condition]), dims=2)
-    ps = pvalue.(UnequalVarianceTTest.(@view(counts[control_condition]), @view(counts[experiment_condition])))
-    fc = log2(avg_experiment) - log2(avg_control)
+function diffexptable(counts::Counts, control_condition::String, experiment_condition::String; method=:ttest)
+
+    if method === :ttest
+        avg_control = mean(@view(counts[control_condition]), dims=2)
+        avg_experiment = mean(@view(counts[experiment_condition]), dims=2)
+        ps = pvalue.(UnequalVarianceTTest.(@view(counts[control_condition]), @view(counts[experiment_condition])))
+        fc = log2(avg_experiment) - log2(avg_control)
+    elseif method === :glm
+        throw(NotImplementedError)
+    else
+        throw(AssertionError("method must be one of :ttest, :glm"))
+    end
     adjps = adjust(PValues(ps), BenjaminiHochberg())
     return DataFrame(
         feature=[name(feature) for feature in count.features],
