@@ -213,7 +213,7 @@ function addrelativepositions!(interactions::Interactions, features::Features; h
         isnegative1 = interactions.nodes[edge_row[:src], :strand] === '-'
         isnegative2 = interactions.nodes[edge_row[:dst], :strand] === '-'
         p1 = collect(edge_row[[(isnegative1 ? :meanleft1 : :meanright1), :minleft1, :maxright1]])
-        p2 = collect(edge_row[[(isnegative1 ? :meanright2 : :meanleft2), :minleft2, :maxright2]])
+        p2 = collect(edge_row[[(isnegative2 ? :meanright2 : :meanleft2), :minleft2, :maxright2]])
         (relpos1, relmin1, relmax1) = min.(1.0, max.(0.0, (p1 .- feature1_left) ./ (feature1_right - feature1_left)))
         (relpos2, relmin2, relmax2) = min.(1.0, max.(0.0, (p2 .- feature2_left) ./ (feature2_right - feature2_left)))
         isnegative1 && ((relpos1, relmin1, relmax1) = (1-relpos1, 1-relmax1, 1-relmin1))
@@ -286,6 +286,23 @@ function asdataframe(interactions::Interactions; output=:edges, min_reads=5, max
         stats_df[:, :type1] = interactions.nodes[out_df[!,:src], :type]
         stats_df[:, :type2] = interactions.nodes[out_df[!,:dst], :type]
         stats_df[:, :nb_ints] = out_df[:, :nb_ints]
+        if annotate_type_from_position
+            ("relmean1" in names(out_df)) &&( "relmean2" in names(out_df)) || raise(AssertionError("Cannot annotate type, please run addrelativepositions! first."))
+            type1_merge = stats_df[:, :type1] .=== merge_type
+            type1_5utr = type1_merge .& (out_df[:, :relmean1] .=== 0.0)
+            type1_3utr = type1_merge .& (out_df[:, :relmean1] .=== 1.0)
+            type1_cds = type1_merge .& .!(type1_3utr .| type1_5utr)
+            type2_merge = stats_df[:, :type2] .=== merge_type
+            type2_5utr = type2_merge .& (out_df[:, :relmean2] .=== 0.0)
+            type2_3utr = type2_merge .& (out_df[:, :relmean2] .=== 1.0)
+            type2_cds = type2_merge .& .!(type2_3utr .| type2_5utr)
+            stats_df[type1_5utr, :type1] .= five_type
+            stats_df[type1_3utr, :type1] .= three_type
+            stats_df[type1_cds, :type1] .= cds_type
+            stats_df[type2_5utr, :type2] .= five_type
+            stats_df[type2_3utr, :type2] .= three_type
+            stats_df[type2_cds, :type2] .= cds_type
+        end
         return sort(stats_df, :nb_ints; rev=true)
     else
         raise(AssertionError("output has to be one of :edges, :nodes, :stats"))
