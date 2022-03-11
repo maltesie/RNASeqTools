@@ -72,8 +72,10 @@ Base.iterate(files::T, state::Int) where {T<:FileCollection} = iterate(files.lis
 Base.copy(files::SingleTypeFiles) = SingleTypeFiles(files.list, files.type)
 Base.copy(files::PairedSingleTypeFiles) = PairedSingleTypeFiles(files.list, files.type, files.suffix1, files.suffix2)
 Base.getindex(files::T, i::Int) where {T<:FileCollection} = files.list[i]
-Base.getindex(files::T, u::UnitRange{Int}) where {T<:FileCollection} = T(files.list[u], files.type, files.suffix1, files.suffix2)
-Base.getindex(files::T, index::Vector{Int}) where {T<:FileCollection} = T(files.list[index], files.type, files.suffix1, files.suffix2)
+Base.getindex(files::SingleTypeFiles, u::UnitRange{Int}) = SingleTypeFiles(files.list[u], files.type)
+Base.getindex(files::SingleTypeFiles, index::Vector{Int}) = SingleTypeFiles(files.list[index], files.type)
+Base.getindex(files::PairedSingleTypeFiles, u::UnitRange{Int}) = PairedSingleTypeFiles(files.list[u], files.type, files.suffix1, files.suffix2)
+Base.getindex(files::PairedSingleTypeFiles, index::Vector{Int}) = PairedSingleTypeFiles(files.list[index], files.type, files.suffix1, files.suffix2)
 function Base.:*(filesa::PairedSingleTypeFiles, filesb::PairedSingleTypeFiles)
     @assert type(filesa) == type(filesb)
     suffix1 = filesa.suffix1 == filesb.suffix1 ? filesa.suffix1 : ""
