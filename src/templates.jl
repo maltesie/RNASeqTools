@@ -103,14 +103,6 @@ function remove_features(bams::SingleTypeFiles, features::Features; sam_bin="sam
     return SingleTypeFiles(outnames)
 end
 
-function transcriptional_startsites(texreps::SingleTypeFiles, notexreps::SingleTypeFiles, results_gff::String)
-    tex_coverage = Coverage(texreps)
-    notex_coverage = Coverage(notexreps)
-    tss_pos = tsss(tex_coverage, notex_coverage)
-    tss_features = Features(tss_pos)
-    write(results_gff, tss_features)
-end
-
 function full_annotation(features::Features, texdict::Dict{String,Coverage}, notexdict::Dict{String,Coverage}, termdict::Dict{String,Coverage}, results_gff::String;
                             cds_type="CDS", five_type="5UTR", three_type="3UTR", igr_type="IGR", min_tex_ratio=1.3, min_step=5, min_background_ratio=1.2, window_size=10)
     @assert keys(texdict) == keys(notexdict)

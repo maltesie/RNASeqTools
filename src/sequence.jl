@@ -140,6 +140,11 @@ function Sequences(file1::String, file2::String; is_reverse_complement=false, ha
     read_reads(file1, file2; is_reverse_complement=is_reverse_complement, hash_id=hash_id)
 end
 
+Sequences(genomes::Vector{Genome}) =
+    Sequences([genome.seq for genome in genomes], UInt.(i for i in 1:length(genomes)), [i:i for i in 1:length(genomes)])
+
+Base.getindex(seqs::Sequences, index::Int) = seqs.seq[seqs.ranges[index]]
+
 function Base.getindex(seqs::Sequences, index::UInt)
     r = searchsorted(seqs.seqnames, index)
     if length(r) === 2
@@ -164,7 +169,7 @@ end
 
 Base.length(seqs::Sequences) = length(seqs.seqnames)
 Base.iterate(seqs::Sequences) = (seqs.seq[seqs.ranges[1]], 2)
-Base.iterate(seqs::Sequences, state::Int) = state === length(seqs.ranges) ? nothing : (seqs.seq[seqs.ranges[state]], state+1)
+Base.iterate(seqs::Sequences, state::Int) = state > length(seqs.ranges) ? nothing : (seqs.seq[seqs.ranges[state]], state+1)
 eachpair(seqs::Sequences) = partition(seqs, 2)
 Base.empty!(seqs::Sequences) = (empty!(seqs.seq); empty!(seqs.seqnames); empty!(seqs.ranges))
 
@@ -315,11 +320,17 @@ function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1)
     return approxsearch(s2, s1, k) != 0:-1
 end
 
-occurences(test_sequence::LongDNASeq, seqs::Sequences, similarity_cut::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1)) =
+approxcount(test_sequence::LongDNASeq, genomes::Vector{Genome}; k=1) = sum(approxoccursin(test_sequence, genome.seq; k=k) for genome in genomes)
+
+approxcount(genome::Genome, test_sequences::Sequences; k=1) = sum(approxoccursin(s, genome.seq; k=k) for s in test_sequences)
+
+similarcount(test_sequence::LongDNASeq, seqs::Sequences, similarity_cut::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
     sum(similarity(test_sequence, seq; score_model=score_model) > similarity_cut for seq in seqs)
 
-function similarity(read1::LongDNASeq, read2::LongDNASeq; score_model=nothing)
-    isnothing(score_model) && (score_model = AffineGapScoreModel(match=1, mismatch=-1, gap_open=-1, gap_extend=-1))
+hassimilar(genome::Genome, test_sequence::LongDNASeq, similarity_cut::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
+    similarity(test_sequence, genome.seq; score_model=score_model) > similarity_cut
+
+function similarity(read1::LongDNASeq, read2::LongDNASeq; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1))
     (length(read1) > length(read2)) ? ((short_seq, long_seq) = (read2, read1)) : ((short_seq, long_seq) = (read1, read2))
     aln = pairalign(OverlapAlignment(), long_seq, short_seq, score_model; score_only=false)
     return max(BioAlignments.score(aln), 0.0)/length(short_seq)

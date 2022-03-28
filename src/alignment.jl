@@ -183,7 +183,8 @@ function samevalueintervals(d::Vector{T}) where T
         end
         index += 1
     end
-    ranges[end] = last(ranges[end-1])+1:length(d)
+    length(d) == 1 && (ranges[1] = 1:1)
+    n_unique>1 && (ranges[end] = last(ranges[end-1])+1:length(d))
     return ranges
 end
 
@@ -349,7 +350,12 @@ function astag(record::BAM.Record)
 end
 
 function nmtag(record::BAM.Record)
-    return record.data[BAM.auxdata_position(record)+3]
+    record.data[BAM.auxdata_position(record)] == UInt8('N') && record.data[BAM.auxdata_position(record)+1] == UInt8('M') || throw("auxdata does not start with NM tag.")
+    t = record.data[BAM.auxdata_position(record)+2] == UInt8('C') ? UInt8 :
+        record.data[BAM.auxdata_position(record)+2] == UInt8('S') ? UInt16 :
+        record.data[BAM.auxdata_position(record)+2] == UInt8('I') ? UInt32 :
+        throw("NM tag type not supported: $(Char(record.data[BAM.auxdata_position(record)+2]))")
+    return unsafe_load(Ptr{t}(pointer(record.data, BAM.auxdata_position(record)+3)))
 end
 
 struct Alignments{T<:Union{String, UInt}}
@@ -359,7 +365,7 @@ struct Alignments{T<:Union{String, UInt}}
     read_leftpos::Vector{Int}
     read_rightpos::Vector{Int}
     reads::Vector{Symbol}
-    nms::Vector{UInt8}
+    nms::Vector{UInt32}
     refnames::Vector{String}
     strands::Vector{Strand}
     annames::Vector{String}
@@ -378,7 +384,7 @@ function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_co
     rs = Vector{Int}(undef, 10000)
     is = Vector{String}(undef, 10000)
     ss = Vector{Strand}(undef, 10000)
-    nms = Vector{UInt8}(undef, 10000)
+    nms = Vector{UInt32}(undef, 10000)
     rls = Vector{Int}(undef, 10000)
     rrs = Vector{Int}(undef, 10000)
     rds = Vector{Symbol}(undef, 10000)
@@ -406,7 +412,7 @@ function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_co
             xastrings = split(xa, ";")[1:end-1]
             for (i,xapart) in enumerate(xastrings)
                 _, pos, _, nm = split(xapart, ",")
-                pnm = parse(UInt8, nm)
+                pnm = parse(UInt32, nm)
                 pnm > nm && continue
                 intpos = abs(parse(Int, pos))
                 intpos < leftestpos && (leftest = i; leftestpos=intpos; nm=pnm)
@@ -455,7 +461,7 @@ end
 struct AlignedPart
     ref::Interval{AlignmentAnnotation}
     seq::UnitRange{Int}
-    nms::UInt8
+    nms::UInt32
     read::Symbol
 end
 
@@ -502,7 +508,7 @@ function AlignedPart(xapart::Union{String, SubString{String}}; read=:read1)
     readstart, readstop, relrefstop, readlen = readpositions(cigar)
     seq_interval = ((refstart > 0)  != (current_read === :read2)) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
     ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, AlignmentAnnotation())
-    return AlignedPart(ref_interval, seq_interval, parse(Int8, nm), read)
+    return AlignedPart(ref_interval, seq_interval, parse(UInt32, nm), read)
 end
 
 """
@@ -514,7 +520,7 @@ Generates string with information on the AlignedPart.
 function summarize(part::AlignedPart)
     s = "[$(first(part.seq)), $(last(part.seq))] on $(part.read) - "
     s *= "[$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) "
-    s *= "with $(part.nms) $(part.nms == 1 ? "missmatch" : "missmatches") - "
+    s *= "with edit distance $(part.nms) - "
     s *= isempty(annotation(part)) ? "not annotated." : "$(type(part)):$(name(part)) ($(overlap(part))% in annotation)"
     return s
 end
