@@ -33,8 +33,47 @@ function align_kraken2(
 end
 
 """
+    Core dispatch of align_minimap, which is a wrapper for minimap2. Takes ´in_file´ and ´genome_file´ and builds a shell
+    command that runs minimap2 with the specified additional parameters and writes the resulting alignments in bam format into ´out_file´
+    using samtools.
+
+    # Arguments
+    - ´min_score::Int´: defines the minimum score for bwa-mem2 to output alignments for
+    - ´match::Int´, ´mismatch::Int´, ´gap_open::Int´, ´gamp_extend::Int´: define the affine gap model that is used for scoring
+    - ´clipping_penalty::Int´: scoring penalty for clipping at the beginning or the end of the alignment.
+    - ´unpair_penalty::Int´: scoring penalty only used in paired end mapping. Penalty for mappings that do not set the paired flag
+    - ´unpair_rescue::Bool´: perform Smith-Waterman to try to rescue read pair if pair is lost.
+    - ´min_seed_len::Int´: Minimum seed length. Matches shorter than INT will be missed.
+    - ´reseeding_factor::Float64´: Trigger re-seeding for a MEM longer than minSeedLenFLOAT. Larger value yields fewer seeds, which leads to faster alignment speed but lower accuracy.
+"""
+function align_minimap(in_file::String, out_file::String, genome_file::String;
+    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
+    minimizer_len=15, reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools")
+
+    cmd = pipeline(`$bwa_bin index $genome_file`)
+    run(cmd)
+    params = ["-A", match, "-B", mismatch, "-O", gap_open, "-E", gap_extend, "-T", min_score, "-L", clipping_penalty, "-r", reseeding_factor, "-k", min_seed_len]
+    isnothing(in_file2) || append!(params, ["-U", unpair_penalty])
+    is_ont && append!(params, ["-x", "ont2d"])
+    unpair_rescue && push!(params, "-P")
+    fileparams = isnothing(in_file2) ? [genome_file, in_file1] : [genome_file, in_file1, in_file2]
+    stats_file = out_file * ".log"
+    run(pipeline(
+        `$bwa_bin mem -v 1 -t 6 $params $fileparams`,
+        stdout = pipeline(
+            `$sam_bin view -u`,
+            stdout = pipeline(
+                `$sam_bin sort -o $out_file`))))
+    run(pipeline(
+        `$sam_bin index $out_file`,
+        `$sam_bin stats $out_file`,
+        stats_file))
+end
+
+"""
     Core dispatch of align_mem, which is a wrapper for bwa-mem2. Takes ´in_file1´ and ´in_file2´ and ´genome_file´ and builds a shell
-    command that runs bwa-mem2 with the specified additional parameters and writes the resulting alignments in bam format into ´out_file´.
+    command that runs bwa-mem2 with the specified additional parameters and writes the resulting alignments in bam format into ´out_file´
+    using samtools.
 
     # Arguments
     - ´min_score::Int´: defines the minimum score for bwa-mem2 to output alignments for
@@ -284,18 +323,6 @@ function ispaired(record::BAM.Record)::Bool
     BAM.flag(record) & UInt(0x001) != 0
 end
 
-function isproperpair(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x002) != 0
-end
-
-function isprimary(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x100) == 0
-end
-
-function isread1(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x040) != 0
-end
-
 function isread2(record::BAM.Record)::Bool
     BAM.flag(record) & UInt(0x080) != 0
 end
@@ -392,8 +419,7 @@ function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_co
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
-        is_unique = !hasxatag(record)
-        !is_unique && only_unique_alignments && continue
+        hasxatag(record) && only_unique_alignments && continue
         current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
         index += 1
         if index > length(ns)
@@ -405,26 +431,13 @@ function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_co
         (l,r) = (BAM.leftposition(record), BAM.rightposition(record))
         (ref,s) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
         nm = nmtag(record)
-        if !is_unique && !only_unique_alignments
+        if hasxatag(record)
             xa = xatag(record)
-            leftest = 0
-            leftestpos = BAM.leftposition(record)
-            xastrings = split(xa, ";")[1:end-1]
-            for (i,xapart) in enumerate(xastrings)
-                _, pos, _, nm = split(xapart, ",")
-                pnm = parse(UInt32, nm)
-                pnm > nm && continue
-                intpos = abs(parse(Int, pos))
-                intpos < leftestpos && (leftest = i; leftestpos=intpos; nm=pnm)
-            end
-            if leftest != 0
-                chr, pos, cigar, nm = split(xastrings[leftest], ",")
-                refstart = parse(Int, pos)
-                strand = ((refstart > 0) != current_read===:read2) ? STRAND_POS : STRAND_NEG
-                refstart *= sign(refstart)
-                readstart, readstop, relrefstop, readlen = readpositions(cigar)
-                (rl, rr) = ((refstart > 0) != (current_read === :read2)) ? (readstart,readstop) : (readlen-readstop+1,readlen-readstart+1)
-                (l, r, ref, s) = (refstart, refstart+relrefstop, chr, strand)
+            xastrings = string.(split(xa, ";")[1:end-1])
+            for xastring in enumerate(xastrings)
+                ap = AlignedPart(xastring)
+                (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) =
+                (name(ap), leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, nms(ap))
             end
         end
         readstart, readstop, _, readlen = readpositions(record)
@@ -500,7 +513,7 @@ Base.getindex(alns::Alignments, r::UnitRange{Int}) = [alns[i] for i::Int in r]
     Constructor for the AlignedPart struct. Builds AlignedPart from a XA string, which is created by bwa-mem2
     for alternative mappings. Inverts strand, if `check_invert::Bool` is true.
 """
-function AlignedPart(xapart::Union{String, SubString{String}}; read=:read1)
+function AlignedPart(xapart::String; read=:read1)
     chr, pos, cigar, nm = split(xapart, ",")
     refstart = parse(Int, pos)
     strand = ((refstart > 0) != read===:read2) ? STRAND_POS : STRAND_NEG
@@ -537,7 +550,7 @@ end
     read(aln::AlignedPart)::Symbol
 
 Returns the read from which the alignment comes. If is_reverse_complement is true, the reads will be
-inverted (:read1 will be :read2 and vice versa).
+inverted (:read1 will be :read2 and vice versa)....
 """
 sameread(aln1::AlignedPart, aln2::AlignedPart) = aln1.read === aln2.read
 
@@ -650,11 +663,13 @@ Returns the Interval of the alignment on the read sequence as a UnitRange.
 """
 readrange(aln::AlignedPart) = aln.seq
 
-"""left
-    refsequence(aln::AlignedPart, genome::Genome)::LongDNASeq
-
-Returns the part of the read sequence that the aln::AlignedPart belongs to.
 """
+    nms(aln::AlignedPart)::UInt32
+
+Returns the edit distance of the AlignedPart.
+"""
+nms(aln::AlignedPart) = aln.nms
+
 function readsequence(aln::AlignedPart, seqs::Sequences)::LongDNASeq
     r = searchsorted(seqs.seqnames, name(aln))
     if length(r) === 2
