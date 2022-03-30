@@ -47,19 +47,22 @@ end
     - ´reseeding_factor::Float64´: Trigger re-seeding for a MEM longer than minSeedLenFLOAT. Larger value yields fewer seeds, which leads to faster alignment speed but lower accuracy.
 """
 function align_minimap(in_file::String, out_file::String, genome_file::String;
-    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
-    minimizer_len=15, reseeding_factor=1.5, is_ont=false, bwa_bin="bwa-mem2", sam_bin="samtools")
+    preset=nothing, min_score=40, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1,
+    minimizer_len=15, threads=6, all_secondary=false, minimap_bin="minimap2", sam_bin="samtools")
 
-    cmd = pipeline(`$bwa_bin index $genome_file`)
-    run(cmd)
-    params = ["-A", match, "-B", mismatch, "-O", gap_open, "-E", gap_extend, "-T", min_score, "-L", clipping_penalty, "-r", reseeding_factor, "-k", min_seed_len]
-    isnothing(in_file2) || append!(params, ["-U", unpair_penalty])
-    is_ont && append!(params, ["-x", "ont2d"])
-    unpair_rescue && push!(params, "-P")
-    fileparams = isnothing(in_file2) ? [genome_file, in_file1] : [genome_file, in_file1, in_file2]
+    !isnothing(preset) && !(preset in ("map-ont", "asm5", "asm10", "asm20", "sr")) && 
+        throw(AssertionError("Allowed preset values are: map-ont, asm5, asm10, asm20"))
+
+    params = isnothing(preset) ?
+        ["-A", match, "-B", mismatch, "-O", "$gap_open1,$gap_open2", "-E", "$gap_extend1,$gap_extend2", "-S", min_score, "-k", minimizer_len] :
+        ["-x", preset]
+    append!(params, ["-t", threads])
+    all_secondary && push!(params, "-P")
+    fileparams = [genome_file, in_file]
+
     stats_file = out_file * ".log"
     run(pipeline(
-        `$bwa_bin mem -v 1 -t 6 $params $fileparams`,
+        `$minimap_bin -a $params $fileparams`,
         stdout = pipeline(
             `$sam_bin view -u`,
             stdout = pipeline(
@@ -68,6 +71,32 @@ function align_minimap(in_file::String, out_file::String, genome_file::String;
         `$sam_bin index $out_file`,
         `$sam_bin stats $out_file`,
         stats_file))
+end
+
+"""
+    Helper dispatch of align_minimap. Runs align_minimap on `read_files::SingleTypeFiles` against `genome::Genome`. 
+    This enables easy handling of whole folders containing sequence files and the manipulation of a genome using Genome.
+"""
+function align_minimap(sequence_files::SingleTypeFiles, genome::Genome; 
+    preset=nothing, min_score=40, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1,
+    minimizer_len=15, threads=6, all_secondary=false, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false) 
+    sequence_files.type in (".fastq.gz", ".fastq", ".fasta.gz", ".fasta", ".fa", ".fna") || throw(AssertionError("Unknown file type."))
+    tmp_genome = tempname()
+    write(tmp_genome, genome)
+    outfiles = Vector{String}()
+    for file in sequence_files
+        out_file = isa(sequence_files, SingleTypeFiles) ? 
+            file[1:end-length(sequence_files.type)] * ".bam" : 
+            first(file)[1:end-length(sequence_files.type)-length(sequence_files.suffix1)] * ".bam"
+        push!(outfiles, out_file)
+        (isfile(out_file) && !overwrite_existing) && continue
+        align_minimap(file, out_file, tmp_genome;
+            preset=preset, min_score=min_score, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2, 
+            gap_extend1=gap_extend1, gap_extend2=gap_extend2, minimizer_len=minimizer_len, threads=threads, all_secondary=all_secondary, 
+            minimap_bin=minimap_bin, sam_bin=sam_bin)
+    end
+    rm(tmp_genome)
+    return SingleTypeFiles(outfiles)
 end
 
 """
@@ -319,25 +348,13 @@ function readpositions(record::BAM.Record)
     return seqstart, seqstop, relrefstop, seqlen
 end
 
-function ispaired(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x001) != 0
-end
-
-function isread2(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x080) != 0
-end
-
-function ispositivestrand(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x010) == 0
-end
-
-function mateispositivestrand(record::BAM.Record)::Bool
-    BAM.flag(record) & UInt(0x020) == 0
-end
-
-function paironsamestrand(record::BAM.Record, invert::Symbol)::Bool
+isprimary(record::BAM.Record)::Bool = BAM.flag(record) & 0x900 == 0
+ispaired(record::BAM.Record)::Bool = BAM.flag(record) & 0x001 != 0
+isread2(record::BAM.Record)::Bool =  BAM.flag(record) & 0x080 != 0
+ispositivestrand(record::BAM.Record)::Bool = BAM.flag(record) & 0x010 == 0
+mateispositivestrand(record::BAM.Record)::Bool = BAM.flag(record) & 0x020 == 0
+paironsamestrand(record::BAM.Record, invert::Symbol)::Bool =
     (ispositivestrand(record) != (invert in (:both, :read1))) == (mateispositivestrand(record) != (invert in (:both, :read2)))
-end
 
 @inline function translateddata(data::SubArray{UInt8,1})
     for i in 1:length(data)
@@ -403,7 +420,7 @@ struct Alignments{T<:Union{String, UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
-function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_complement=false, hash_id=true)
+function Alignments(bam_file::String; include_secondary_alignments=false, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     ns = Vector{hash_id ? UInt : String}(undef, 10000)
@@ -419,7 +436,7 @@ function Alignments(bam_file::String; only_unique_alignments=true, is_reverse_co
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
-        hasxatag(record) && only_unique_alignments && continue
+        (!isprimary(record) || hasxatag(record)) && !include_secondary_alignments && continue
         current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
         index += 1
         if index > length(ns)
@@ -471,7 +488,7 @@ function Base.filter!(seqs::Sequences{T}, alns::Alignments{T}) where {T<:Union{S
     filter!(seqs, Set(alns.tempnames))
 end
 
-struct AlignedPart
+struct AlignedPart{T} where T<:Union{UInt, String}
     ref::Interval{AlignmentAnnotation}
     seq::UnitRange{Int}
     nms::UInt32
@@ -587,12 +604,12 @@ Availble only after using annotate! on Alignments.
 overlap(aln::AlignedPart) = overlap(annotation(aln))
 
 """
-    missmatchcount(aln::AlignedPart)::UInt8
+    editdistance(aln::AlignedPart)::UInt8
 
 Returns the number of missmatches between the aligned sequence and the reference.
 Availble only after using annotate! on Alignments.
 """
-missmatchcount(aln::AlignedPart) = aln.nms
+editdistance(aln::AlignedPart) = aln.nms
 
 """
     refinterval(aln::AlignedPart)::Interval{AlignmentAnnotation}
@@ -960,7 +977,12 @@ function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_
         end
     end
 end
-
+for aln in alns
+    compare_tempname = readid(aln)
+    for part in aln
+        refseq = reference_genome[part]
+        compseq = compare_genome[compare_tempname][readrange(part)]
+        ispositivestrand(part) || reverse_complement!(compseq)
 function annotate!(features::Features, feature_alignments::Alignments; key_gen=typenamekey)
     for feature in features
         key = key_gen(feature)
@@ -974,5 +996,35 @@ function annotate!(features::Features, feature_alignments::Alignments; key_gen=t
     end
 end
 
-function Coverage(alignments::Alignments)
+Base.getindex(genome::Genome, ap::AlignedPart) = refsequence(ap, genome)
+Base.getindex(sequence::LongDNASeq, ap::AlignedPart) = sequence[readrange(ap)]
+
+struct GenomeComparison
+    gref::Genome
+    gcomp::Genome
+    alns::Vector{PairwiseAlignment}
+    refranges::Vector{UnitRange{Int}}
+    compranges::Vector{UnitRange{Int}}
+    isreversed::Vector{Bool}
+end
+
+function GenomeComparison(refgenome_file::String, compgenome_file::String, bam_file::String)
+    pairwise_alignments = PairwiseAlignment[]
+    refranges = UnitRange[]
+    compranges = UnitRange[]
+    refgenome = Genome(refgenome_file)
+    compgenome = Genome(compgenome_file)
+    record = BAM.Record()
+    reader = BAM.Reader(open(bam_file))
+    while !eof(reader)
+        read!(reader, record)
+        rrange = leftposition(record):rightpostion(record)
+        seqstart, seqstop, relrefstop, seqlen = readpositions(record)
+        crange = seqstart:seqstop
+        refseq = refgenome[BAM.seqname(record)][rrange]
+        compseq = compgenome[BAM.tempname(record)][crange]
+        BAM.ispositivestrand(record) || reversecomplement!(compseq)
+        aln = alignment(record)
+        
+    end
 end

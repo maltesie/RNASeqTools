@@ -86,7 +86,7 @@ function read_genomic_fasta(fasta_file::String)
     return genome
 end
 
-function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; name=nothing, chars_per_row=80)
+function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; name=nothing, chars_per_row=60)
     open(fasta_file, "w") do file
         for (i, (chr, seq)) in enumerate(genome)
             s = String(seq)

@@ -96,7 +96,7 @@ end
 refvalues(feature::Interval{BaseAnnotation}) = feature.metadata.ref
 refpercentage(feature::Interval{BaseAnnotation}) = refvalues(feature) ./ totalvalues(feature)
 
-function compute_coverage(bam_file::String; norm=1000000, only_unique_alignments=true, is_reverse_complement=false, max_temp_length=500,
+function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignmnets=false, is_reverse_complement=false, max_temp_length=500,
                                 overwrite_existing=false, suffix_forward="_forward", suffix_reverse="_reverse")
 
     filename_f = bam_file[1:end-4] * suffix_forward * ".bw"
@@ -109,7 +109,7 @@ function compute_coverage(bam_file::String; norm=1000000, only_unique_alignments
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     count = 0
-    for alignment in Alignments(bam_file; only_unique_alignments = only_unique_alignments, is_reverse_complement=is_reverse_complement)
+    for alignment in Alignments(bam_file; include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
         if ischimeric(alignment; check_annotation = false, min_distance = max_temp_length)
             for part in alignment
                 ref = refname(part)

@@ -129,6 +129,7 @@ FastqgzFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fastq.g
 FastaFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fasta"; prefix=prefix)
 FastagzFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fasta.gz"; prefix=prefix)
 GenomeFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fna"; prefix=prefix)
+FaFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".fa"; prefix=prefix)
 BamFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".bam"; prefix=prefix)
 GffFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".gff"; prefix=prefix)
 GraphFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".jld2"; prefix=prefix)
