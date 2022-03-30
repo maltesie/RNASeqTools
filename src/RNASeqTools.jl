@@ -8,9 +8,9 @@ using Measures, Statistics, HypothesisTests, MultipleTesting, StatsBase, Multiva
 using LightGraphs, ElasticArrays
 using Dash, IterTools, RCall
 
-export align_mem, local_alignment
+export align_mem, local_alignment, align_minimap, align_kraken2
 export trim_fastp, split_libs, download_sra
-export Genome, Sequences, PairedSequences, Alignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage, Interactions, Annotation, AlignmentAnnotation, BaseAnnotation, BaseCoverage, Counts
+export Genome, Sequences, PairedSequences, Alignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage, Interactions, Annotation, AlignmentAnnotation, BaseAnnotation, BaseCoverage, Counts, GenomeComparison
 export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles, GraphFiles
 export PairedFastaFiles, PairedFastagzFiles, PaireFastqFiles, PairedFastqgzFiles
 export cut!, rev_comp!, rev_comp, approxoccursin, nucleotidecount, similarcount, approxcount, hassimilar, annotate!, featureseqs, conservedfeatures, asdataframe, transform, ispositivestrand, refpercentage, totalvalues, refvalues
