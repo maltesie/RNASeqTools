@@ -977,12 +977,7 @@ function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_
         end
     end
 end
-for aln in alns
-    compare_tempname = readid(aln)
-    for part in aln
-        refseq = reference_genome[part]
-        compseq = compare_genome[compare_tempname][readrange(part)]
-        ispositivestrand(part) || reverse_complement!(compseq)
+
 function annotate!(features::Features, feature_alignments::Alignments; key_gen=typenamekey)
     for feature in features
         key = key_gen(feature)
@@ -1000,8 +995,6 @@ Base.getindex(genome::Genome, ap::AlignedPart) = refsequence(ap, genome)
 Base.getindex(sequence::LongDNASeq, ap::AlignedPart) = sequence[readrange(ap)]
 
 struct GenomeComparison
-    gref::Genome
-    gcomp::Genome
     alns::Vector{PairwiseAlignment}
     fromto::Vector{Tuple{Interval,Interval}}
 end
@@ -1026,4 +1019,29 @@ function GenomeComparison(refgenome_file::String, compgenome_file::String, bam_f
         push!(fromto, (Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightpostion(record), BAM.strand(record)), 
                         Interval(BAM.tempname(record), seqstart, seqstop, STRAND_NA)))
     end
+    return GenomeComparison(pairwise_alignments, fromto)
 end
+
+Base.length(genomecomp::GenomeComparison) = length(genomecomp.alns)
+Base.iterate(genomecomp::GenomeComparison) = ((genomecomp.alns[1], genomecomp.fromto[1]...), 2)
+Base.iterate(genomecomp::GenomeComparison, state::Int) = state > length(genomecomp) ? nothing : 
+                                                            ((genomecomp.alns[state], genomecomp.fromto[state]...), state+1)
+
+function summarize(genomecomp::GenomeComparison)
+    s = ""
+    for (i, (pwa, from, to)) in enumerate(genomecomp)
+        lref, rref = leftposition(from), rightposition(from)
+        lcomp, rcomp = leftposition(to), rightposition(to)
+        refn, compn = refname(from), refname(to)
+        matches = count_matches(pwa)
+        snp = count_mismatches(pwa)
+        inserts = count_inserts(pwa)
+        dels = count_deletions(pwa)
+        s *= "Part $i:\n"
+        s *= "reference:\t$refn [$lref, $rref]\ncompare:\t$compn [$lcomp, $rcomp]\n"
+        s *= "matches:\t$matches\nsnps:\t\t$snp\ninserts:\t$inserts\ndeletions:\t$dels\n"
+    end
+    return s
+end
+
+Base.show(genomecomp::GenomeComparison) = println(summarize(genomecomp))
