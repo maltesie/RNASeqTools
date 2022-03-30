@@ -1003,28 +1003,27 @@ struct GenomeComparison
     gref::Genome
     gcomp::Genome
     alns::Vector{PairwiseAlignment}
-    refranges::Vector{UnitRange{Int}}
-    compranges::Vector{UnitRange{Int}}
-    isreversed::Vector{Bool}
+    fromto::Vector{Tuple{Interval,Interval}}
 end
 
 function GenomeComparison(refgenome_file::String, compgenome_file::String, bam_file::String)
     pairwise_alignments = PairwiseAlignment[]
-    refranges = UnitRange[]
-    compranges = UnitRange[]
+    fromto = Tuple{Interval,Interval}[]
     refgenome = Genome(refgenome_file)
     compgenome = Genome(compgenome_file)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     while !eof(reader)
         read!(reader, record)
-        rrange = leftposition(record):rightpostion(record)
-        seqstart, seqstop, relrefstop, seqlen = readpositions(record)
-        crange = seqstart:seqstop
-        refseq = refgenome[BAM.seqname(record)][rrange]
-        compseq = compgenome[BAM.tempname(record)][crange]
+        seqstart, seqstop, _, _ = readpositions(record)
+        refseq = refgenome[BAM.seqname(record)][BAM.leftposition(record):BAM.rightpostion(record)]
+        compseq = compgenome[BAM.tempname(record)][seqstart:seqstop]
         BAM.ispositivestrand(record) || reversecomplement!(compseq)
         aln = alignment(record)
-        
+        alnseq = AlignedSequence(refseq, aln)
+        pwa = PairwiseAlignment(alnseq, compseq)
+        push!(pairwise_alignments, pwa)
+        push!(fromto, (Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightpostion(record), BAM.strand(record)), 
+                        Interval(BAM.tempname(record), seqstart, seqstop, STRAND_NA)))
     end
 end
