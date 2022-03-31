@@ -50,14 +50,14 @@ function align_minimap(in_file::String, out_file::String, genome_file::String;
     preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1,
     minimizer_len=15, threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools")
 
-    !isnothing(preset) && !(preset in ("map-ont", "asm5", "asm10", "asm20", "sr")) && 
+    !isnothing(preset) && !(preset in ("map-ont", "asm5", "asm10", "asm20", "sr")) &&
         throw(AssertionError("Allowed preset values are: map-ont, asm5, asm10, asm20"))
 
     params = isnothing(preset) ?
         Any["-a", "-A", match, "-B", mismatch, "-O", "$gap_open1,$gap_open2", "-E", "$gap_extend1,$gap_extend2", "-k", minimizer_len] :
         Any["-ax", preset]
-        
-    append!(params, ["-t", threads])
+
+    append!(params, ["-t", threads, "--eqx"])
     all_secondary && push!(params, "-P")
     fileparams = [genome_file, in_file]
 
@@ -68,8 +68,8 @@ function align_minimap(in_file::String, out_file::String, genome_file::String;
             `$sam_bin view -u`,
             stdout = pipeline(
                 `$sam_bin sort -o $out_file`))))
-    skip_stats ? 
-    run(`$sam_bin index $out_file`) : 
+    skip_stats ?
+    run(`$sam_bin index $out_file`) :
     run(pipeline(
         `$sam_bin index $out_file`,
         `$sam_bin stats $out_file`,
@@ -77,32 +77,32 @@ function align_minimap(in_file::String, out_file::String, genome_file::String;
 end
 align_minimap(in_file::String, genome_file::String;
     preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1,
-    minimizer_len=15, threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools") = 
+    minimizer_len=15, threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools") =
     align_minimap(in_file, joinpath(in_file[1:findlast('.', in_file)] * "bam"), genome_file;
-    preset=preset, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2, 
-    gap_extend1=gap_extend1, gap_extend2=gap_extend2, minimizer_len=minimizer_len, threads=threads, all_secondary=all_secondary, 
+    preset=preset, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2,
+    gap_extend1=gap_extend1, gap_extend2=gap_extend2, minimizer_len=minimizer_len, threads=threads, all_secondary=all_secondary,
     skip_stats=skip_stats, minimap_bin=minimap_bin, sam_bin=sam_bin)
 
 """
-    Helper dispatch of align_minimap. Runs align_minimap on `read_files::SingleTypeFiles` against `genome::Genome`. 
+    Helper dispatch of align_minimap. Runs align_minimap on `read_files::SingleTypeFiles` against `genome::Genome`.
     This enables easy handling of whole folders containing sequence files and the manipulation of a genome using Genome.
 """
-function align_minimap(sequence_files::SingleTypeFiles, genome::Genome; 
+function align_minimap(sequence_files::SingleTypeFiles, genome::Genome;
     preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1,
-    minimizer_len=15, threads=6, all_secondary=false, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false) 
+    minimizer_len=15, threads=6, all_secondary=false, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false)
     sequence_files.type in (".fastq.gz", ".fastq", ".fasta.gz", ".fasta", ".fa", ".fna") || throw(AssertionError("Unknown file type."))
     tmp_genome = tempname()
     write(tmp_genome, genome)
     outfiles = Vector{String}()
     for file in sequence_files
-        out_file = isa(sequence_files, SingleTypeFiles) ? 
-            file[1:end-length(sequence_files.type)] * ".bam" : 
+        out_file = isa(sequence_files, SingleTypeFiles) ?
+            file[1:end-length(sequence_files.type)] * ".bam" :
             first(file)[1:end-length(sequence_files.type)-length(sequence_files.suffix1)] * ".bam"
         push!(outfiles, out_file)
         (isfile(out_file) && !overwrite_existing) && continue
         align_minimap(file, out_file, tmp_genome;
-            preset=preset, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2, 
-            gap_extend1=gap_extend1, gap_extend2=gap_extend2, minimizer_len=minimizer_len, threads=threads, all_secondary=all_secondary, 
+            preset=preset, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2,
+            gap_extend1=gap_extend1, gap_extend2=gap_extend2, minimizer_len=minimizer_len, threads=threads, all_secondary=all_secondary,
             minimap_bin=minimap_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
@@ -1019,14 +1019,15 @@ function GenomeComparison(refgenome_file::String, compgenome_file::String, bam_f
     while !eof(reader)
         read!(reader, record)
         seqstart, seqstop, _, _ = readpositions(record)
-        refseq = refgenome[BAM.refname(record)][BAM.leftposition(record):BAM.rightposition(record)]
-        compseq = compgenome[BAM.seqname(record)][seqstart:seqstop]
+        refseq = refgenome[BAM.refname(record)]#[BAM.leftposition(record):BAM.rightposition(record)]
+        compseq = compgenome[BAM.seqname(record)]#[seqstart:seqstop]
         BAM.ispositivestrand(record) || reverse_complement!(compseq)
         aln = BAM.alignment(record)
+        #filter!(x -> x.op === OP_HARD_CLIP || x.op === OP_SOFT_CLIP, aln.anchors)
         alnseq = AlignedSequence(refseq, aln)
         pwa = PairwiseAlignment(alnseq, compseq)
         push!(pairwise_alignments, pwa)
-        push!(fromto, (Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), STRAND_NA), 
+        push!(fromto, (Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), STRAND_NA),
                         Interval(BAM.tempname(record), seqstart, seqstop, BAM.ispositivestrand(record) ? STRAND_POS : STRAND_NEG)))
     end
     return GenomeComparison(pairwise_alignments, fromto)
@@ -1034,7 +1035,7 @@ end
 
 Base.length(genomecomp::GenomeComparison) = length(genomecomp.alns)
 Base.iterate(genomecomp::GenomeComparison) = ((genomecomp.alns[1], genomecomp.fromto[1]...), 2)
-Base.iterate(genomecomp::GenomeComparison, state::Int) = state > length(genomecomp) ? nothing : 
+Base.iterate(genomecomp::GenomeComparison, state::Int) = state > length(genomecomp) ? nothing :
                                                             ((genomecomp.alns[state], genomecomp.fromto[state]...), state+1)
 
 cutfill(str::String, len::Int) = length(str) > len ? str[1:len] : str * repeat(" ", len - length(str))

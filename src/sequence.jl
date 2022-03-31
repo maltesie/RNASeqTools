@@ -144,23 +144,13 @@ Sequences(genomes::Vector{Genome}) =
     Sequences([genome.seq for genome in genomes], UInt.(i for i in 1:length(genomes)), [i:i for i in 1:length(genomes)])
 
 Base.getindex(seqs::Sequences, index::Int) = seqs.seq[seqs.ranges[index]]
+Base.getindex(seqs::Sequences, range::Union{StepRange{Int, Int}, UnitRange{Int}}) = Sequences(seqs.seq, seqs.seqnames[range], seqs.ranges[range])
 
-function Base.getindex(seqs::Sequences, index::UInt)
+function Base.getindex(seqs::Sequences, index::Union{UInt,String})
     r = searchsorted(seqs.seqnames, index)
     if length(r) === 2
         return (seqs.seq[seqs.ranges[first(r)]], seqs.seq[seqs.ranges[last(r)]])
     elseif length(r) === 1
-        return seqs.seq[seqs.ranges[first(r)]]
-    else
-        throw(KeyError)
-    end
-end
-
-function Base.getindex(seqs::Sequences, index::String)
-    i = findfirst(x->x===index, seqs.seqnames)
-    if seq.seqnames[i] === seq.seqnames[i+1]
-        return (seqs.seq[seqs.ranges[first(r)]], seqs.seq[seqs.ranges[last(r)]])
-    elseif i
         return seqs.seq[seqs.ranges[first(r)]]
     else
         throw(KeyError)
@@ -182,17 +172,17 @@ function Base.filter!(seqs::Sequences{T}, ids::Set{T}) where {T<:Union{String, U
     resize!(seqs.seqnames, n_seqs)
 end
 
-function Base.write(fasta_file::String, seqs::Sequences)
-    f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w")) : open(fasta_file, "w")
+function Base.write(fasta_file::String, seqs::Sequences; compression_level=3)
+    f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w"); level=compression_level) : open(fasta_file, "w")
     for (i, read) in enumerate(seqs)
         write(f, ">$(seqs.seqnames[i])\n$(String(read))\n")
     end
     close(f)
 end
 
-function Base.write(fasta_file1::String, fasta_file2::String, seqs::Sequences)
-    f1 = endswith(fasta_file1, ".gz") ? GzipCompressorStream(open(fasta_file1, "w")) : open(fasta_file1, "w")
-    f2 = endswith(fasta_file2, ".gz") ? GzipCompressorStream(open(fasta_file2, "w")) : open(fasta_file2, "w")
+function Base.write(fasta_file1::String, fasta_file2::String, seqs::Sequences; compression_level=3)
+    f1 = endswith(fasta_file1, ".gz") ? GzipCompressorStream(open(fasta_file1, "w"); level=compression_level) : open(fasta_file1, "w")
+    f2 = endswith(fasta_file2, ".gz") ? GzipCompressorStream(open(fasta_file2, "w"); level=compression_level) : open(fasta_file2, "w")
     for (i, (read1, read2)) in enumerate(eachpair(seqs))
         h = seqs.seqnames[2*i]
         write(f1, ">$h\n$(String(read1))\n")
