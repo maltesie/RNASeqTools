@@ -430,7 +430,7 @@ struct Alignments{T<:Union{String, UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
-function Alignments(bam_file::String; include_secondary_alignments=false, is_reverse_complement=false, hash_id=true)
+function Alignments(bam_file::String; include_secondary_alignments=false, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     ns = Vector{hash_id ? UInt : String}(undef, 10000)
@@ -446,7 +446,8 @@ function Alignments(bam_file::String; include_secondary_alignments=false, is_rev
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
-        (!isprimary(record) || hasxatag(record)) && !include_secondary_alignments && continue
+        !isprimary(record) && !include_secondary_alignments && continue
+        hasxatag(record) && !include_alternative_alignments && continue
         current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
         index += 1
         if index > length(ns)
@@ -616,8 +617,7 @@ overlap(aln::AlignedPart) = overlap(annotation(aln))
 """
     editdistance(aln::AlignedPart)::UInt8
 
-Returns the number of missmatches between the aligned sequence and the reference.
-Availble only after using annotate! on Alignments.
+Returns the number of edit operations between the aligned sequence and the reference (NM tag in SAM/BAM).
 """
 editdistance(aln::AlignedPart) = aln.nms
 

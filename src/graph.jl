@@ -47,7 +47,6 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
     end
     trans = Dict{UInt, Int}(interactions.nodes[i, :hash]=>i for i in 1:nrow(interactions.nodes))
     trans_edges = Dict{Tuple{Int,Int},Int}((interactions.edges[i, :src],interactions.edges[i, :dst])=>i for i in 1:nrow(interactions.edges))
-
     for alignment in alignments
         !isempty(filter_types) && typein(alignment, filter_types) && continue
         is_chimeric = ischimeric(alignment; min_distance=min_distance)
@@ -83,7 +82,7 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             left1, right1 = leftmostposition(part1, alignment), rightmostposition(part1, alignment)
             left2, right2 = leftmostposition(part2, alignment), rightmostposition(part2, alignment)
             statindex1, statindex2 = rightmostrelposition(part1, alignment) + 0x01, leftmostrelposition(part2, alignment) + 0x67
-            nms1, nms2 = missmatchcount(part1), missmatchcount(part2)
+            nms1, nms2 = editdistance(part1), editdistance(part2)
             if iindex > nrow(interactions.edges)
                 push!(interactions.edges, (a, b, 0, 0, left1, right1, left2, right2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                                             (nms1>1 ? 1.0 : 0.0), (nms2>1 ? 1.0 : 0.0), (false for i in 1:length(interactions.replicate_ids))...))

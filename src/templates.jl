@@ -131,7 +131,7 @@ end
 
 function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String; conditions::Dict{String, UnitRange{Int}}=Dict("chimeras"=>1:length(bams)),
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", merge_annotation_types=true,
-                            is_reverse_complement=true, include_secondary_alignments=false, model=:fisher, min_reads=5, max_fdr=0.05,
+                            is_reverse_complement=true, include_secondary_alignments=true, include_alternative_alignments=false, model=:fisher, min_reads=5, max_fdr=0.05,
                             overwrite_existing=false)
 
     isdir(joinpath(results_path, "interactions")) || mkpath(joinpath(results_path, "interactions"))
@@ -151,7 +151,9 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
             replicate_id = Symbol("$(condition)_$i")
             push!(replicate_ids, replicate_id)
             println("Reading $bam")
-            alignments = Alignments(bam; include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
+            alignments = Alignments(bam; include_secondary_alignments=include_secondary_alignments,
+                                    include_alternative_alignments=include_alternative_alignments,
+                                    is_reverse_complement=is_reverse_complement)
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type)
             println("Building graph for replicate $replicate_id...")
