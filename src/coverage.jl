@@ -31,50 +31,39 @@ function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=fa
         read!(reader, record)
         BAM.ismapped(record) || continue
         hasxatag(record) && continue
-        #println("hey")
         reverse = (isread2(record) != is_reverse_complement)
         ref_name::String = BAM.refname(record)
-        starting_pos = first(genome.chroms[ref_name]) - 1
+        chromosome_offset = first(genome.chroms[ref_name]) - 1
         seq = BAM.sequence(record)
         reverse && reverse_complement!(seq)
         ispositive = BAM.ispositivestrand(record) != reverse
         acount = ispositive ? fcount : rcount
         offset, nops = BAM.cigar_position(record)
-        #println(offset, " ", nops)
-        current_ref::Int = ispositive ? BAM.leftposition(record) : BAM.rightposition(record)
-        current_seq::Int = ispositive ? 1 : length(seq)
+        current_ref::Int = BAM.leftposition(record)
+        current_seq::Int = 1
         for i in offset:4:offset + (nops - 1) * 4
             x = unsafe_load(Ptr{UInt32}(pointer(record.data, i)))
             op = BioAlignments.Operation(x & 0x0F)
-            n = x >> 4 # TODO
-            (starting_pos + current_ref + (ispositive ? n : 0)) > length(genome.seq) && continue
-            r::StepRange{Int} = ispositive ? (0:1:n-1) : (0:-1:-n+1)
-            #i == offset && println("first round: $starting_pos, $current_ref, $ispositive, $op")
-            if BioAlignments.isinsertop(op)
-                ispositive ? (current_seq += n) : (current_seq -= n)
-                #i == offset && println("isinsertop: $starting_pos, $current_ref, $ispositive, $op, $(sum(count))")
+            n = x >> 4
+            r::UnitRange{Int} = (chromosome_offset + current_ref):(chromosome_offset + current_ref + n-1)
+            if op === OP_INSERT
+                current_seq += n
             elseif BioAlignments.isdeleteop(op)
-                for ii in r
-                    ref_pos = starting_pos + current_ref + ii
+                for ref_pos in r
                     acount[5, ref_pos] += 1
                 end
-                #i == offset && println("isdeleteop: $starting_pos, $current_ref, $ispositive, $op, $(sum(count))")
-                ispositive ? (current_ref += n) : (current_ref -= n)
+                current_ref += n
             elseif BioAlignments.ismatchop(op)
-                println(r)
-                for ii in r
-                    ref_pos = starting_pos + current_ref + ii
-                    seq_pos = current_seq + ii
-                    base = seq[seq_pos]
+                for (ii, ref_pos) in enumerate(r)
+                    base = seq[current_seq + ii - 1]
                     base === DNA_A ? acount[1,ref_pos]+=1 :
                     base === DNA_T ? acount[2,ref_pos]+=1 :
                     base === DNA_C ? acount[3,ref_pos]+=1 :
-                    base === DNA_G ? account[4,ref_pos]+=1 :
-                    throw(AssertionError("base has to be A,T,C or G"))
+                    base === DNA_G ? acount[4,ref_pos]+=1 :
+                    throw(AssertionError("Base has to be A,T,C or G"))
                 end
-                ispositive ? (current_ref += n) : (current_ref -= n)
-                ispositive ? (current_seq += n) : (current_seq -= n)
-                #i == offset && println("ismatchop: $starting_pos, $current_ref, $ispositive, $op, $(sum(count))")
+                current_ref += n
+                current_seq += n
             end
         end
     end
