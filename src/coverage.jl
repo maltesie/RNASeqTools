@@ -15,7 +15,7 @@ function bam_chromosome_names(reader::BAM.Reader)
 end
 
 struct BaseCoverage <: AnnotationContainer
-    ref_seq::LongDNASeq
+    refseq::LongDNASeq
     chroms::Dict{String, UnitRange}
     fcount::Dict{DNA, Vector{Int}}
     rcount::Dict{DNA, Vector{Int}}
@@ -31,13 +31,14 @@ function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=fa
         read!(reader, record)
         BAM.ismapped(record) || continue
         hasxatag(record) && continue
-        reverse = (isread2(record) != is_reverse_complement)
+        is_reverse = (isread2(record) != is_reverse_complement)
         ref_name::String = BAM.refname(record)
         chromosome_offset = first(genome.chroms[ref_name]) - 1
         seq = BAM.sequence(record)
-        reverse && reverse_complement!(seq)
-        ispositive = BAM.ispositivestrand(record) != reverse
-        acount = ispositive ? fcount : rcount
+        length(seq) > 0 || continue
+        is_positive = BAM.ispositivestrand(record) != is_reverse
+        is_reverse == is_positive && reverse_complement!(seq)
+        acount = is_positive ? fcount : rcount
         offset, nops = BAM.cigar_position(record)
         current_ref::Int = BAM.leftposition(record)
         current_seq::Int = 1
@@ -72,6 +73,20 @@ function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=fa
     return BaseCoverage(genome.seq, genome.chroms, fdict, rdict)
 end
 
+function mismatchstats(base_from::DNA, base_to::DNA, base_coverage::BaseCoverage)
+    forward_index = base_coverage.refseq .=== base_from
+    reverse_index = reverse_complement(base_coverage.refseq) .=== base_from
+    stats = zeros(sum(forward_index) + sum(reverse_index))
+    c = 1
+    for (count_dict, index) in zip((base_coverage.fcount, base_coverage.rcount), (forward_index, reverse_index))
+        total = sum(values(count_dict))
+        count = count_dict[base_to]
+        stats[c:c+sum(index)-1] .= count[index] ./ total[index]
+        c += sum(index)
+    end
+    return filter!(x->!isnan(x), stats)
+end
+
 struct BaseAnnotation <: AnnotationStyle
     type::String
     name::String
@@ -90,7 +105,7 @@ end
 refvalues(feature::Interval{BaseAnnotation}) = feature.metadata.ref
 refpercentage(feature::Interval{BaseAnnotation}) = refvalues(feature) ./ totalvalues(feature)
 
-function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignmnets=false, is_reverse_complement=false, max_temp_length=500,
+function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignments=false, is_reverse_complement=false, max_temp_length=500,
                                 overwrite_existing=false, suffix_forward="_forward", suffix_reverse="_reverse")
 
     filename_f = bam_file[1:end-4] * suffix_forward * ".bw"

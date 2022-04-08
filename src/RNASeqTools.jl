@@ -18,7 +18,7 @@ export hasannotation, ischimeric, istriplet, refinterval, readrange, refrange, a
 export values, addutrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, covratio
 export similarity, tsss, terms, hasannotationkey, readid, summarize, missmatchcount, eachpair, isfirstread, testsignificance!, addrelativepositions!
 export dashboard, lengthhist, similarityhist, nucleotidedist, expressionpca, similarity, diffexptable, tss_annotation
-export checkinteractions, uniqueinteractions
+export checkinteractions, uniqueinteractions, mismatchstats
 export feature_ratio, feature_count, de_genes, prepare_data, chimeric_alignments, remove_features, unmapped_reads, transcriptional_startsites, full_annotation, prepare_data, deseq2_R, direct_rna_pipeline
 export ANNOTATION_VCH, GENOME_VCH
 
@@ -33,7 +33,7 @@ include("coverage.jl")
 include("annotation.jl")
 include("counts.jl")
 include("alignment.jl")
-include("graph.jl")
+include("chimeric.jl")
 include("visualization.jl")
 include("templates.jl")
 
