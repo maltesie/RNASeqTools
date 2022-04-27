@@ -14,16 +14,18 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-struct BaseCoverage <: AnnotationContainer
-    refseq::LongDNASeq
-    chroms::Dict{String, UnitRange}
-    fcount::Dict{DNA, Vector{Int}}
-    rcount::Dict{DNA, Vector{Int}}
+struct BaseCoverage
+    genome::Genome
+    alphabet::Tuple{Alphabet}
+    fcount::Dict{String, Matrix{Int}}
+    rcount::Dict{String, Matrix{Int}}
 end
 
-function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=false)
-    fcount = zeros(Int, 5, length(genome.seq))
-    rcount = zeros(Int, 5, length(genome.seq))
+function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=false, only_positive_strand=false, base_alphabet=(DNA_A, DNA_T, DNA_G, DNA_C))
+    DNA_Gap in base_alphabet || (base_alphabet = (base_alphabet..., DNA_Gap))
+    base_trans = Dict(base=>i for (i,base) in enumerate(base_alphabet))
+    fcount = Dict(chr=>zeros(Int, length(base_alphabet)+1, length(genome.chroms[chr])) for chr in keys(genome.chroms))
+    rcount = Dict(chr=>zeros(Int, length(base_alphabet)+1, length(genome.chroms[chr])) for chr in keys(genome.chroms))
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     seq = LongDNASeq(0)
@@ -33,58 +35,77 @@ function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=fa
         hasxatag(record) && continue
         is_reverse = (isread2(record) != is_reverse_complement)
         ref_name::String = BAM.refname(record)
-        chromosome_offset = first(genome.chroms[ref_name]) - 1
         seq = BAM.sequence(record)
         length(seq) > 0 || continue
-        is_positive = BAM.ispositivestrand(record) != is_reverse
-        is_reverse == is_positive && reverse_complement!(seq)
+        is_positive = (BAM.ispositivestrand(record) != is_reverse) || only_positive_strand
+        is_reverse && reverse_complement!(seq)
+        is_positive || complement!(seq)
         acount = is_positive ? fcount : rcount
         offset, nops = BAM.cigar_position(record)
         current_ref::Int = BAM.leftposition(record)
-        current_seq::Int = 1
-        for i in offset:4:offset + (nops - 1) * 4
-            x = unsafe_load(Ptr{UInt32}(pointer(record.data, i)))
+        current_seq::Int = 0
+        for data_index in offset:4:offset + (nops - 1) * 4
+            x = unsafe_load(Ptr{UInt32}(pointer(record.data, data_index)))
             op = BioAlignments.Operation(x & 0x0F)
             n = x >> 4
-            r::UnitRange{Int} = (chromosome_offset + current_ref):(chromosome_offset + current_ref + n-1)
-            if op === OP_INSERT
+            r::UnitRange{Int} = current_ref:current_ref+n-1
+            if op === OP_INSERT || op === OP_SOFT_CLIP
                 current_seq += n
             elseif BioAlignments.isdeleteop(op)
                 for ref_pos in r
-                    acount[5, ref_pos] += 1
+                    acount[ref_name][5, ref_pos] += 1
                 end
                 current_ref += n
             elseif BioAlignments.ismatchop(op)
                 for (ii, ref_pos) in enumerate(r)
-                    base = seq[current_seq + ii - 1]
-                    base === DNA_A ? acount[1,ref_pos]+=1 :
-                    base === DNA_T ? acount[2,ref_pos]+=1 :
-                    base === DNA_C ? acount[3,ref_pos]+=1 :
-                    base === DNA_G ? acount[4,ref_pos]+=1 :
-                    throw(AssertionError("Base has to be A,T,C or G"))
+                    base = seq[current_seq + ii]
+                    acount[ref_name][1, ref_pos] += 1
                 end
                 current_ref += n
                 current_seq += n
             end
         end
     end
-    fdict = Dict{DNA, Vector{Int}}(s=>fcount[i,:] for (i,s) in enumerate((DNA_A, DNA_T, DNA_C, DNA_G, DNA_Gap)))
-    rdict = Dict{DNA, Vector{Int}}(s=>rcount[i,:] for (i,s) in enumerate((DNA_A, DNA_T, DNA_C, DNA_G, DNA_Gap)))
-    return BaseCoverage(genome.seq, genome.chroms, fdict, rdict)
+    return BaseCoverage(genome, fcount, rcount)
 end
 
-function mismatchstats(base_from::DNA, base_to::DNA, base_coverage::BaseCoverage)
-    forward_index = base_coverage.refseq .=== base_from
-    reverse_index = reverse_complement(base_coverage.refseq) .=== base_from
-    stats = zeros(sum(forward_index) + sum(reverse_index))
-    c = 1
-    for (count_dict, index) in zip((base_coverage.fcount, base_coverage.rcount), (forward_index, reverse_index))
-        total = sum(values(count_dict))
-        count = count_dict[base_to]
-        stats[c:c+sum(index)-1] .= count[index] ./ total[index]
-        c += sum(index)
+function mismatchfractions(base_from::DNA, base_to::DNA, base_coverage::BaseCoverage)
+    stats = Dict(chr=>Float64[] for chr in keys(base_coverage.genome.chroms))
+    for chr in keys(stats)
+        findex = base_coverage.genome[chr] .=== base_from
+        rindex = BioSequences.complement(base_coverage.genome[chr]) .=== base_from
+        s = zeros(sum(findex) + sum(rindex))
+        s[1:sum(findex)] .= base_coverage.fcount[chr][base_to][findex] ./ sum(values(base_coverage.fcount[chr]))[findex]
+        s[sum(findex)+1:end] .= base_coverage.rcount[chr][base_to][rindex] ./ sum(values(base_coverage.rcount[chr]))[rindex]
+        append!(stats[chr], filter!(x->!isnan(x), s))
     end
-    return filter!(x->!isnan(x), stats)
+    return stats
+end
+
+function mismatchpositions(base_from::DNA, base_to::DNA, base_coverage::BaseCoverage, ratio_cut::Float64)
+    pos = Interval{Annotation}[]
+    for chr in keys(base_coverage.genome.chroms)
+        findex = base_coverage.genome[chr] .=== base_from
+        rindex = BioSequences.complement(base_coverage.genome[chr]) .=== base_from
+        for p in findall(((base_coverage.fcount[chr][base_to] ./ sum(values(base_coverage.fcount[chr]))) .>= ratio_cut) .& findex)
+            mc = base_coverage.fcount[chr][base_to][p]
+            push!(pos, Interval(chr, p:p, STRAND_POS, Annotation("SNP", "$base_from->$base_to", Dict("mutation"=>"$base_from->$base_to", "count"=>"$mc"))))
+        end
+        for p in findall(((base_coverage.rcount[chr][base_to] ./ sum(values(base_coverage.rcount[chr]))) .>= ratio_cut) .& rindex)
+            mc = base_coverage.rcount[chr][base_to][p]
+            push!(pos, Interval(chr, p:p, STRAND_NEG, Annotation("SNP", "$base_from->$base_to", Dict("mutation"=>"$base_from->$base_to", "count"=>"$mc"))))
+        end
+    end
+    return pos
+end
+
+function mismatchpositions(base_coverage::BaseCoverage, ratio_cut::Float64; check_bases=(DNA_A, DNA_T, DNA_G, DNA_C))
+    pos = Interval{Annotation}[]
+    for base_from in check_bases, base_to in check_bases
+        base_from === base_to && continue
+        append!(pos, mismatchpositions(base_from, base_to, base_coverage, ratio_cut))
+    end
+    return pos
 end
 
 struct BaseAnnotation <: AnnotationStyle
@@ -98,12 +119,11 @@ struct BaseAnnotation <: AnnotationStyle
     gap::Vector{Int}
 end
 
-function totalvalues(feature::Interval{BaseAnnotation})
-    return [feature.metadata.a[i]+feature.metadata.t[i]+feature.metadata.g[i]+feature.metadata.c[i]+feature.metadata.del[i] for i in 1:length(feature)]
+function coverage(feature::Interval{BaseAnnotation})
+    return feature.metadata.a .+ feature.metadata.t .+ feature.metadata.g .+ feature.metadata.c .+ feature.metadata.gap
 end
 
-refvalues(feature::Interval{BaseAnnotation}) = feature.metadata.ref
-refpercentage(feature::Interval{BaseAnnotation}) = refvalues(feature) ./ totalvalues(feature)
+refcount(feature::Interval{BaseAnnotation}) = feature.metadata.ref
 
 function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignments=false, is_reverse_complement=false, max_temp_length=500,
                                 overwrite_existing=false, suffix_forward="_forward", suffix_reverse="_reverse")
@@ -150,7 +170,7 @@ function compute_coverage(bam_file::String; norm=1000000, include_secondary_alig
     close(writer_r)
 end
 
-function compute_coverage(files::SingleTypeFiles; norm=1000000, only_unique_alignments=true, overwrite_existing=false, is_reverse_complement=false)
+function compute_coverage(files::SingleTypeFiles; norm=1000000, include_secondary_alignments=true, overwrite_existing=false, is_reverse_complement=false)
     files.type == ".bam" || throw(AssertionError("Only .bam files accepted for alignments."))
     bw_files = Vector{Tuple{String, String}}()
     for file in files
@@ -158,7 +178,7 @@ function compute_coverage(files::SingleTypeFiles; norm=1000000, only_unique_alig
         filename_r = file[1:end-4] * "_reverse.bw"
         push!(bw_files, (filename_f, filename_r))
         (!overwrite_existing && isfile(filename_f) && isfile(filename_r)) && continue
-        compute_coverage(file; norm=norm, only_unique_alignments=only_unique_alignments, is_reverse_complement=is_reverse_complement)
+        compute_coverage(file; norm=norm, include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
     end
     return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
 end

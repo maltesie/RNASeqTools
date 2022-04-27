@@ -430,7 +430,7 @@ struct Alignments{T<:Union{String, UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
-function Alignments(bam_file::String; include_secondary_alignments=false, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
+function Alignments(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     ns = Vector{hash_id ? UInt : String}(undef, 10000)
@@ -879,8 +879,11 @@ function ischimeric(part1::AlignedPart, part2::AlignedPart; min_distance=1000, c
     return distance(refinterval(part1), refinterval(part2)) > min_distance
 end
 
-function ismulti(alnread::AlignedRead)
-    return (annotationcount(alnread) >= 3)
+function ismulti(alnread::AlignedRead; method=:distance)
+    return method === :annotation ? (annotationcount(alnread) >= 3) :
+        method === :distance ? (countchimeric(alnread; check_annotation=false) >= 3) :
+        method === :both ? (countchimeric(alnread; check_annotation=true) >= 3) :
+        throw(AssertionError("method must be :distance, :annotation or :both"))
 end
 
 function Base.empty!(alns::Alignments)

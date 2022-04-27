@@ -9,7 +9,7 @@ using LightGraphs, ElasticArrays
 using Dash, IterTools, RCall
 
 export align_mem, local_alignment, align_minimap, align_kraken2
-export trim_fastp, split_libs, download_sra
+export trim_fastp, split_libs, download_sra, split_reads
 export Genome, Sequences, PairedSequences, Alignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage, Interactions, Annotation, AlignmentAnnotation, BaseAnnotation, BaseCoverage, Counts, GenomeComparison
 export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles, GraphFiles
 export PairedFastaFiles, PairedFastagzFiles, PaireFastqFiles, PairedFastqgzFiles
@@ -18,7 +18,7 @@ export hasannotation, ischimeric, istriplet, refinterval, readrange, refrange, a
 export values, addutrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, covratio
 export similarity, tsss, terms, hasannotationkey, readid, summarize, missmatchcount, eachpair, isfirstread, testsignificance!, addrelativepositions!
 export dashboard, lengthhist, similarityhist, nucleotidedist, expressionpca, similarity, diffexptable, tss_annotation
-export checkinteractions, uniqueinteractions, mismatchstats
+export checkinteractions, uniqueinteractions, mismatchfractions, ismulti, mismatchpositions
 export feature_ratio, feature_count, de_genes, prepare_data, chimeric_alignments, remove_features, unmapped_reads, transcriptional_startsites, full_annotation, prepare_data, deseq2_R, direct_rna_pipeline
 export ANNOTATION_VCH, GENOME_VCH
 

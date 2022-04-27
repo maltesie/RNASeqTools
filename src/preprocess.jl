@@ -1,17 +1,21 @@
-function download_sra(input_file::String, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false)
+function download_sra(input_file::String; output_path=dirname(input_file), fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
     open(input_file) do f
         for accession_number in eachline(f)
-            run(`$prefetch_bin --output-directory $output_path $accession_number`)
             sra_file = joinpath(output_path, "$accession_number.sra")
+            fastqgz_file = sra_file[1:end-3] * "fastq.gz"
+            (isfile(sra_file) || isfile(fastqgz_file)) && !overwrite_existing && continue
+            isfile(sra_file) && rm(sra_file)
+            isfile(fastqgz_file) && rm(fastqgz_file)
+            run(`$prefetch_bin --output-directory $output_path $accession_number`)
             run(`$fastqdump_bin --gzip --outdir $output_path $sra_file`)
             keep_sra || rm(sra_file)
         end
     end
 end
-function download_sra(sra_ids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false)
+function download_sra(sra_ids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
     f = tempname()
     write(f, join(sra_ids, "\n"))
-    download_sra(f, output_path; fastqdump_bin=fastqdump_bin, prefetch_bin=prefetch_bin, keep_sra=keep_sra)
+    download_sra(f; output_path=output_path, fastqdump_bin=fastqdump_bin, prefetch_bin=prefetch_bin, keep_sra=keep_sra, overwrite_existing=overwrite_existing)
     rm(f)
 end
 
@@ -150,7 +154,7 @@ function trim_fastp(input_files::PairedSingleTypeFiles;
     return PairedSingleTypeFiles([(joinpath(dirname(file1),prefix*basename(file1)), joinpath(dirname(file2),prefix*basename(file2))) for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
 end
 
-function transform(file::String; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false, stop_at=-1)
+function split_reads(file::String, split_at::Int; overwrite_existing=false)
     @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
 
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
@@ -160,7 +164,45 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
     reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
     record = is_fastq ? FASTQ.Record() : FASTA.Record()
 
-    out_file = joinpath(dirname(file), "trafo_"*basename(file))
+    out_file_base = file[1:end-(is_zipped ? 9 : 6)]
+    out_file1 = out_file_base * "_1" * (is_fastq ? ".fastq" : ".fasta") * (is_zipped ? ".gz" : "")
+    out_file2 = out_file_base * "_2" * (is_fastq ? ".fastq" : ".fasta") * (is_zipped ? ".gz" : "")
+    (isfile(out_file1) && isfile(out_file2) && !overwrite_existing) && (return out_file1, out_file2)
+    out_f1 = is_zipped ? GzipCompressorStream(open(out_file1, "w"); level=2) : open(out_file1, "w")
+    out_f2 = is_zipped ? GzipCompressorStream(open(out_file2, "w"); level=2) : open(out_file2, "w")
+    writer1 = is_fastq ? FASTQ.Writer(out_f1) : FASTA.Writer(out_f1)
+    writer2 = is_fastq ? FASTQ.Writer(out_f2) : FASTA.Writer(out_f2)
+    out_record1 = is_fastq ? FASTQ.Record() : FASTA.Record()
+    out_record2 = is_fastq ? FASTQ.Record() : FASTA.Record()
+
+    while !eof(reader)
+        read!(reader, record)
+        out_seq = is_fastq ? FASTQ.sequence(record) : FASTA.sequence(record)
+        id = is_fastq ? FASTQ.identifier(record) : FASTA.identifier(record)
+        q = is_fastq ? FASTQ.quality(record) : nothing
+        out_record1 = is_fastq ? FASTQ.Record(id, out_seq[1:split_at], q[1:split_at]) : FASTA.Record(id, out_seq[1:split_at-1])
+        out_record2 = is_fastq ? FASTQ.Record(id, out_seq[split_at+1:end], q[split_at+1:end]) : FASTA.Record(id, out_seq[split_at:end])
+        write(writer1, out_record1)
+        write(writer2, out_record2)
+    end
+    sleep(0.5)
+    close(reader)
+    close(writer1)
+    close(writer2)
+    return out_file1, out_file2
+end
+
+function transform(file::String; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)
+    @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
+
+    is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
+    is_zipped = endswith(file, ".gz")
+
+    f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
+    reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
+    record = is_fastq ? FASTQ.Record() : FASTA.Record()
+
+    out_file = joinpath(dirname(file), "transformed_"*basename(file))
     (isfile(out_file) && !overwrite_existing) && (return out_file)
     out_f = is_zipped ? GzipCompressorStream(open(out_file, "w")) : open(out_file, "w")
     writer = is_fastq ? FASTQ.Writer(out_f) : FASTA.Writer(out_f)
@@ -168,19 +210,17 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
 
     in_seq = (to_dna || is_rna) ? LongRNASeq(0) : LongDNASeq(0)
     out_seq = (is_rna && !to_dna) ? LongRNASeq(0) : LongDNASeq(0)
-    c = 0
+
     while !eof(reader)
-        c += 1
         read!(reader, record)
-        in_seq = FASTX.sequence((to_dna || is_rna) ? LongRNASeq : LongDNASeq, record)
+        in_seq = is_fastq ? FASTQ.sequence((to_dna || is_rna) ? LongRNASeq : LongDNASeq, record) : FASTA.sequence((to_dna || is_rna) ? LongRNASeq : LongDNASeq, record)
         out_seq = to_dna ? LongDNASeq(in_seq) : in_seq
         reverse && reverse!(out_seq)
         complement && complement!(out_seq)
         out_record = is_fastq ? FASTQ.Record(FASTQ.identifier(record), out_seq, FASTQ.quality(record)) : FASTA.Record(FASTA.identifier(record), out_seq)
         write(writer, out_record)
-        (stop_at > 0) && (c > stop_at) && break
     end
-
+    sleep(0.5)
     close(reader)
     close(writer)
     return out_file
@@ -190,7 +230,7 @@ function transform(input_files::SingleTypeFiles; to_dna=false, reverse=false, co
     transformed_files = String[]
     for file in input_files
         startswith(file, "trafo_") && continue
-        push!(transformed_files, transform(file; to_dna=to_dna, reverse=reverse, complement=complement, overwrite_existing=overwrite_existing, is_rna=is_rna, stop_at=stop_at))
+        push!(transformed_files, transform(file; to_dna=to_dna, reverse=reverse, complement=complement, overwrite_existing=overwrite_existing, is_rna=is_rna))
     end
     return SingleTypeFiles(transformed_files, input_files.type)
 end
