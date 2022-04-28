@@ -41,7 +41,8 @@ function expressionpca(features::Features, samples::Vector{Coverage}, conditions
     averages = normalizedcount(features, samples)
     topcut = min(size(averages, 1), topcut)
     averages = averages[sortperm(vec(var(averages; dims=2)); rev=true)[1:topcut],:]
-    averages = log2.(averages .+ 0.00001)
+    averages = log2.(averages .+ 1)
+    averages = (averages .- mean(averages; dims=1)) ./ std(averages, dims=1)
     M = fit(PCA, averages)
     atrans = MultivariateStats.transform(M, averages)
     p = plot()

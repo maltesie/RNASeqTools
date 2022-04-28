@@ -16,16 +16,13 @@ end
 
 struct BaseCoverage
     genome::Genome
-    alphabet::Tuple{Alphabet}
-    fcount::Dict{String, Matrix{Int}}
-    rcount::Dict{String, Matrix{Int}}
+    fcount::Dict{String, Dict{DNA, Vector{Int}}}
+    rcount::Dict{String, Dict{DNA, Vector{Int}}}
 end
 
-function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=false, only_positive_strand=false, base_alphabet=(DNA_A, DNA_T, DNA_G, DNA_C))
-    DNA_Gap in base_alphabet || (base_alphabet = (base_alphabet..., DNA_Gap))
-    base_trans = Dict(base=>i for (i,base) in enumerate(base_alphabet))
-    fcount = Dict(chr=>zeros(Int, length(base_alphabet)+1, length(genome.chroms[chr])) for chr in keys(genome.chroms))
-    rcount = Dict(chr=>zeros(Int, length(base_alphabet)+1, length(genome.chroms[chr])) for chr in keys(genome.chroms))
+function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignments=true, is_reverse_complement=false, only_positive_strand=false)
+    fcount = Dict(chr=>zeros(Int, 6, length(genome.chroms[chr])) for chr in keys(genome.chroms))
+    rcount = Dict(chr=>zeros(Int, 6, length(genome.chroms[chr])) for chr in keys(genome.chroms))
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     seq = LongDNASeq(0)
@@ -33,6 +30,7 @@ function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=fa
         read!(reader, record)
         BAM.ismapped(record) || continue
         hasxatag(record) && continue
+        !isprimary(record) && !include_secondary_alignments && continue
         is_reverse = (isread2(record) != is_reverse_complement)
         ref_name::String = BAM.refname(record)
         seq = BAM.sequence(record)
@@ -40,7 +38,7 @@ function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=fa
         is_positive = (BAM.ispositivestrand(record) != is_reverse) || only_positive_strand
         is_reverse && reverse_complement!(seq)
         is_positive || complement!(seq)
-        acount = is_positive ? fcount : rcount
+        count = is_positive ? fcount : rcount
         offset, nops = BAM.cigar_position(record)
         current_ref::Int = BAM.leftposition(record)
         current_seq::Int = 0
@@ -53,20 +51,26 @@ function BaseCoverage(bam_file::String, genome::Genome; is_reverse_complement=fa
                 current_seq += n
             elseif BioAlignments.isdeleteop(op)
                 for ref_pos in r
-                    acount[ref_name][5, ref_pos] += 1
+                    count[ref_name][5, ref_pos] += 1
                 end
                 current_ref += n
             elseif BioAlignments.ismatchop(op)
                 for (ii, ref_pos) in enumerate(r)
                     base = seq[current_seq + ii]
-                    acount[ref_name][1, ref_pos] += 1
+                    base === DNA_A ? count[ref_name][1, ref_pos] += 1 :
+                    base === DNA_T ? count[ref_name][2, ref_pos] += 1 :
+                    base === DNA_G ? count[ref_name][3, ref_pos] += 1 :
+                    base === DNA_C ? count[ref_name][4, ref_pos] += 1 :
+                    count[ref_name][6, ref_pos] += 1
                 end
                 current_ref += n
                 current_seq += n
             end
         end
     end
-    return BaseCoverage(genome, fcount, rcount)
+    fdict = Dict(chr=>Dict(dna=>fcount[chr][i, :] for (i, dna) in enumerate((DNA_A, DNA_T, DNA_G, DNA_C, DNA_Gap, DNA_N))) for chr in keys(genome.chroms))
+    rdict = Dict(chr=>Dict(dna=>rcount[chr][i, :] for (i, dna) in enumerate((DNA_A, DNA_T, DNA_G, DNA_C, DNA_Gap, DNA_N))) for chr in keys(genome.chroms))
+    return BaseCoverage(genome, fdict, rdict)
 end
 
 function mismatchfractions(base_from::DNA, base_to::DNA, base_coverage::BaseCoverage)

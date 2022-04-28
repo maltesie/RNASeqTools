@@ -291,19 +291,19 @@ function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
         resize!(read, pos)
 
     elseif (from == :left) && (keep == :right)
-        reverse!(resize!(reverse!(read), length(read)-pos, true))
+        reverse!(resize!(reverse!(read), length(read)-pos))
 
     elseif (from == :right) && (keep == :left)
         resize!(read, length(read)-pos)
 
     elseif (from == :right) && (keep == :right)
-        reverse!(resize!(reverse!(read), pos, true))
+        reverse!(resize!(reverse!(read), pos))
     end
 end
 
 function cut!(read::LongDNASeq, int::Tuple{Int, Int})
     (0 <= first(int) < last(int) <= length(read)) || resize!(read, 0)
-    reverse!(resize!(reverse!(resize!(read, last(int), true)), length(read)-first(int)+1, true))
+    reverse!(resize!(reverse!(resize!(read, last(int))), length(read)-first(int)+1))
 end
 
 function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1)

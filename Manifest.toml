@@ -316,22 +316,6 @@ git-tree-sha1 = "fc7632ba6b4f1c085620870142114f428f51eff0"
 uuid = "03207cf0-e2b3-4b91-9ca8-690cf0fb507e"
 version = "0.1.0"
 
-[[deps.DashBio]]
-deps = ["Dash"]
-git-tree-sha1 = "8ddebf51b81482a2edf78acbeb4daec9593be6b1"
-repo-rev = "master"
-repo-url = "/home/abc/Workspace/Test/dashbio/DashBio.jl"
-uuid = "1b08a953-4be3-4667-9a23-39d4b6b31131"
-version = "0.7.0"
-
-[[deps.DashBioUtils]]
-deps = ["FASTX", "GZip", "Glob", "HTTP", "StatsBase", "StringEncodings"]
-git-tree-sha1 = "476f65a13852a95e9a35813289b23af67d9f158f"
-repo-rev = "master"
-repo-url = "/home/abc/Workspace/Test/dashbio/DashBioUtils.jl"
-uuid = "adab0d11-1453-4a42-9046-4ba7b121fa95"
-version = "0.1.0"
-
 [[deps.DashCoreComponents]]
 git-tree-sha1 = "f50f65803f79f4d131a1dad8843fcd51c7c71f7d"
 uuid = "1b08a953-4be3-4667-9a23-9da06441d987"
@@ -1344,12 +1328,6 @@ deps = ["DataStructures", "LinearAlgebra"]
 git-tree-sha1 = "78aadffb3efd2155af139781b8a8df1ef279ea39"
 uuid = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 version = "2.4.2"
-
-[[deps.RCall]]
-deps = ["CategoricalArrays", "Conda", "DataFrames", "DataStructures", "Dates", "Libdl", "Missings", "REPL", "Random", "Requires", "StatsModels", "WinReg"]
-git-tree-sha1 = "72fddd643785ec1f36581cbc3d288529b96e99a7"
-uuid = "6f49c342-dc21-5d91-9882-a32aef131414"
-version = "0.13.13"
 
 [[deps.REPL]]
 deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
