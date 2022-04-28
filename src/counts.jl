@@ -35,7 +35,7 @@ function normalize!(m::Matrix)
     return m
 end
 
-function diffexptable(counts::Counts, control_condition::String, experiment_condition::String; method=:ttest)
+function dgetable(counts::Counts, control_condition::String, experiment_condition::String; method=:ttest)
 
     if method === :ttest
         avg_control = mean(@view(counts[control_condition]), dims=2)
