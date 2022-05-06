@@ -20,7 +20,8 @@ struct BaseCoverage
     rcount::Dict{String, Dict{DNA, Vector{Int}}}
 end
 
-function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignments=true, is_reverse_complement=false, only_positive_strand=false)
+function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignments=true, is_reverse_complement=false,
+                                                        only_positive_strand=false, quality_cut = 0x01)
     fcount = Dict(chr=>zeros(Int, 6, length(genome.chroms[chr])) for chr in keys(genome.chroms))
     rcount = Dict(chr=>zeros(Int, 6, length(genome.chroms[chr])) for chr in keys(genome.chroms))
     record = BAM.Record()
@@ -34,6 +35,7 @@ function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignm
         is_reverse = (isread2(record) != is_reverse_complement)
         ref_name::String = BAM.refname(record)
         seq = BAM.sequence(record)
+        qual = BAM.quality(record)
         length(seq) > 0 || continue
         is_positive = (BAM.ispositivestrand(record) != is_reverse) || only_positive_strand
         is_reverse && reverse_complement!(seq)
@@ -56,12 +58,16 @@ function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignm
                 current_ref += n
             elseif BioAlignments.ismatchop(op)
                 for (ii, ref_pos) in enumerate(r)
-                    base = seq[current_seq + ii]
-                    base === DNA_A ? count[ref_name][1, ref_pos] += 1 :
-                    base === DNA_T ? count[ref_name][2, ref_pos] += 1 :
-                    base === DNA_G ? count[ref_name][3, ref_pos] += 1 :
-                    base === DNA_C ? count[ref_name][4, ref_pos] += 1 :
-                    count[ref_name][6, ref_pos] += 1
+                    if qual[current_seq + ii] >= quality_cut
+                        base = seq[current_seq + ii]
+                        base === DNA_A ? count[ref_name][1, ref_pos] += 1 :
+                        base === DNA_T ? count[ref_name][2, ref_pos] += 1 :
+                        base === DNA_G ? count[ref_name][3, ref_pos] += 1 :
+                        base === DNA_C ? count[ref_name][4, ref_pos] += 1 :
+                        count[ref_name][6, ref_pos] += 1
+                    else
+                        count[ref_name][6, ref_pos] += 1
+                    end
                 end
                 current_ref += n
                 current_seq += n

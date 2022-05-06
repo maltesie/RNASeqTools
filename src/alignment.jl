@@ -499,6 +499,18 @@ function Base.filter!(seqs::Sequences{T}, alns::Alignments{T}) where {T<:Union{S
     filter!(seqs, Set(alns.tempnames))
 end
 
+function Base.show(alns::Alignments; n=-1, only_chimeric=false, filter_name=nothing, filter_type=nothing)
+    c = 0
+    for aln in alns
+        c == n && break
+        isnothing(filter_name) || (hasannotationname(aln) || continue)
+        isnothing(filter_type) || (hasannotationtype(aln) || continue)
+        only_chimeric && !ischimeric(aln) && continue
+        show(aln)
+        c += 1
+    end
+end
+
 struct AlignedPart
     ref::Interval{AlignmentAnnotation}
     seq::UnitRange{Int}
@@ -813,7 +825,9 @@ function ispositivestrand(alnread::AlignedRead)
     return s === STRAND_POS
 end
 
-summarize(alnread::AlignedRead) = "Alignment with $(length(alnread)) part(s):\n   " * join([summarize(part) for part in alnread], "\n   ")
+summarize(alnread::AlignedRead) =   ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single" *
+                                    " Alignment with $(length(alnread)) part(s):\n   " *
+                                    join([summarize(part) for part in alnread], "\n   ")
 function Base.show(alnread::AlignedRead)
     println(summarize(alnread))
 end

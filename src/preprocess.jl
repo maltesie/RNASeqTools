@@ -19,10 +19,10 @@ function download_sra(sra_ids::Vector{String}, output_path::String; fastqdump_bi
     rm(f)
 end
 
-function split_libs(infile1::String, prefixfile1::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String)
+function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String;
+                        bc_len=8, check_range=1:bc_len)
 
     dplxr = Demultiplexer(collect(values(libname_to_barcode)), n_max_errors=1, distance=:hamming)
-    bc_len = [length(v) for v in values(libname_to_barcode)][1]
     output_files = isnothing(infile2) ?
     [joinpath(output_path, "$(name).fastq.gz") for name in keys(libname_to_barcode)] :
     [[joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")] for name in keys(libname_to_barcode)]
@@ -31,37 +31,35 @@ function split_libs(infile1::String, prefixfile1::Union{String,Nothing}, infile2
         (isfile(file) && return) :
         ((isfile(file[1]) || isfile(file[2])) && return)
     end
-    stats::Array{Int,1} = zeros(Int, length(libname_to_barcode))
+    nb_stats = length(libname_to_barcode)+1
+    stats::Vector{Int} = zeros(Int, nb_stats)
     record1::FASTQ.Record = FASTQ.Record()
     isnothing(infile2) || (record2::FASTQ.Record = FASTQ.Record())
-    isnothing(prefixfile1) || (recordp::FASTQ.Record = FASTQ.Record())
+    isnothing(prefixfile) || (recordp::FASTQ.Record = FASTQ.Record())
     endswith(infile1, ".gz") ? reader1 = FASTQ.Reader(GzipDecompressorStream(open(infile1, "r"))) : reader1 = FASTQ.Reader(open(infile1, "r"))
     isnothing(infile2) || (endswith(infile2, ".gz") ?
                             reader2 = FASTQ.Reader(GzipDecompressorStream(open(infile2, "r"))) :
                             reader2 = FASTQ.Reader(open(infile2, "r")))
-    isnothing(prefixfile1) || (endswith(prefixfile1, ".gz") ?
-                                readerp = FASTQ.Reader(GzipDecompressorStream(open(prefixfile1, "r"))) :
-                                readerp = FASTQ.Reader(open(prefixfile1, "r")))
+    isnothing(prefixfile) || (endswith(prefixfile, ".gz") ?
+                                readerp = FASTQ.Reader(GzipDecompressorStream(open(prefixfile, "r"))) :
+                                readerp = FASTQ.Reader(open(prefixfile, "r")))
     writers = isnothing(infile2) ?
                 [FASTQ.Writer(GzipCompressorStream(open(outfile1, "w"), level=2))
                 for outfile1 in output_files] :
                 [[FASTQ.Writer(GzipCompressorStream(open(outfile1, "w"), level=2)),
                 FASTQ.Writer(GzipCompressorStream(open(outfile2, "w"), level=2))]
                 for (outfile1, outfile2) in output_files]
-    unidentified_writer = FASTQ.Writer(GzipCompressorStream(open(joinpath(output_path, "unidentified.fastq.gz"), "w"), level=2))
+    isnothing(infile2) ? push!(writers, FASTQ.Writer(GzipCompressorStream(open(joinpath(output_path, "unidentified.fastq.gz"), "w"), level=2))) :
+        push!(writers, [FASTQ.Writer(GzipCompressorStream(open(joinpath(output_path, "unidentified_1.fastq.gz"), "w"), level=2)),
+                        FASTQ.Writer(GzipCompressorStream(open(joinpath(output_path, "unidentified_2.fastq.gz"), "w"), level=2))])
     c = 0
     while !eof(reader1)
         read!(reader1, record1)
         isnothing(infile2) || read!(reader2, record2)
-        isnothing(prefixfile1) || read!(readerp, recordp)
+        isnothing(prefixfile) || read!(readerp, recordp)
         c += 1
-        nb_errors = -1
-        isnothing(prefixfile1) || (prefix = LongDNASeq(FASTQ.sequence(recordp)); (library_id, nb_errors) = demultiplex(dplxr, prefix))
-        if (nb_errors == -1)
-            read = LongDNASeq(FASTQ.sequence(record1))
-            (library_id, nb_errors) = demultiplex(dplxr, @view(read[1:bc_len]))
-            (nb_errors == -1) && (write(unidentified_writer, record1); isnothing(infile2) || write(unidentified_writer, record2); continue)
-        end
+        (library_id, nb_errors) = demultiplex(dplxr, isnothing(prefixfile) ? view(LongDNASeq(record1.data[record1.sequence]), check_range) : LongDNASeq(recordp.data[recordp.sequence]))
+        nb_errors == -1 && (library_id = nb_stats)
         stats[library_id] += 1
         isnothing(infile2) ?
         write(writers[library_id], record1) :
@@ -69,24 +67,23 @@ function split_libs(infile1::String, prefixfile1::Union{String,Nothing}, infile2
     end
     close(reader1)
     isnothing(infile2) || close(reader2)
-    close(unidentified_writer)
     for w in writers
         isnothing(infile2) ?
         close(w) :
         (close(w[1]);close(w[2]))
     end
     count_string = join(["$(name) - $(stat)\n" for (name, stat) in zip(libname_to_barcode, stats)])
-    count_string *= "\nnot identifyable - $(c-sum(stats))\n"
-    count_string = "Counted $c entries in total\n\n$count_string\n"
+    count_string *= "\nnot identifyable - $(stats[end])\n"
+    count_string = "Counted $c entries in total:\n\n$count_string\n"
     write(infile1 * ".log", count_string)
 end
 
-function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String)
-    split_libs(infile1, nothing, infile2, libname_to_barcode, output_path)
+function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String; bc_len=8, check_range=1:bc_len)
+    split_libs(infile1, nothing, infile2, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range)
 end
 
-function split_libs(infile::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String)
-    split_libs(infile, nothing, nothing, libname_to_barcode, output_path)
+function split_libs(infile::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String; bc_len=8, check_range=1:bc_len)
+    split_libs(infile, nothing, nothing, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range)
 end
 
 function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
