@@ -503,8 +503,8 @@ function Base.show(alns::Alignments; n=-1, only_chimeric=false, filter_name=noth
     c = 0
     for aln in alns
         c == n && break
-        isnothing(filter_name) || (hasannotationname(aln) || continue)
-        isnothing(filter_type) || (hasannotationtype(aln) || continue)
+        isnothing(filter_name) || (hasname(aln, filter_name) || continue)
+        isnothing(filter_type) || (hastype(aln, filter_type) || continue)
         only_chimeric && !ischimeric(aln) && continue
         show(aln)
         c += 1
@@ -825,9 +825,7 @@ function ispositivestrand(alnread::AlignedRead)
     return s === STRAND_POS
 end
 
-summarize(alnread::AlignedRead) =   ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single" *
-                                    " Alignment with $(length(alnread)) part(s):\n   " *
-                                    join([summarize(part) for part in alnread], "\n   ")
+summarize(alnread::AlignedRead) =   (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") * " Alignment with $(length(alnread)) part(s):\n   " * join([summarize(part) for part in alnread], "\n   ")
 function Base.show(alnread::AlignedRead)
     println(summarize(alnread))
 end

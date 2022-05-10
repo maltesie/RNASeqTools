@@ -132,7 +132,7 @@ end
 function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String; conditions::Dict{String, UnitRange{Int}}=Dict("chimeras"=>1:length(bams)),
                             filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", merge_annotation_types=true,
                             is_reverse_complement=true, include_secondary_alignments=true, include_alternative_alignments=false, model=:fisher, min_reads=5, max_fdr=0.05,
-                            overwrite_existing=false)
+                            overwrite_existing=false, multi_detection_method=:annotation)
 
     isdir(joinpath(results_path, "interactions")) || mkpath(joinpath(results_path, "interactions"))
     isdir(joinpath(results_path, "stats")) || mkpath(joinpath(results_path, "stats"))
@@ -157,9 +157,13 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
             println("Annotating alignments...")
             annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type)
             println("Building graph for replicate $replicate_id...")
-            append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types, merge_annotation_types=merge_annotation_types)
+            append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types,
+                                                            merge_annotation_types=merge_annotation_types,
+                                                            multi_detection_method=multi_detection_method)
             empty!(alignments)
         end
+        length(interactions) == 0 && (println("No interactions found!"); continue)
+
         println("Computing significance levels...")
         addpvalues!(interactions; method=model)
         addrelativepositions!(interactions, features)
