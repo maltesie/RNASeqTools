@@ -54,7 +54,7 @@ function feature_ratio(features::Features, coverage_files::PairedSingleTypeFiles
     result_string = ""
     for (file1,file2) in coverage_files
         coverage = Coverage(file1,file2)
-        result_string *= "$(basename(file1)[1:end-11])\t$(covratio(f, coverage))\n"
+        result_string *= "$(basename(file1))\t$(covratio(features, coverage))\n"
     end
     write(results_file, result_string)
 end
