@@ -51,11 +51,10 @@ function feature_count(features::Features, bams::SingleTypeFiles, conditions::Di
 end
 
 function feature_ratio(features::Features, coverage_files::PairedSingleTypeFiles, results_file::String)
-    result_string = "filename\t" * join([t for t in features.types], "\t") * "\n"
-    split_features = split(features)
+    result_string = ""
     for (file1,file2) in coverage_files
         coverage = Coverage(file1,file2)
-        result_string *= basename(file1)[1:end-11] * "\t" * join([covratio(f, coverage) for f in split_features], "\t") * "\n"
+        result_string *= "$(basename(file1)[1:end-11])\t$(covratio(f, coverage))\n"
     end
     write(results_file, result_string)
 end

@@ -184,14 +184,25 @@ function addpvalues!(interactions::Interactions; method=:disparity)
         ints_between = interactions.edges[!,:nb_ints]
         ints_other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between
         ints_other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between
-        ints_other = all_interactions .- ints_between .- ints_other_source .- ints_other_target
+        check_dict = Dict((s,d)=>n for (s,d,n) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]]))
+        correction = [(d,s) in keys(check_dict) ? check_dict[(d,s)] : 0 for (s,d) in eachrow(interactions.edges[!, [:src, :dst]])]
+        ints_other = all_interactions .- ints_between .- ints_other_source .- ints_other_target .+ correction
         pvalues = ones(Float64, length(ints_between))
-        try
-            tests = FisherExactTest.(ints_between, ints_other_target, ints_other_source, ints_other)
-            pvalues = pvalue.(tests; tail=:right)
-        catch e
-            println("Could not compute p-values!")
-        end
+        tests = FisherExactTest.(ints_between, ints_other_target, ints_other_source, ints_other)
+        pvalues = pvalue.(tests; tail=:right)
+        #try
+        #
+        #catch e
+        #    #println("Could not compute p-values!\n$ints_between\n$ints_other_target\n$ints_other_source\n$ints_other")
+        #    println("$all_interactions")
+        #    for (c, (i, t, s, o)) in enumerate(zip(ints_between, ints_other_target, ints_other_source, ints_other))
+        #        try
+        #            FisherExactTest(i,t,s,o)
+        #        catch
+        #             println("$c $i $t $s $o\n$(interactions.nodes[interactions.edges[c, :src], :])\n$(interactions.nodes[interactions.edges[c, :dst], :])\n")
+        #         end
+        #   end
+        #end
     elseif method === :disparity
         degrees = [degree(interactions.graph, i) - 1 for i in 1:nv(interactions.graph)]
         p_source = (1 .- interactions.edges[!,:nb_ints] ./ interactions.nodes[interactions.edges[!, :src], :nb_ints]).^degrees[interactions.edges[!, :src]]
