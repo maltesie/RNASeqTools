@@ -175,34 +175,20 @@ function uniqueinteractions(ints::Interactions; min_reads=5, max_fdr=0.05)
     Set(Set((a,b)) for (a,b) in zip(df[!, :name1], df[!, :name2]))
 end
 
-function addpvalues!(interactions::Interactions; method=:disparity)
+function addpvalues!(interactions::Interactions; method=:fisher)
     @assert method in (:disparity, :fisher)
     pvalues = ones(ne(interactions.graph))
     all_interactions = sum(interactions.edges[!, :nb_ints])+1
 
     if method === :fisher
-        ints_between = interactions.edges[!,:nb_ints]
+        check_dict = Dict((s,d)=>n for (s,d,n) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]]))
+        ints_between = [(d,s) in keys(check_dict) ? check_dict[(d,s)]+i : 0 for (s,d,i) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]])]
         ints_other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between
         ints_other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between
-        check_dict = Dict((s,d)=>n for (s,d,n) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]]))
-        correction = [(d,s) in keys(check_dict) ? check_dict[(d,s)] : 0 for (s,d) in eachrow(interactions.edges[!, [:src, :dst]])]
-        ints_other = all_interactions .- ints_between .- ints_other_source .- ints_other_target .+ correction
+        ints_other = all_interactions .- ints_between .- ints_other_source .- ints_other_target
         pvalues = ones(Float64, length(ints_between))
         tests = FisherExactTest.(ints_between, ints_other_target, ints_other_source, ints_other)
         pvalues = pvalue.(tests; tail=:right)
-        #try
-        #
-        #catch e
-        #    #println("Could not compute p-values!\n$ints_between\n$ints_other_target\n$ints_other_source\n$ints_other")
-        #    println("$all_interactions")
-        #    for (c, (i, t, s, o)) in enumerate(zip(ints_between, ints_other_target, ints_other_source, ints_other))
-        #        try
-        #            FisherExactTest(i,t,s,o)
-        #        catch
-        #             println("$c $i $t $s $o\n$(interactions.nodes[interactions.edges[c, :src], :])\n$(interactions.nodes[interactions.edges[c, :dst], :])\n")
-        #         end
-        #   end
-        #end
     elseif method === :disparity
         degrees = [degree(interactions.graph, i) - 1 for i in 1:nv(interactions.graph)]
         p_source = (1 .- interactions.edges[!,:nb_ints] ./ interactions.nodes[interactions.edges[!, :src], :nb_ints]).^degrees[interactions.edges[!, :src]]
