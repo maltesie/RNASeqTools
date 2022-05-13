@@ -215,7 +215,6 @@ function maxsignalposition(leftpos::Int, rightpos::Int, chr::String, st::Strand,
         for signal in eachoverlap(coverage, Interval(chr, leftpos, rightpos, st, Annotation()))
             value(signal) > maxsignal && (maxsignal=value(signal); pos=rightposition(signal); l=lib)
         end
-
     end
     if maxsignal != 0.0
         return modify === :left ? (pos, rightpos, l) : (leftpos, pos, l)

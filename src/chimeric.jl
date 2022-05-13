@@ -186,7 +186,6 @@ function addpvalues!(interactions::Interactions; method=:fisher)
         ints_other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between
         ints_other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between
         ints_other = all_interactions .- ints_between .- ints_other_source .- ints_other_target
-        pvalues = ones(Float64, length(ints_between))
         tests = FisherExactTest.(ints_between, ints_other_target, ints_other_source, ints_other)
         pvalues = pvalue.(tests; tail=:right)
     elseif method === :disparity

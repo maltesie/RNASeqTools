@@ -52,7 +52,7 @@ function Base.iterate(genome::Genome, state::Int)
     end
 end
 
-function Base.merge(genomes::Genome ...)
+function Base.merge(genomes::Vector{Genome})
     length(genomes) == 1 && return genomes[1]
     merged = genomes[1]
     for genome in genomes[2:end]

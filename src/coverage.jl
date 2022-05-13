@@ -311,7 +311,7 @@ function Base.values(coverage::Coverage)
     return vals
 end
 
-function Base.merge(coverages::Coverage ...)
+function Base.merge(coverages::Vector{Coverage})
     all(coverages[1].chroms == c.chroms for c in coverages[2:end]) || throw(Assertion("All Coverage objects have to be defined for the same reference seuqences."))
     n = length(coverages)
     vals_f = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
@@ -325,7 +325,6 @@ function Base.merge(coverages::Coverage ...)
     end
     return Coverage(vals_f, vals_r, coverages[1].chroms)
 end
-Base.merge(coverages::Vector{Coverage}) = merge(coverages...)
 
 function rolling_sum(a, n::Int)
     (1<=n<=length(a)) || throw(Assertion("n has to be betwen 1 and $(length(a))."))
@@ -337,9 +336,9 @@ function rolling_sum(a, n::Int)
     return out
 end
 
-function Base.diff(coverage::Vector{Float64}, invert::Bool, window_size::Int; min_background_ratio=1.2, filter_local_max=true, filter_background_ratio=true)
+function Base.diff(coverage::Vector{Float64}, invert::Bool, window_size::Int; min_background_ratio=nothing, filter_local_max=true)
     d = zeros(Float64,length(coverage))
-    min_background_increase = min_background_ratio - 1
+    isnothing(min_background_ratio) || (min_background_increase = min_background_ratio - 1)
     filtered_d = zeros(Float64,length(coverage))
     invert ? d[1:end-1] = @view(coverage[1:end-1]) .- @view(coverage[2:end])  : d[2:end] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
     half_window_size = floor(Int, window_size/2)
@@ -353,7 +352,7 @@ function Base.diff(coverage::Vector{Float64}, invert::Bool, window_size::Int; mi
         end
     end
     filtered_d[findall(x -> x <= 0, d)] .= 0.0
-    if filter_background_ratio
+    if !isnothing(min_background_ratio)
         for i in findall(!iszero, filtered_d)
             check_range = invert ? (i:i+half_window_size) : (i-half_window_size+1:i)
             lim = filtered_d[i]/min_background_increase
@@ -362,9 +361,10 @@ function Base.diff(coverage::Vector{Float64}, invert::Bool, window_size::Int; mi
     end
     return filtered_d
 end
-
+using CairoMakie
 function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, window_size=10, min_background_ratio=1.2)
-    (notex.chroms == tex.chroms) || throw(Assertion("All Coverage objects have to be defined for the same reference sequences."))
+
+    (notex.chroms == tex.chroms) || throw(Assertion("tex and notex coverage are defined on different reference sequences."))
     chrs = [chr[1] for chr in notex.chroms]
     vals_notex = values(notex)
     vals_tex = values(tex)
@@ -374,8 +374,16 @@ function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, wi
         tex_f, tex_r = vals_tex[chr]
         d_forward = diff(tex_f, false, window_size; min_background_ratio=min_background_ratio)
         d_reverse = diff(tex_r, true, window_size; min_background_ratio=min_background_ratio)
-        check_d_forward = diff(notex_f, false, window_size; min_background_ratio=min_background_ratio, filter_local_max=false, filter_background_ratio=false)
-        check_d_reverse = diff(notex_r, true, window_size; min_background_ratio=min_background_ratio, filter_local_max=false, filter_background_ratio=false)
+        check_d_forward = diff(notex_f, false, window_size; filter_local_max=false)
+        check_d_reverse = diff(notex_r, true, window_size; filter_local_max=false)
+        af = d_forward ./ check_d_forward
+        ar = d_reverse ./ check_d_reverse
+        fig = Figure(resolution=(1200,400))
+		axes = [Axis(fig[1,i]) for i in 1:2]
+		hist!(axes[1], abs.(af[abs.(af) .< 300]); bins=50)
+		hist!(axes[2], abs.(ar[abs.(ar) .< 300]); bins=50)
+        println("infs forward: ", sum(af .=== Inf), "\ninfs reverse: ", sum(ar .=== Inf))
+        save("/home/abc/Workspace/TssTerms/$chr.pdf", fig)
         check_forward = ((d_forward ./ check_d_forward) .>= min_tex_ratio) .& (d_forward .>= min_step)
         check_reverse = ((d_reverse ./ check_d_reverse) .>= min_tex_ratio) .& (d_reverse .>= min_step)
         for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
