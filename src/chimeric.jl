@@ -182,7 +182,7 @@ function addpvalues!(interactions::Interactions; method=:fisher)
 
     if method === :fisher
         check_dict = Dict((s,d)=>n for (s,d,n) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]]))
-        ints_between = [(d,s) in keys(check_dict) ? check_dict[(d,s)]+i : 0 for (s,d,i) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]])]
+        ints_between = [(d,s) in keys(check_dict) ? check_dict[(d,s)]+ints : ints for (s,d,ints) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]])]
         ints_other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between
         ints_other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between
         ints_other = all_interactions .- ints_between .- ints_other_source .- ints_other_target
