@@ -1,12 +1,12 @@
-function prepare_data(data_path::String, genome::Genome; files=FastqgzFiles)
-    files = files(data_path)
+function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, genome::Genome)
     println("Preprocessing files:")
     show(files)
     trimmed = trim_fastp(files)
     println("Aligning files...")
     bams = align_mem(trimmed, genome;)
     println("Computing coverage...")
-    compute_coverage(bams)
+    compute_coverage(bams);
+    println("Done.")
 end
 
 #function de_genes(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, add_keys=["BaseValueFrom", "BaseValueTo", "LogFoldChange", "PValue", "AdjustedPValue"])

@@ -16,14 +16,14 @@ end
 
 struct BaseCoverage
     genome::Genome
-    fcount::Dict{String, Dict{DNA, Vector{Int}}}
-    rcount::Dict{String, Dict{DNA, Vector{Int}}}
+    fcount::Dict{String, Dict{Symbol, Vector{Int}}}
+    rcount::Dict{String, Dict{Symbol, Vector{Int}}}
 end
 
 function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignments=true, is_reverse_complement=false,
                                                         only_positive_strand=false, quality_cut = 0x01)
-    fcount = Dict(chr=>zeros(Int, 6, length(genome.chroms[chr])) for chr in keys(genome.chroms))
-    rcount = Dict(chr=>zeros(Int, 6, length(genome.chroms[chr])) for chr in keys(genome.chroms))
+    fcount = Dict(chr=>zeros(Int, 7, length(genome.chroms[chr])) for chr in keys(genome.chroms))
+    rcount = Dict(chr=>zeros(Int, 7, length(genome.chroms[chr])) for chr in keys(genome.chroms))
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     seq = LongDNASeq(0)
@@ -49,7 +49,10 @@ function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignm
             op = BioAlignments.Operation(x & 0x0F)
             n = x >> 4
             r::UnitRange{Int} = current_ref:current_ref+n-1
-            if op === OP_INSERT || op === OP_SOFT_CLIP
+            if op === OP_INSERT
+                current_seq += n
+                count[ref_name][7, current_ref] += 1
+            elseif op === OP_SOFT_CLIP
                 current_seq += n
             elseif BioAlignments.isdeleteop(op)
                 for ref_pos in r
@@ -74,48 +77,62 @@ function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignm
             end
         end
     end
-    fdict = Dict(chr=>Dict(dna=>fcount[chr][i, :] for (i, dna) in enumerate((DNA_A, DNA_T, DNA_G, DNA_C, DNA_Gap, DNA_N))) for chr in keys(genome.chroms))
-    rdict = Dict(chr=>Dict(dna=>rcount[chr][i, :] for (i, dna) in enumerate((DNA_A, DNA_T, DNA_G, DNA_C, DNA_Gap, DNA_N))) for chr in keys(genome.chroms))
+    fdict = Dict(chr=>Dict(dna=>fcount[chr][i, :] for (i, dna) in enumerate((:A, :T, :G, :C, :Gap, :N, :Ins))) for chr in keys(genome.chroms))
+    rdict = Dict(chr=>Dict(dna=>rcount[chr][i, :] for (i, dna) in enumerate((:A, :T, :G, :C, :Gap, :N, :Ins))) for chr in keys(genome.chroms))
     return BaseCoverage(genome, fdict, rdict)
 end
 
-function mismatchfractions(base_from::DNA, base_to::DNA, base_coverage::BaseCoverage)
-    stats = Dict(chr=>Float64[] for chr in keys(base_coverage.genome.chroms))
-    for chr in keys(stats)
+function mismatchfractions(from::Symbol, to::Symbol, base_coverage::BaseCoverage; direction=:both)
+    from in (:A, :T, :G, :C, :Gap, :N) && to in (:A, :T, :G, :C, :Gap, :N) || raise(AssertionError(""))
+    d = Dict(:A=>DNA_A, :T=>DNA_T, :G=>DNA_G, :C=>DNA_C, :Gap=>DNA_Gap, :N=>DNA_N)
+    base_from = d[from]
+    base_to = d[to]
+    direction in (:forward, :reverse, :both) || throw(AssertionError("direction has to be :forward, :reverse or :both"))
+    fstats = Dict(chr=>Float64[] for chr in keys(base_coverage.genome.chroms))
+    rstats = Dict(chr=>Float64[] for chr in keys(base_coverage.genome.chroms))
+    for chr in keys(base_coverage.genome.chroms)
         findex = base_coverage.genome[chr] .=== base_from
         rindex = BioSequences.complement(base_coverage.genome[chr]) .=== base_from
-        s = zeros(sum(findex) + sum(rindex))
-        s[1:sum(findex)] .= base_coverage.fcount[chr][base_to][findex] ./ sum(values(base_coverage.fcount[chr]))[findex]
-        s[sum(findex)+1:end] .= base_coverage.rcount[chr][base_to][rindex] ./ sum(values(base_coverage.rcount[chr]))[rindex]
-        append!(stats[chr], filter!(x->!isnan(x), s))
+        f = base_coverage.fcount[chr][to][findex] ./ sum(values(base_coverage.fcount[chr]))[findex]
+        r = base_coverage.rcount[chr][to][rindex] ./ sum(values(base_coverage.rcount[chr]))[rindex]
+        append!(fstats[chr], filter!(x->!isnan(x), f))
+        append!(rstats[chr], filter!(x->!isnan(x), r))
     end
-    return stats
+    return fstats, rstats
 end
 
 function mismatchpositions(base_from::DNA, base_to::DNA, base_coverage::BaseCoverage, ratio_cut::Float64)
     pos = Interval{Annotation}[]
     for chr in keys(base_coverage.genome.chroms)
-        findex = base_coverage.genome[chr] .=== base_from
-        rindex = BioSequences.complement(base_coverage.genome[chr]) .=== base_from
-        for p in findall(((base_coverage.fcount[chr][base_to] ./ sum(values(base_coverage.fcount[chr]))) .>= ratio_cut) .& findex)
+        index = base_coverage.genome[chr] .=== base_from
+        ratios = base_coverage.fcount[chr][base_to] ./ sum(values(base_coverage.fcount[chr]))
+        ratio_index = (ratios .>= ratio_cut) .& index
+        for (r, p) in zip(ratios[ratio_index], findall(ratio_index .> 0))
             mc = base_coverage.fcount[chr][base_to][p]
-            push!(pos, Interval(chr, p:p, STRAND_POS, Annotation("SNP", "$base_from->$base_to", Dict("mutation"=>"$base_from->$base_to", "count"=>"$mc"))))
+            push!(pos, Interval(chr, p:p, STRAND_POS, Annotation("SNP", "$base_from->$base_to", Dict("mutation"=>"$base_from->$base_to", "count"=>"$mc", "frequency"=>"$(round(r; digits=3))"))))
         end
-        for p in findall(((base_coverage.rcount[chr][base_to] ./ sum(values(base_coverage.rcount[chr]))) .>= ratio_cut) .& rindex)
+        index = BioSequences.complement(base_coverage.genome[chr]) .=== base_from
+        ratios = base_coverage.rcount[chr][base_to] ./ sum(values(base_coverage.rcount[chr]))
+        ratio_index = (ratios .>= ratio_cut) .& index
+        for (r, p) in zip(ratios[ratio_index], findall(ratio_index .> 0))
             mc = base_coverage.rcount[chr][base_to][p]
-            push!(pos, Interval(chr, p:p, STRAND_NEG, Annotation("SNP", "$base_from->$base_to", Dict("mutation"=>"$base_from->$base_to", "count"=>"$mc"))))
+            push!(pos, Interval(chr, p:p, STRAND_NEG, Annotation("SNP", "$base_from->$base_to", Dict("mutation"=>"$base_from->$base_to", "count"=>"$mc", "frequency"=>"$(round(r; digits=3))"))))
         end
     end
     return pos
 end
 
-function mismatchpositions(base_coverage::BaseCoverage, ratio_cut::Float64; check_bases=(DNA_A, DNA_T, DNA_G, DNA_C))
+function mismatchpositions(base_coverage::BaseCoverage, ratio_cut::Float64; check_bases=(:A, :T, :G, :C))
     pos = Interval{Annotation}[]
     for base_from in check_bases, base_to in check_bases
         base_from === base_to && continue
         append!(pos, mismatchpositions(base_from, base_to, base_coverage, ratio_cut))
     end
     return pos
+end
+
+function mismatchkmerprofile(base_from::DNA, base_to::DNA, base_coverage::BaseCoverage; k=5)
+
 end
 
 struct BaseAnnotation <: AnnotationStyle
@@ -127,6 +144,7 @@ struct BaseAnnotation <: AnnotationStyle
     g::Vector{Int}
     c::Vector{Int}
     gap::Vector{Int}
+    ins::Vector{Int}
 end
 
 function coverage(feature::Interval{BaseAnnotation})
@@ -361,9 +379,8 @@ function Base.diff(coverage::Vector{Float64}, invert::Bool, window_size::Int; mi
     end
     return filtered_d
 end
-using CairoMakie
+#using CairoMakie
 function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, window_size=10, min_background_ratio=1.2)
-
     (notex.chroms == tex.chroms) || throw(Assertion("tex and notex coverage are defined on different reference sequences."))
     chrs = [chr[1] for chr in notex.chroms]
     vals_notex = values(notex)
@@ -380,8 +397,8 @@ function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, wi
         ar = d_reverse ./ check_d_reverse
         fig = Figure(resolution=(1200,400))
 		axes = [Axis(fig[1,i]) for i in 1:2]
-		hist!(axes[1], abs.(af[abs.(af) .< 300]); bins=50)
-		hist!(axes[2], abs.(ar[abs.(ar) .< 300]); bins=50)
+		hist!(axes[1], abs.(af[abs.(af) .< 2]); bins=50)
+		hist!(axes[2], abs.(ar[abs.(ar) .< 2]); bins=50)
         println("infs forward: ", sum(af .=== Inf), "\ninfs reverse: ", sum(ar .=== Inf))
         save("/home/abc/Workspace/TssTerms/$chr.pdf", fig)
         check_forward = ((d_forward ./ check_d_forward) .>= min_tex_ratio) .& (d_forward .>= min_step)

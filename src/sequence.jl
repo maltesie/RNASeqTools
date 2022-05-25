@@ -113,12 +113,9 @@ function Sequences(::Type{T}) where {T<:Union{String, UInt}}
     Sequences(LongDNASeq(""), T[], UnitRange{Int}[])
 end
 
-function Sequences(seqs::Vector{LongDNASeq}; seqnames=Vector{T}[]) where {T <: Union{String, UInt}}
-    if isempty(seqnames)
-        seqnames = UInt.(1:length(seqs))
-    else
-        (length(seqnames) == length(seqs) == length(unique(seqnames))) || throw(AssertionError("number of unique names must match the number of sequences!"))
-    end
+function Sequences(seqs::Vector{LongDNASeq}, seqnames::Vector{UInt})
+    (length(seqnames) == length(seqs)) || throw(AssertionError("number of names must match the number of sequences!"))
+    (length(seqnames) == length(unique(seqnames))) || throw(AssertionError("names must be unique!"))
     ranges = Vector{UnitRange{Int}}(undef, length(seqs))
     seq = LongDNASeq("")
     resize!(seq, sum(length(s) for s in seqs))
@@ -128,7 +125,24 @@ function Sequences(seqs::Vector{LongDNASeq}; seqnames=Vector{T}[]) where {T <: U
         seq[current_range] = s
         ranges[i] = current_range
     end
-    sortindex = sortperm(T isa String ? hash.(seqnames) : seqnames)
+    sortindex = sortperm(seqnames)
+    return Sequences(seq, seqnames[sortindex], ranges[sortindex])
+end
+Sequences(seqs::Vector{LongDNASeq}) = Sequences(seqs, Vector{UInt}(1:length(seqs)))
+
+function Sequences(seqs::Vector{LongDNASeq}, seqnames::Vector{String})
+    (length(seqnames) == length(seqs)) || throw(AssertionError("number of names must match the number of sequences!"))
+    (length(seqnames) == length(unique(seqnames))) || throw(AssertionError("names must be unique!"))
+    ranges = Vector{UnitRange{Int}}(undef, length(seqs))
+    seq = LongDNASeq("")
+    resize!(seq, sum(length(s) for s in seqs))
+    current_range = 1:0
+    for (i,s) in enumerate(seqs)
+        current_range = last(current_range)+1:last(current_range)+length(s)
+        seq[current_range] = s
+        ranges[i] = current_range
+    end
+    sortindex = sortperm(hash.(seqnames))
     return Sequences(seq, seqnames[sortindex], ranges[sortindex])
 end
 
