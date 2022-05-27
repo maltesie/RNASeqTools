@@ -82,8 +82,9 @@ function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignm
     return BaseCoverage(genome, fdict, rdict)
 end
 
-function mismatchfractions(from::Symbol, to::Symbol, base_coverage::BaseCoverage; direction=:both)
-    from in (:A, :T, :G, :C, :Gap, :N) && to in (:A, :T, :G, :C, :Gap, :N) || raise(AssertionError(""))
+function mismatchfractions(base_coverage::BaseCoverage, from::Symbol, to::Symbol; direction=:both)
+    from in (:A, :T, :G, :C, :Gap, :N, :Ins) || raise(AssertionError("Value for from::Symbol not supported!")) 
+    to in (:A, :T, :G, :C, :Gap, :N, :Ins) || raise(AssertionError("Value for to::Symbol not supported!"))
     d = Dict(:A=>DNA_A, :T=>DNA_T, :G=>DNA_G, :C=>DNA_C, :Gap=>DNA_Gap, :N=>DNA_N)
     base_from = d[from]
     direction in (:forward, :reverse, :both) || throw(AssertionError("direction has to be :forward, :reverse or :both"))
@@ -100,8 +101,9 @@ function mismatchfractions(from::Symbol, to::Symbol, base_coverage::BaseCoverage
     return fstats, rstats
 end
 
-function mismatchpositions(from::DNA, to::DNA, base_coverage::BaseCoverage, ratio_cut::Float64)
-    from in (:A, :T, :G, :C, :Gap, :N, :Ins) && to in (:A, :T, :G, :C, :Gap, :N, :Ins) || raise(AssertionError(""))
+function mismatchpositions(base_coverage::BaseCoverage, from::Symbol, to::Symbol; ratio_cut=0.9)
+    from in (:A, :T, :G, :C, :Gap, :N, :Ins) || raise(AssertionError("Value for from::Symbol not supported!")) 
+    to in (:A, :T, :G, :C, :Gap, :N, :Ins) || raise(AssertionError("Value for to::Symbol not supported!"))
     d = Dict(:A=>DNA_A, :T=>DNA_T, :G=>DNA_G, :C=>DNA_C, :Gap=>DNA_Gap, :N=>DNA_N)
     base_from = d[from]
     pos = Interval{Annotation}[]
@@ -111,32 +113,46 @@ function mismatchpositions(from::DNA, to::DNA, base_coverage::BaseCoverage, rati
         ratio_index = (ratios .>= ratio_cut) .& index
         for (r, p) in zip(ratios[ratio_index], findall(ratio_index .> 0))
             mc = base_coverage.fcount[chr][to][p]
-            push!(pos, Interval(chr, p:p, STRAND_POS, Annotation("SNP", "$from->$to", 
-                Dict("mutation"=>"$from->$to", "count"=>"$mc", "frequency"=>"$(round(r; digits=3))"))))
+            push!(pos, Interval(chr, p:p, STRAND_POS, (mc, round(r; digits=3))))
         end
         index = BioSequences.complement(base_coverage.genome[chr]) .=== base_from
         ratios = base_coverage.rcount[chr][to] ./ sum(values(base_coverage.rcount[chr]))
         ratio_index = (ratios .>= ratio_cut) .& index
         for (r, p) in zip(ratios[ratio_index], findall(ratio_index .> 0))
             mc = base_coverage.rcount[chr][to][p]
-            push!(pos, Interval(chr, p:p, STRAND_NEG, Annotation("SNP", "$from->$to", 
-                Dict("mutation"=>"$from->$to", "count"=>"$mc", "frequency"=>"$(round(r; digits=3))"))))
+            push!(pos, Interval(chr, p:p, STRAND_NEG, (mc, round(r; digits=3))))
         end
     end
     return pos
 end
 
-function mismatchpositions(base_coverage::BaseCoverage, ratio_cut::Float64; check=(:A, :T, :G, :C))
+function mismatchpositions(base_coverage::BaseCoverage; check=(:A, :T, :G, :C), ratio_cut=0.9)
     pos = Interval{Annotation}[]
-    for base_from in check, base_to in check
+    for from in check, to in check
         base_from === base_to && continue
-        append!(pos, mismatchpositions(base_from, base_to, base_coverage, ratio_cut))
+        mpos = mismatchpositions(base_coverage, from, to; ratio_cut=ratio_cut)
+        append!(pos, [Interval(rename(i), leftposition(i):leftpostion(i), strand(i), 
+                        Annotation("SNP", "$from->$to", Dict("mutation"=>"$from->$to", 
+                                                            "count"=>i.metatdata[1], 
+                                                            "frequency"=>i.metadata[2]))) for i in mpos])
     end
-    return pos
+    return Features(pos)
 end
 
-function mismatchkmerhist(from::Symbol, to::Symbol, base_coverage::BaseCoverage; k=5)
-
+all_perm(xs, n) = vec(map(collect, Iterators.product(ntuple(_ -> xs, n)...)))
+function mismatchcontexthist(base_coverage::BaseCoverage, from::Symbol, to::Symbol; pm=2, bins=20, ratio_cut=0.0)
+    from in (:A, :T, :G, :C, :Gap, :N, :Ins) || raise(AssertionError("Value for from::Symbol not supported!")) 
+    to in (:A, :T, :G, :C, :Gap, :N, :Ins) || raise(AssertionError("Value for to::Symbol not supported!"))
+    kmer_histograms = Dict(LongDNASeq(c)=>zeros(Int, bins) for c in all_perm([DNA_A, DNA_T, DNA_G, DNA_C], 2*pm+1))
+    mpos = mismatchpositions(base_coverage, from, to; ratio_cut)
+    for mismatch_interval in mpos
+        p = leftposition(mismatch_interval)
+        freq_index = Int(floor(mismatch_interval.metadata[2] * (bins-1))) + 1
+        ref = refname(mismatch_interval)
+        kmer = base_coverage.genome[ref][p-pm:p+pm]
+        kmer_histograms[kmer][freq_index] += 1
+    end
+    return kmer_histograms
 end
 
 struct BaseAnnotation <: AnnotationStyle
