@@ -40,7 +40,8 @@ function myhash(part::AlignedPart; use_type=false)
 end
 
 function Base.append!(interactions::Interactions, alignments::Alignments, replicate_id::Symbol;
-                        min_distance=1000, filter_types=[], merge_annotation_types=true, merge_type="merge", cds_type="CDS", five_type="5UTR", three_type="3UTR")
+                        min_distance=1000, filter_types=[], merge_annotation_types=true, merge_type="merge",
+                        cds_type="CDS", five_type="5UTR", three_type="3UTR", multi_detection_method=:annotation)
     if !(String(replicate_id) in interactions.replicate_ids)
         interactions.edges[:, replicate_id] = repeat([false], nrow(interactions.edges))
         push!(interactions.replicate_ids, replicate_id)
@@ -50,7 +51,7 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
     for alignment in alignments
         !isempty(filter_types) && typein(alignment, filter_types) && continue
         is_chimeric = ischimeric(alignment; min_distance=min_distance)
-        is_multi = is_chimeric ? ismulti(alignment) : false
+        is_multi = is_chimeric ? ismulti(alignment; method=multi_detection_method) : false
         alnparts = parts(alignment)
 
         for (i,part) in enumerate(alnparts)
@@ -123,6 +124,8 @@ Load Interactions struct from jld2 file.
 """
 Interactions(filepath::String) = load(filepath, "interactions")
 
+Base.length(interactions::Interactions) = nrow(interactions.edges)
+
 function checkinteractions(ints::Interactions, verified_pairs::Vector{Tuple{String,String}}; min_reads=5, max_fdr=0.05, check_uppercase=true)
 	verified_dict = merge(Dict(pair=>zeros(2) for pair in verified_pairs),
 							Dict(reverse(pair)=>zeros(2) for pair in verified_pairs))
@@ -172,13 +175,14 @@ function uniqueinteractions(ints::Interactions; min_reads=5, max_fdr=0.05)
     Set(Set((a,b)) for (a,b) in zip(df[!, :name1], df[!, :name2]))
 end
 
-function addpvalues!(interactions::Interactions; method=:disparity)
+function addpvalues!(interactions::Interactions; method=:fisher)
     @assert method in (:disparity, :fisher)
     pvalues = ones(ne(interactions.graph))
     all_interactions = sum(interactions.edges[!, :nb_ints])+1
 
     if method === :fisher
-        ints_between = interactions.edges[!,:nb_ints]
+        check_dict = Dict((s,d)=>n for (s,d,n) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]]))
+        ints_between = [(d,s) in keys(check_dict) ? check_dict[(d,s)]+ints : ints for (s,d,ints) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]])]
         ints_other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between
         ints_other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between
         ints_other = all_interactions .- ints_between .- ints_other_source .- ints_other_target

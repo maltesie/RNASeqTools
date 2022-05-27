@@ -47,9 +47,10 @@ end
     - ´reseeding_factor::Float64´: Trigger re-seeding for a MEM longer than minSeedLenFLOAT. Larger value yields fewer seeds, which leads to faster alignment speed but lower accuracy.
 """
 function align_minimap(in_file::String, out_file::String, genome_file::String;
-    preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1,
-    minimizer_len=15, threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools")
+    preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1, minimizer_len=15,
+    threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false)
 
+    !overwrite_existing && isfile(out_file) && throw(AssertinError("File $out_file already exists!"))
     !isnothing(preset) && !(preset in ("map-ont", "asm5", "asm10", "asm20", "sr")) &&
         throw(AssertionError("Allowed preset values are: map-ont, asm5, asm10, asm20"))
 
@@ -76,12 +77,12 @@ function align_minimap(in_file::String, out_file::String, genome_file::String;
         stats_file))
 end
 align_minimap(in_file::String, genome_file::String;
-    preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1,
-    minimizer_len=15, threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools") =
+    preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1, minimizer_len=15,
+    threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false) =
     align_minimap(in_file, joinpath(in_file[1:findlast('.', in_file)] * "bam"), genome_file;
     preset=preset, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2,
     gap_extend1=gap_extend1, gap_extend2=gap_extend2, minimizer_len=minimizer_len, threads=threads, all_secondary=all_secondary,
-    skip_stats=skip_stats, minimap_bin=minimap_bin, sam_bin=sam_bin)
+    skip_stats=skip_stats, minimap_bin=minimap_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
 """
     Helper dispatch of align_minimap. Runs align_minimap on `read_files::SingleTypeFiles` against `genome::Genome`.
@@ -450,7 +451,8 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
         hasxatag(record) && !include_alternative_alignments && continue
         current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
         index += 1
-        if index > length(ns)
+        xastrings = hasxatag(record) ? string.(split(xatag(record), ";")[1:end-1]) : String[]
+        if index + length(xastrings) > length(ns)
             for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
                 resize!(z, length(z)+10000)
             end
@@ -459,14 +461,11 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
         (l,r) = (BAM.leftposition(record), BAM.rightposition(record))
         (ref,s) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
         nm = nmtag(record)
-        if hasxatag(record)
-            xa = xatag(record)
-            xastrings = string.(split(xa, ";")[1:end-1])
-            for xastring in enumerate(xastrings)
-                ap = AlignedPart(xastring)
-                (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) =
-                (name(ap), leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, nms(ap))
-            end
+        for xastring in xastrings
+            ap = AlignedPart(xastring; read=current_read)
+            (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) =
+            (n, leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, editdistance(ap))
+            index += 1
         end
         readstart, readstop, _, readlen = readpositions(record)
         (rl, rr) = (BAM.ispositivestrand(record) != (current_read === :read2)) ? (readstart,readstop) : (readlen-readstop+1,readlen-readstart+1)
@@ -497,6 +496,19 @@ end
 
 function Base.filter!(seqs::Sequences{T}, alns::Alignments{T}) where {T<:Union{String, UInt}}
     filter!(seqs, Set(alns.tempnames))
+end
+
+function Base.show(alns::Alignments; n=-1, only_chimeric=false, filter_name=nothing, filter_type=nothing)
+    c = 0
+    for aln in alns
+        c == n && break
+        isnothing(filter_name) || hasname(aln, filter_name) || continue
+        isnothing(filter_type) || hastype(aln, filter_type) || continue
+        only_chimeric && !ischimeric(aln) && continue
+        show(aln)
+        println("---")
+        c += 1
+    end
 end
 
 struct AlignedPart
@@ -534,8 +546,10 @@ AlignedPart(
     alnpart.read
 )
 
-Base.getindex(alns::Alignments, i::Int) = AlignedPart(alns, i)
-Base.getindex(alns::Alignments, r::UnitRange{Int}) = [alns[i] for i::Int in r]
+Base.getindex(alns::Alignments, i::Int) = AlignedRead(alns.ranges[i], alns)
+Base.getindex(alns::Alignments, r::UnitRange{Int}) = Alignments(alns.tempnames, alns.leftpos, alns.rightpos, alns.read_leftpos, alns.read_rightpos,
+                                                                alns.reads, alns.nms, alns.refnames, alns.strands, alns.annames, alns.antypes,
+                                                                alns.anols, alns.anleftrel, alns.anrightrel, alns.ranges[r])
 
 """
     Constructor for the AlignedPart struct. Builds AlignedPart from a XA string, which is created by bwa-mem2
@@ -547,7 +561,7 @@ function AlignedPart(xapart::String; read=:read1)
     strand = ((refstart > 0) != read===:read2) ? STRAND_POS : STRAND_NEG
     refstart *= sign(refstart)
     readstart, readstop, relrefstop, readlen = readpositions(cigar)
-    seq_interval = ((refstart > 0)  != (current_read === :read2)) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
+    seq_interval = ((refstart > 0)  != (read === :read2)) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
     ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, AlignmentAnnotation())
     return AlignedPart(ref_interval, seq_interval, parse(UInt32, nm), read)
 end
@@ -772,7 +786,7 @@ end
 function Base.iterate(alnread::AlignedRead, state::Int)
     return state > last(alnread.range) ? nothing : (AlignedPart(alnread.alns, state), state+1)
 end
-Base.getindex(alnread::AlignedRead, i::Int) = alnread.alns[alnread.range[i]]
+Base.getindex(alnread::AlignedRead, i::Int) = AlignedPart(alnread.alns, alnread.range[i])
 Base.getindex(alnread::AlignedRead, r::UnitRange{Int}) = AlignedRead(alnread.range[r], alnread.alns)
 Base.getindex(alnread::AlignedRead, b::Vector{Bool}) = [alnread.alns[index] for (i::Int,index::Int) in enumerate(alnread.range) if b[i]]
 Base.isempty(alnread::AlignedRead) = isempty(alnread.range)
@@ -813,7 +827,10 @@ function ispositivestrand(alnread::AlignedRead)
     return s === STRAND_POS
 end
 
-summarize(alnread::AlignedRead) = "Alignment with $(length(alnread)) part(s):\n   " * join([summarize(part) for part in alnread], "\n   ")
+summarize(alnread::AlignedRead) =   (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
+                                    " Alignment with $(length(alnread)) part(s):\n   " *
+                                    join([summarize(part) for part in alnread], "\n   ") *
+                                    "\n"
 function Base.show(alnread::AlignedRead)
     println(summarize(alnread))
 end
