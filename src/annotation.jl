@@ -38,7 +38,7 @@ function BaseAnnotation(feature::Interval{Annotation}, base_coverage::BaseCovera
     count = ispositivestrand(feature) ? errorcov.fcount : errorcov.rcount
     r = ispositivestrand(feature) ? (left:right) : (right:-1:left)
     ref = Int[(seq[i] in (DNA_A, DNA_T, DNA_G, DNA_C)) ? count[seq[i]][ii] : 0 for (i, ii) in enumerate(r)]
-    BaseAnnotation(type(feature), name(feature), ref, count[DNA_A][r], count[DNA_T][r], count[DNA_G][r], count[DNA_C][r], count[DNA_Gap][r])
+    BaseAnnotation(type(feature), name(feature), ref, count[ref][:A][r], count[:T][r], count[:G][r], count[:C][r], count[:Gap][r], count[:Ins][r])
 end
 
 struct Features{T} <: AnnotationContainer

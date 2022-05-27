@@ -86,7 +86,6 @@ function mismatchfractions(from::Symbol, to::Symbol, base_coverage::BaseCoverage
     from in (:A, :T, :G, :C, :Gap, :N) && to in (:A, :T, :G, :C, :Gap, :N) || raise(AssertionError(""))
     d = Dict(:A=>DNA_A, :T=>DNA_T, :G=>DNA_G, :C=>DNA_C, :Gap=>DNA_Gap, :N=>DNA_N)
     base_from = d[from]
-    base_to = d[to]
     direction in (:forward, :reverse, :both) || throw(AssertionError("direction has to be :forward, :reverse or :both"))
     fstats = Dict(chr=>Float64[] for chr in keys(base_coverage.genome.chroms))
     rstats = Dict(chr=>Float64[] for chr in keys(base_coverage.genome.chroms))
@@ -101,37 +100,42 @@ function mismatchfractions(from::Symbol, to::Symbol, base_coverage::BaseCoverage
     return fstats, rstats
 end
 
-function mismatchpositions(base_from::DNA, base_to::DNA, base_coverage::BaseCoverage, ratio_cut::Float64)
+function mismatchpositions(from::DNA, to::DNA, base_coverage::BaseCoverage, ratio_cut::Float64)
+    from in (:A, :T, :G, :C, :Gap, :N, :Ins) && to in (:A, :T, :G, :C, :Gap, :N, :Ins) || raise(AssertionError(""))
+    d = Dict(:A=>DNA_A, :T=>DNA_T, :G=>DNA_G, :C=>DNA_C, :Gap=>DNA_Gap, :N=>DNA_N)
+    base_from = d[from]
     pos = Interval{Annotation}[]
     for chr in keys(base_coverage.genome.chroms)
         index = base_coverage.genome[chr] .=== base_from
         ratios = base_coverage.fcount[chr][base_to] ./ sum(values(base_coverage.fcount[chr]))
         ratio_index = (ratios .>= ratio_cut) .& index
         for (r, p) in zip(ratios[ratio_index], findall(ratio_index .> 0))
-            mc = base_coverage.fcount[chr][base_to][p]
-            push!(pos, Interval(chr, p:p, STRAND_POS, Annotation("SNP", "$base_from->$base_to", Dict("mutation"=>"$base_from->$base_to", "count"=>"$mc", "frequency"=>"$(round(r; digits=3))"))))
+            mc = base_coverage.fcount[chr][to][p]
+            push!(pos, Interval(chr, p:p, STRAND_POS, Annotation("SNP", "$from->$to", 
+                Dict("mutation"=>"$from->$to", "count"=>"$mc", "frequency"=>"$(round(r; digits=3))"))))
         end
         index = BioSequences.complement(base_coverage.genome[chr]) .=== base_from
-        ratios = base_coverage.rcount[chr][base_to] ./ sum(values(base_coverage.rcount[chr]))
+        ratios = base_coverage.rcount[chr][to] ./ sum(values(base_coverage.rcount[chr]))
         ratio_index = (ratios .>= ratio_cut) .& index
         for (r, p) in zip(ratios[ratio_index], findall(ratio_index .> 0))
-            mc = base_coverage.rcount[chr][base_to][p]
-            push!(pos, Interval(chr, p:p, STRAND_NEG, Annotation("SNP", "$base_from->$base_to", Dict("mutation"=>"$base_from->$base_to", "count"=>"$mc", "frequency"=>"$(round(r; digits=3))"))))
+            mc = base_coverage.rcount[chr][to][p]
+            push!(pos, Interval(chr, p:p, STRAND_NEG, Annotation("SNP", "$from->$to", 
+                Dict("mutation"=>"$from->$to", "count"=>"$mc", "frequency"=>"$(round(r; digits=3))"))))
         end
     end
     return pos
 end
 
-function mismatchpositions(base_coverage::BaseCoverage, ratio_cut::Float64; check_bases=(:A, :T, :G, :C))
+function mismatchpositions(base_coverage::BaseCoverage, ratio_cut::Float64; check=(:A, :T, :G, :C))
     pos = Interval{Annotation}[]
-    for base_from in check_bases, base_to in check_bases
+    for base_from in check, base_to in check
         base_from === base_to && continue
         append!(pos, mismatchpositions(base_from, base_to, base_coverage, ratio_cut))
     end
     return pos
 end
 
-function mismatchkmerprofile(base_from::DNA, base_to::DNA, base_coverage::BaseCoverage; k=5)
+function mismatchkmerhist(from::Symbol, to::Symbol, base_coverage::BaseCoverage; k=5)
 
 end
 
