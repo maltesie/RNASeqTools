@@ -788,12 +788,12 @@ hasannotation(alnread::AlignedRead) = any(isassigned(alnread.alns.annames, i) &&
 annotatedcount(alnread::AlignedRead) = sum(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
 annotationcount(alnread::AlignedRead) = length(Set(name(part) for part in alnread))
 isfullyannotated(alnread::AlignedRead) = all(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
-function GenomicFeatures.leftposition(alnread::AlignedRead)
+function BioGenerics.leftposition(alnread::AlignedRead)
     check_refname = alnread.alns.refnames[first(alnread.range)]
     all(v .== check_refname for v in view(alnread.alns.refnames, alnread.range)) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
     minimum(view(alnread.alns.leftpos, alnread.range))
 end
-function GenomicFeatures.rightposition(alnread::AlignedRead)
+function BioGenerics.rightposition(alnread::AlignedRead)
     check_refname = alnread.alns.refnames[first(alnread.range)]
     all(v .== check_refname for v in view(alnread.alns.refnames, alnread.range)) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
     maximum(view(alnread.alns.rightpos, alnread.range))

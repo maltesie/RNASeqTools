@@ -127,7 +127,7 @@ end
 type(features::Features) = Set(type(f) for f in features)
 refnames(features::Features) = collect(keys(features.list.trees))
 function overlaps(alignmentinterval::Interval{T}, feature::Interval{Annotation}) where T<:AnnotationStyle
-    seqname(feature) == seqname(alignmentinterval) || return false
+    refname(feature) == refname(alignmentinterval) || return false
     strand(feature) == strand(alignmentinterval) || return false
     return leftposition(feature) <= rightposition(alignmentinterval) && leftposition(alignmentinterval) <= rightposition(feature)
 end
