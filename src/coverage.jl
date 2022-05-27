@@ -374,7 +374,7 @@ function rolling_sum(a, n::Int)
     return out
 end
 
-function Base.diff(coverage::Vector{Float64}, invert::Bool, window_size::Int; min_background_ratio=nothing, filter_local_max=true)
+function Base.diff(coverage::Vector{Float64}, invert::Bool; window_size=10, min_background_ratio=nothing, filter_local_max=true)
     d = zeros(Float64,length(coverage))
     isnothing(min_background_ratio) || (min_background_increase = min_background_ratio - 1)
     filtered_d = zeros(Float64,length(coverage))
@@ -409,10 +409,10 @@ function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, wi
     for chr in chrs
         notex_f, notex_r = vals_notex[chr]
         tex_f, tex_r = vals_tex[chr]
-        d_forward = diff(tex_f, false, window_size; min_background_ratio=min_background_ratio)
-        d_reverse = diff(tex_r, true, window_size; min_background_ratio=min_background_ratio)
-        check_d_forward = diff(notex_f, false, window_size; filter_local_max=false)
-        check_d_reverse = diff(notex_r, true, window_size; filter_local_max=false)
+        d_forward = diff(tex_f, false; window_size=window_size, min_background_ratio=min_background_ratio)
+        d_reverse = diff(tex_r, true; window_size=window_size,  min_background_ratio=min_background_ratio)
+        check_d_forward = diff(notex_f, false; window_size=window_size, filter_local_max=false)
+        check_d_reverse = diff(notex_r, true; window_size=window_size, filter_local_max=false)
         af = d_forward ./ check_d_forward
         ar = d_reverse ./ check_d_reverse
         fig = Figure(resolution=(1200,400))
@@ -439,8 +439,8 @@ function terms(coverage::Coverage; min_step=10, window_size=10, min_background_r
     chrs = [chr[1] for chr in coverage.chroms]
     for chr in chrs
         f, r = vals[chr]
-        d_forward = diff(f, true, window_size; min_background_ratio=min_background_ratio)
-        d_reverse = diff(r, false, window_size; min_background_ratio=min_background_ratio)
+        d_forward = diff(f, true; window_size=window_size, min_background_ratio=min_background_ratio)
+        d_reverse = diff(r, false; window_size=window_size, min_background_ratio=min_background_ratio)
         check_forward = d_forward .>= min_step
         check_reverse = d_reverse .>= min_step
         for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
