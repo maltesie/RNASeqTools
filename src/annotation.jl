@@ -46,8 +46,8 @@ struct Features{T} <: AnnotationContainer
     chroms::Dict{String, Int}
 end
 
-function Features()
-    return Features([])
+function Features(::Type{T}) where T
+    return Features(Vector{Interval{T}}())
 end
 
 function Features(feature_list::Vector{Interval{Annotation}})
@@ -58,7 +58,7 @@ function Features(feature_list::Vector{Interval{Annotation}}, chroms::Dict{Strin
     return Features(IntervalCollection(feature_list, true), chroms)
 end
 
-function Features(gff_file::String, type::Vector{String}; name_key="Name", fallback_key=nothing, same_name_rule=:all)
+function Features(gff_file::String, type::Vector{String}; name_keys=["Name"], same_name_rule=:all)
     same_name_rule in (:first, :all, :none) || throw(AssertionError("same_name_rule must be :first, :all, or :none"))
     features = GFF3.Reader(open(gff_file), skip_directives=false)
     intervals = Vector{Interval{Annotation}}()
@@ -77,17 +77,11 @@ function Features(gff_file::String, type::Vector{String}; name_key="Name", fallb
         (GFF3.featuretype(feature) in type || isempty(type)) || continue
         seqn = GFF3.seqid(feature)
         name = ("NA", "NA")
-        try
-            name = (GFF3.featuretype(feature), join(GFF3.attributes(feature, name_key), ","))
-        catch ex
-            if ex isa KeyError
-                try
-                    isnothing(fallback_key) || (name = (GFF3.featuretype(feature), join(GFF3.attributes(feature, fallback_key), ",")))
-                catch _
-                    continue
-                end
-            else
-              rethrow(ex)
+        as = GFF3.attributes(feature)
+        for name_key in reverse(name_keys)
+            for (key, values) in as
+                name_key === key || continue
+                name = (GFF3.featuretype(feature), join(values, ","))
             end
         end
         name in keys(names) ? (names[name]+=1) : (names[name]=1)
@@ -100,12 +94,12 @@ function Features(gff_file::String, type::Vector{String}; name_key="Name", fallb
     return Features(intervals, chroms)
 end
 
-function Features(gff_file::String, type::String; name_key="Name", fallback_key=nothing, same_name_rule=:all)
-    return Features(gff_file, [type], name_key=name_key, fallback_key=fallback_key, same_name_rule=same_name_rule)
+function Features(gff_file::String, type::String; name_keys=["Name"], same_name_rule=:all)
+    return Features(gff_file, [type], name_keys=name_keys, same_name_rule=same_name_rule)
 end
 
-function Features(gff_file::String; name_key="Name", fallback_key=nothing, same_name_rule=:all)
-    return Features(gff_file, String[], name_key=name_key, fallback_key=fallback_key, same_name_rule=same_name_rule)
+function Features(gff_file::String; name_keys=["Name"], same_name_rule=:all)
+    return Features(gff_file, String[], name_keys=name_keys, same_name_rule=same_name_rule)
 end
 
 function Features(coverage::Coverage; type="COV")
@@ -133,13 +127,13 @@ function overlaps(alignmentinterval::Interval{T}, feature::Interval{Annotation})
 end
 
 Base.push!(features::Features, interval::Interval) = push!(features.list, interval)
-function Base.merge!(features1::Features, features2::Features)
+function Base.merge!(features1::Features{T}, features2::Features{T}) where T
     for feature in features2
         push!(features1, feature)
     end
 end
-function Base.merge(features1::Features, features2::Features)
-    re = Features()
+function Base.merge(features1::Features{T}, features2::Features{T}) where T
+    re = Features(T)
     for feature in features1
         push!(re, feature)
     end
@@ -148,7 +142,7 @@ function Base.merge(features1::Features, features2::Features)
     end
     return re
 end
-Base.:*(featuresa::Features, featuresb::Features) = merge(featuresa, featuresb)
+Base.:*(features1::Features, features2::Features) = merge(features1, features2)
 
 Base.iterate(features::T) where T<:AnnotationContainer = iterate(features.list)
 Base.iterate(features::T, state::Tuple{Int64,GenomicFeatures.ICTree{I},GenomicFeatures.ICTreeIteratorState{I}}) where {T<:AnnotationContainer,I<:AnnotationStyle} = iterate(features.list, state)
@@ -183,22 +177,24 @@ function firstoverlap(features::Features, feature::Interval)
     return nothing
 end
 
-function paramstring(params::Dict{String,String};priority=("Name", "Count"))
+function paramstring(params::Dict{String,String};priority=("Name",))
     ps = join(("$key=$(params[key])" for key in priority if key in keys(params)), ";")
     os = join(("$key=$(params[key])" for key in sort(collect(keys(params))) if !(key in priority)), ";")
     return ps * ((isempty(ps) || isempty(os)) ? "" : ";") * os
 end
+paramstring(feature::Interval{Annotation}; priority=("Name",)) = paramstring(params(feature); priority=priority)
 
 function Base.write(file::String, features::Features; zip=false, tabix=false)
     chroms = copy(features.chroms)
     writer = GFF3.Writer(open(file, "w"))
     write(writer, GFF3.Record("##gff-version 3.2.1"))
     for feature in features
-        if feature.seqname in keys(chroms)
-            write(writer, GFF3.Record("##sequence-region $(feature.seqname) 1 $(chroms[feature.seqname])"))
-            delete!(chroms, feature.seqname)
+        #println(feature)
+        if refname(feature) in keys(chroms)
+            write(writer, GFF3.Record("##sequence-region $(refname(feature)) 1 $(chroms[refname(feature)])"))
+            delete!(chroms, refname(feature))
         end
-        write(writer, GFF3.Record("$(feature.seqname)\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(params(feature)))"))
+        write(writer, GFF3.Record("$(refname(feature))\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(params(feature)))"))
     end
     b = close(writer)
     sleep(0.5)
@@ -323,6 +319,15 @@ setparam(feature::Interval{Annotation}, key::String, value::String) = feature.me
 hasannotationkey(feature::Interval{Annotation}, key::String) = key in keys(params(feature))
 annotation(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata
 ispositivestrand(feature::Interval{T}) where T<:AnnotationStyle = strand(feature) === STRAND_POS
+
+function summarize(feature::Interval{Annotation})
+    s = "Feature (Interval{Annotation}):\n\n[$(leftposition(feature)), $(rightposition(feature))]"
+    s *= "on $(refname(feature)) ($(strand(feature))) with annotation $(type(feature)):$(name(feature))\n"
+    s *= "parameters: $(paramstring(feature))"
+end
+function Base.show(feature::Interval{Annotation})
+    println(summarize(feature))
+end
 
 typenamekey(feature::Interval{Annotation}) = type(feature) * ":" * name(feature)
 function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)

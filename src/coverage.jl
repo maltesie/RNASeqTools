@@ -144,11 +144,31 @@ function deletionpositions(base_coverage::BaseCoverage; check=(:A, :T, :G, :C), 
     for from in check
         mpos = mismatchpositions(base_coverage, from, :Gap; ratio_cut=ratio_cut)
         append!(pos, [Interval(refname(i), leftposition(i), leftposition(i), strand(i),
-                        Annotation("DEL", "$from", Dict("base"=>"$from"
-                                                            "count"=>"$(i.metadata[1])",
-                                                            "frequency"=>"$(i.metadata[2])"))) for i in mpos])
+                        Annotation("DEL", "$from", Dict("base"=>"$from",
+                                                        "count"=>"$(i.metadata[1])",
+                                                        "frequency"=>"$(i.metadata[2])"))) for i in mpos])
     end
-    return Features(pos)
+    merged_pos = Interval{Annotation}[]
+    merger = Interval{Annotation}[]
+    for check in (true, false)
+        for pos_interval in pos
+            ispositivestrand(pos_interval) == check || continue
+            show(pos_interval)
+            if !isempty(merger) && (leftposition(pos_interval) != (rightposition(merger[end])+1))
+                push!(merged_pos, length(merger) == 1 ? merger[1] : Interval(refname(merger[end]),
+                                                                                leftposition(merger[1]),
+                                                                                rightposition(merger[end]),
+                                                                                strand(merger[end]),
+                                                                                Annotation("DEL", join(name(m) for m in merger),
+                                                                                            Dict("base"=>join(name(m) for m in merger),
+                                                                                                "count"=>"$(mean(param(m, "count", Int) for m in merger))",
+                                                                                                "frequency"=>"$(mean(param(m, "frequency", Float64) for m in merger))"))))
+                empty!(merger)
+            end
+            push!(merger, pos_interval)
+        end
+    end
+    return Features(merged_pos)
 end
 
 all_perm(xs, n) = vec(map(collect, Iterators.product(ntuple(_ -> xs, n)...)))
