@@ -129,7 +129,7 @@ function conserved_features(features::Features, source_genome::Genome, target_ge
 end
 
 function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String; conditions::Dict{String, UnitRange{Int}}=Dict("chimeras"=>1:length(bams)),
-                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", merge_annotation_types=true,
+                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", cds_type="CDS", merge_annotation_types=true,
                             is_reverse_complement=true, include_secondary_alignments=true, include_alternative_alignments=false, model=:fisher, min_reads=5, max_fdr=0.05,
                             overwrite_existing=false, multi_detection_method=:annotation)
 
@@ -165,7 +165,7 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
 
         println("Computing significance levels...")
         addpvalues!(interactions; method=model)
-        addrelativepositions!(interactions, features)
+        addrelativepositions!(interactions, features; cds_type=cds_type)
 
         total_reads = sum(interactions.edges[!, :nb_ints])
         above_min_reads = sum(interactions.edges[interactions.edges.nb_ints .>= min_reads, :nb_ints])

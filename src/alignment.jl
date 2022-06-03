@@ -933,44 +933,6 @@ function occurences(test_sequence::LongDNASeq, bam_file::String, similarity_cut:
     return c
 end
 
-function annotate!(features::Features, files::SingleTypeFiles; only_unique_alignments=true, is_reverse_complement=false, count_key="Count", abs_lfc_cut=1, pvalue_cut=0.05)
-    if files.type == ".bam"
-        for (i,bam_file) in enumerate(files)
-            reader = BAM.Reader(open(bam_file); index=bam_file*".bai")
-            for feature in features
-                c = 0
-                for record in eachoverlap(reader, feature)
-                    BAM.ismapped(record) || continue
-                    hasxatag(record) && only_unique_alignments && continue
-                    invert = is_reverse_complement != isread2(record)
-                    same_strand = ispositivestrand(record) == (strand(feature) === STRAND_POS)
-                    (same_strand == invert) && continue
-                    c += 1
-                end
-                params(feature)["$count_key$i"] = "$c"
-            end
-            close(reader)
-        end
-
-    elseif files.type == ".csv"
-
-        for file in files
-            expname = basename(file)[1:end-4]
-            table = CSV.read(file, DataFrame; missingstring="NA")
-            replace!(table.padj, missing => 2.0)
-            replace!(table.log2FoldChange, missing => 0.0)
-            filter!(row->((row.padj <= pvalue_cut) && (abs(row.log2FoldChange) >= abs_lfc_cut)), table)
-            for feature in features
-                if name(feature) in table.Gene
-                    row = table[findfirst(table.Gene .== name(feature)), :]
-                    params(feature)["$(expname)_lfc"] = "$(row.log2FoldChange)"
-                    params(feature)["$(expname)_fdr"] = "$(row.padj)"
-                end
-            end
-        end
-    end
-end
-
 annotate_filter(a::Interval{Annotation}, b::Interval{Nothing}) = strand(a) === strand(b)
 function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_type=nothing, overwrite_type=nothing)
     myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(annotate_filter), Annotation}(

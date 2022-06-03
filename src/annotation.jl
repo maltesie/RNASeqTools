@@ -318,6 +318,7 @@ param(feature::Interval{Annotation}, key::String, ::Type{I}) where {I} = parse(I
 setparam(feature::Interval{Annotation}, key::String, value::String) = feature.metadata.params[key] = value
 hasannotationkey(feature::Interval{Annotation}, key::String) = key in keys(params(feature))
 annotation(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata
+hasannotation(feature::Interval{I}) where T<:AnnotationStyle = !isempty(annotation(feature))
 ispositivestrand(feature::Interval{T}) where T<:AnnotationStyle = strand(feature) === STRAND_POS
 
 function summarize(feature::Interval{Annotation})

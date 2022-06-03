@@ -1,13 +1,45 @@
-struct Counts{T<:Union{Float64, Int}}
+struct Counts
     conditions::Dict{String, UnitRange{Int}}
-    values::Matrix{T}
+    values::Matrix{Float64}
     features::Features{Annotation}
 end
 
-function Counts(features::Features, samples::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}; normalize_counts=true)
-    c = rawcount(features, samples)
-    normalize_counts && normalize!(c)
+function Counts(features::Features, samples::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}; aggregation=maximum, normalization_method=:none)
+    normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
+    c = coveragecount(features, samples; aggregation=aggregation)
+    normalization_method in (:tmm, :tpm) && normalize!(c; normalization_method=normalization_method)
+    normalization_method === :tpkm && normalize!(c, features)
     return Counts(conditions, c, features)
+end
+
+function Counts(features::Features, samples::PairedSingleTypeFiles, conditions::Dict{String, UnitRange{Int}}; aggregation=:maximum, normalization_method=:none)
+    samples.type === ".bw" || throw(AssertionError("File type has to be .bw"))
+    coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in samples]
+    Counts(features, coverages, conditions; aggregation=aggregation, normalization_method=normalization_method)
+end
+
+function Counts(features::Features, samples::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}};
+        normalization_method=:none, include_secondary_alignments=true, include_alternative_alignments=false)
+    normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
+    samples.type === ".bam" || throw(AssertionError("File type has to be .bam"))
+    counts = zeros(Float64, length(features), sum(length(v) for v in values(conditions)))
+    feature_trans = Dict{String, Int}(name(feature)*type(feature)=>i for (i, feature) in enumerate(features))
+    for range in values(conditions)
+        mybams = samples[range]
+        for (i, bam_file) in enumerate(mybams)
+            alignments = Alignments(bam_file; include_secondary_alignments=include_secondary_alignments, include_alternative_alignments=include_alternative_alignments)
+            annotate!(alignments, features)
+            for alignment in alignments
+                for part in alignment
+                    hasannotation(part) || continue
+                    counts[feature_trans[name(part)*type(part)], range[i]] += 1.0
+                end
+            end
+        end
+    end
+    normalization_method in (:tmm, :tpm) && normalize!(counts; normalization_method=normalization_method)
+    normalization_method === :tpkm && normalize!(counts, features)
+    Counts(conditions, counts, features)
 end
 
 function getindex(counts::Counts, condition::String)
@@ -16,7 +48,7 @@ end
 
 conditionrange(counts::Counts, condition::String) = counts.conditions[condition]
 
-function rawcount(features::Features, samples::Vector{Coverage}; aggregation=maximum)
+function coveragecount(features::Features, samples::Vector{Coverage}; aggregation=maximum)
     vals = [values(coverage) for coverage in samples]
     averages = zeros(Float64, length(features), length(samples))
     for (j,rep) in enumerate(vals)
@@ -28,15 +60,27 @@ function rawcount(features::Features, samples::Vector{Coverage}; aggregation=max
     return averages
 end
 
-function normalize!(m::Matrix)
-    avg_sample::Vector{Float64} = [geomean(m[i, :]) for i in 1:first(size(m))]
-    norm_factors = 2 .^ [median(log2.(m[:, i]) .- log2.(avg_sample)) for i in 1:last(size(m))]
-    m ./= norm_factors'
+function normalize!(m::Matrix{Float64}; normalization_method=:tmm)
+    if normalization_method === :tmm
+        avg_sample::Vector{Float64} = [geomean(m[i, :]) for i in 1:first(size(m))]
+        norm_factors = 2 .^ [median(log2.(m[:, i]) .- log2.(avg_sample)) for i in 1:last(size(m))]
+        m ./= norm_factors'
+    elseif normalization_method === :tpm
+        m ./= (1000000 ./ sum(m; dims=1))'
+    else
+        raise(AssertionError("No method implemented for $normalization_method"))
+    end
     return m
 end
 
-function dgetable(counts::Counts, control_condition::String, experiment_condition::String; method=:ttest)
+function normalize!(m::Matrix{Float64}, features::Features)
+    normalize!(m; normalization_method=:tpm)
+    for feature in features
+        m[i, !] ./= (length(feature) / 1000)
+    end
+end
 
+function dgetable(counts::Counts, control_condition::String, experiment_condition::String; method=:ttest)
     if method === :ttest
         avg_control = mean(@view(counts[control_condition]), dims=2)
         avg_experiment = mean(@view(counts[experiment_condition]), dims=2)
