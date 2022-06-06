@@ -4,7 +4,7 @@ import XAM: BAM
 using FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig, DelimitedFiles, JLD2, BGZFStreams
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 import DataFrames: DataFrame, sort, nrow, names, innerjoin
-using Measures, Statistics, HypothesisTests, MultipleTesting, Combinatorics, Random
+using Statistics, HypothesisTests, MultipleTesting, Combinatorics, Random
 using LightGraphs, ElasticArrays, IterTools
 
 export align_mem, align_minimap, align_kraken2
