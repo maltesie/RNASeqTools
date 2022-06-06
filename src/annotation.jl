@@ -314,11 +314,11 @@ name(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata.name
 refname(feature::Interval{T}) where T<:AnnotationStyle = feature.seqname
 params(feature::Interval{Annotation}) = feature.metadata.params
 param(feature::Interval{Annotation}, key::String) = feature.metadata.params[key]
-param(feature::Interval{Annotation}, key::String, ::Type{I}) where {I} = parse(I, feature.metadata.params[key])
+param(feature::Interval{Annotation}, key::String, ::Type{T}) where {T} = parse(T, feature.metadata.params[key])
 setparam(feature::Interval{Annotation}, key::String, value::String) = feature.metadata.params[key] = value
 hasannotationkey(feature::Interval{Annotation}, key::String) = key in keys(params(feature))
 annotation(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata
-hasannotation(feature::Interval{I}) where T<:AnnotationStyle = !isempty(annotation(feature))
+hasannotation(feature::Interval{T}) where T<:AnnotationStyle = !isempty(annotation(feature))
 ispositivestrand(feature::Interval{T}) where T<:AnnotationStyle = strand(feature) === STRAND_POS
 
 function summarize(feature::Interval{Annotation})

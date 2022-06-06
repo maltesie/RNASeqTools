@@ -9,47 +9,6 @@ function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, g
     println("Done.")
 end
 
-#function de_genes(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, add_keys=["BaseValueFrom", "BaseValueTo", "LogFoldChange", "PValue", "AdjustedPValue"])
-#    between_conditions = isnothing(between_conditions) ? combinations(collect(conditions), 2) : [((a,conditions[a]), (b,conditions[b])) for (a,b) in between_conditions]
-#    for ((name1, range1), (name2, range2)) in between_conditions
-#        annotate!(features, coverages[range1], coverages[range2])
-#        write(joinpath(results_path, name1 * "_vs_" * name2 * ".csv"), asdataframe(features, add_keys=add_keys))
-#    end
-#end
-
-function feature_count(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
-    expnames = Dict{String,Vector{String}}()
-    for (name, range) in conditions
-        annotate!(features, coverages[range]; count_key="$name")
-        expnames[name] = ["$name$i" for i in 1:length(range)]
-    end
-    write(joinpath(results_path, "all_counts.csv"), asdataframe(features; add_keys=vcat([val for val in values(expnames)]...)))
-    if !isnothing(between_conditions)
-        for (cond1, cond2) in between_conditions
-            exps = [expnames[cond1]...,expnames[cond2]...]
-            write(joinpath(results_path, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
-        end
-    end
-end
-
-function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, is_reverse_complement=false, only_unique_alignments=true)
-    expnames = Dict{String,Vector{String}}()
-    mybams = copy(bams)
-    for (name, range) in conditions
-        mybams = bams[range]
-        annotate!(features, mybams; count_key="$name", is_reverse_complement=is_reverse_complement, only_unique_alignments=only_unique_alignments)
-        expnames[name] = ["$name$i" for i in 1:length(range)]
-        println("Finished counting in $name")
-    end
-    write(joinpath(results_path, "all_counts.csv"), asdataframe(features; add_keys=vcat([val for val in values(expnames)]...)))
-    if !isnothing(between_conditions)
-        for (cond1, cond2) in between_conditions
-            exps = [expnames[cond1]...,expnames[cond2]...]
-            write(joinpath(results_path, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
-        end
-    end
-end
-
 function feature_ratio(features::Features, coverage_files::PairedSingleTypeFiles, results_file::String)
     result_string = ""
     for (file1,file2) in coverage_files
@@ -189,6 +148,38 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
 	ints = CsvFiles(joinpath(results_path, "interactions"))
 	write(joinpath(results_path, "singles.xlsx"), singles)
 	write(joinpath(results_path, "interactions.xlsx"), ints)
+end
+
+"""
+KronaTools wrapper function.
+Uses report file from kraken2 created by align_kraken2().
+
+Example use (using .report.txt file created by align_kraken2()):
+    kronaplot("notex_01_1.report.txt")
+
+Output:
+    notex_01_1.error.txt
+    notex_01_1.krona.html
+"""
+function kronaplot(taxonomy_file::String;
+        krona_bin="ktImportTaxonomy",
+    )
+
+    output_file = split(taxonomy_file, ".")[1] * ".krona.html"
+    # error_file = split(taxonomy_file, ".")[1] * ".error.txt"
+    params = [
+              "-o", output_file,
+              "-t", 2, "-m", 1
+             ]
+
+    tmp_file = tempname()
+    taxonomy_file = readdlm(taxonomy_file, '\t')
+    # cut taxonomy file to appropriate columns
+    writedlm(tmp_file, hcat(taxonomy_file[:, 3], taxonomy_file[:, 7]), '\t')
+
+    # ktImportTaxonomy krona.in -o krona.html -t 2 -m 1
+    cmd = pipeline(`$krona_bin $tmp_file $params`)# , stderr=error_file)
+    run(cmd)
 end
 
 """
