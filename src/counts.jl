@@ -119,36 +119,3 @@ function mincorrelation(counts::Counts)
     end
     return min_corr
 end
-
-function feature_count(features::Features, coverages::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing)
-    expnames = Dict{String,Vector{String}}()
-    for (name, range) in conditions
-        annotate!(features, coverages[range]; count_key="$name")
-        expnames[name] = ["$name$i" for i in 1:length(range)]
-    end
-    write(joinpath(results_path, "all_counts.csv"), asdataframe(features; add_keys=vcat([val for val in values(expnames)]...)))
-    if !isnothing(between_conditions)
-        for (cond1, cond2) in between_conditions
-            exps = [expnames[cond1]...,expnames[cond2]...]
-            write(joinpath(results_path, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
-        end
-    end
-end
-
-function feature_count(features::Features, bams::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}}, results_path::String; between_conditions=nothing, is_reverse_complement=false, only_unique_alignments=true)
-    expnames = Dict{String,Vector{String}}()
-    mybams = copy(bams)
-    for (name, range) in conditions
-        mybams = bams[range]
-        annotate!(features, mybams; count_key="$name", is_reverse_complement=is_reverse_complement, only_unique_alignments=only_unique_alignments)
-        expnames[name] = ["$name$i" for i in 1:length(range)]
-        println("Finished counting in $name")
-    end
-    write(joinpath(results_path, "all_counts.csv"), asdataframe(features; add_keys=vcat([val for val in values(expnames)]...)))
-    if !isnothing(between_conditions)
-        for (cond1, cond2) in between_conditions
-            exps = [expnames[cond1]...,expnames[cond2]...]
-            write(joinpath(results_path, "$(cond1)_vs_$cond2.csv"), asdataframe(features; add_keys=exps))
-        end
-    end
-end
