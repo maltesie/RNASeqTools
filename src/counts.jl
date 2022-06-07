@@ -90,18 +90,25 @@ function normalize!(m::Matrix{Float64}, features::Features, genome::Genome; norm
 
 end
 
+function dge_ttest(counts::Counts, control_condition::String, experiment_condition::String)
+    avg_control = mean(@view(counts[control_condition]), dims=2)
+    avg_experiment = mean(@view(counts[experiment_condition]), dims=2)
+    ps = pvalue.(UnequalVarianceTTest.(@view(counts[control_condition]), @view(counts[experiment_condition])))
+    fc = log2(avg_experiment) - log2(avg_control)
+    padj = adjust(PValues(ps), BenjaminiHochberg())
+    return (fc, padj)
+end
+
+function dge_glm(counts::Counts, control_condition::String, experiment_condition::String)
+    return (fc, padj)
+end
+
 function dgetable(counts::Counts, control_condition::String, experiment_condition::String; method=:ttest)
-    if method === :ttest
-        avg_control = mean(@view(counts[control_condition]), dims=2)
-        avg_experiment = mean(@view(counts[experiment_condition]), dims=2)
-        ps = pvalue.(UnequalVarianceTTest.(@view(counts[control_condition]), @view(counts[experiment_condition])))
-        fc = log2(avg_experiment) - log2(avg_control)
-    elseif method === :glm
-        throw(NotImplementedError)
-    else
-        throw(AssertionError("Method must be eather :ttest or :glm"))
-    end
-    adjps = adjust(PValues(ps), BenjaminiHochberg())
+    method in (:glm, :ttest) || throw(AssertionError("Method must be eather :ttest or :glm"))
+
+    dge_function = method === :glm ? dge_glm : dge_ttest
+    (fc, padj) = dge_function(counts, control_condition, experiment_condition)
+
     return DataFrame(
         feature=[name(feature) for feature in count.features],
         type=[type(feature) for feature in count.features],
@@ -110,10 +117,7 @@ function dgetable(counts::Counts, control_condition::String, experiment_conditio
         right=[rightposition(feature) for feature in count.features],
         foldChange=round.(2 .^ fc; digits=3),
         log2FoldChange=round.(fc; digits=3),
-        pValue=ps,
-        fdr=adjps,
-        averageControl=avg_control,
-        averageExperiment=avg_experiment
+        fdr=padj,
     )
 end
 
