@@ -202,29 +202,6 @@ function krona_plot_pipeline(
     !report && rm(taxonomy_report)
 end
 
-
-"""
-DESeq2 pipeline wrapper.
-"""
-function deseq2_R(
-    features::Features,
-    bams::SingleTypeFiles,
-    conditions::Dict{String, UnitRange{Int}},
-    between_conditions::Vector{Tuple{String, String}},
-    results_path::String;
-    is_reverse_complement=false
-)
-    all(isfile(joinpath(results_path, cond1 * "_vs_" * cond2 * ".csv")) for (cond1, cond2) in between_conditions) ||
-        feature_count(features, bams, conditions,  results_path; between_conditions=between_conditions, is_reverse_complement=is_reverse_complement)
-
-    rcall(:source, joinpath(@__DIR__, "deseq2.R"))
-    for (cond1, cond2) in between_conditions
-        file = joinpath(results_path, cond1 * "_vs_" * cond2 * ".csv")
-        num_ctl, num_exp = length(conditions[cond1]), length(conditions[cond2])
-        rcall(:deseq2pipeline, file, num_ctl, num_exp)
-    end
-end
-
 function direct_rna_pipeline(seqs_file::String, genome_file::String, annotation_file::Union{String, Nothing};
                                 minimap2_bin="minimap2", sam_bin="samtools", filter_types=["rRNA"],
                                 prefix="filtered_", overwrite_existing=false)
