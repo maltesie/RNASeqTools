@@ -190,7 +190,7 @@ Creates 4 files:
     *.error.txt
     *.krona.html
 """
-function krona_plot_pipeline(
+function kronaplot_pipeline(
         db_location::String, sequence_file::String;
         threads = 6, report = false
     )

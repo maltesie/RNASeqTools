@@ -60,12 +60,12 @@ function coveragecount(features::Features, samples::Vector{Coverage}; aggregatio
     return averages
 end
 
-function normalize!(m::Matrix{Float64}; normalization_method=:tmm)
-    if normalization_method === :tmm
+function normalize!(m::Matrix{Float64}; normalization_method=:rle)
+    if normalization_method === :rle
         avg_sample::Vector{Float64} = [geomean(m[i, :]) for i in 1:first(size(m))]
         norm_factors = 2 .^ [median(log2.(m[:, i]) .- log2.(avg_sample)) for i in 1:last(size(m))]
         m ./= norm_factors'
-    elseif normalization_method === :tpm
+    elseif normalization_method === :rpm
         m ./= (1000000 ./ sum(m; dims=1))'
     else
         raise(AssertionError("No method implemented for $normalization_method"))
@@ -73,7 +73,7 @@ function normalize!(m::Matrix{Float64}; normalization_method=:tmm)
     return m
 end
 
-function normalize!(m::Matrix{Float64}, features::Features; normalization_method=:tpkm)
+function normalize!(m::Matrix{Float64}, features::Features; normalization_method=:rpkm)
     normalization_method != :tpkm && raise(AssertionError("No method implemented for $normalization_method"))
     normalize!(m; normalization_method=:tpm)
     for feature in features
@@ -81,8 +81,13 @@ function normalize!(m::Matrix{Float64}, features::Features; normalization_method
     end
 end
 
+function cqn_offsets(m::Matrix{Float64})
+
+end
+
 function normalize!(m::Matrix{Float64}, features::Features, genome::Genome; normalization_method=:cqn)
     normalization_method != :cqn && raise(AssertionError("No method implemented for $normalization_method"))
+
 end
 
 function dgetable(counts::Counts, control_condition::String, experiment_condition::String; method=:ttest)
@@ -94,7 +99,7 @@ function dgetable(counts::Counts, control_condition::String, experiment_conditio
     elseif method === :glm
         throw(NotImplementedError)
     else
-        throw(AssertionError("method must be one of :ttest, :glm"))
+        throw(AssertionError("Method must be eather :ttest or :glm"))
     end
     adjps = adjust(PValues(ps), BenjaminiHochberg())
     return DataFrame(
