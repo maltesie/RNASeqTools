@@ -73,15 +73,16 @@ function normalize!(m::Matrix{Float64}; normalization_method=:tmm)
     return m
 end
 
-function normalize!(m::Matrix{Float64}, features::Features)
+function normalize!(m::Matrix{Float64}, features::Features; normalization_method=:tpkm)
+    normalization_method != :tpkm && raise(AssertionError("No method implemented for $normalization_method"))
     normalize!(m; normalization_method=:tpm)
     for feature in features
         m[i, !] ./= (length(feature) / 1000)
     end
 end
 
-function normalize!(m::Matrix{Float64}, features::Features, genome::Genome)
-
+function normalize!(m::Matrix{Float64}, features::Features, genome::Genome; normalization_method=:cqn)
+    normalization_method != :cqn && raise(AssertionError("No method implemented for $normalization_method"))
 end
 
 function dgetable(counts::Counts, control_condition::String, experiment_condition::String; method=:ttest)
