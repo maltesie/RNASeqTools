@@ -178,15 +178,15 @@ end
 function addpvalues!(interactions::Interactions; method=:fisher)
     @assert method in (:disparity, :fisher)
     pvalues = ones(ne(interactions.graph))
-    all_interactions = sum(interactions.edges[!, :nb_ints])+1
 
     if method === :fisher
         check_dict = Dict((s,d)=>n for (s,d,n) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]]))
         ints_between = [(d,s) in keys(check_dict) ? check_dict[(d,s)]+ints : ints for (s,d,ints) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]])]
-        ints_other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between
-        ints_other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between
-        ints_other = all_interactions .- ints_between .- ints_other_source .- ints_other_target
-        tests = FisherExactTest.(ints_between, ints_other_target, ints_other_source, ints_other)
+        other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between .+ interactions.nodes[interactions.edges[!, :src], :nb_single]
+        other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between .+ interactions.nodes[interactions.edges[!, :dst], :nb_single]
+        total_other = sum(interactions.edges[!, :nb_ints]) + sum(interactions.nodes[!, :nb_single]) .- ints_between .- other_source .- other_target
+        tests = FisherExactTest.(ints_between, other_target, other_source, total_other)
+        #tests = ChisqTest.(hcat(vcat(ints_between, other_target), vcat(other_source, total_other)))
         pvalues = pvalue.(tests; tail=:right)
     elseif method === :disparity
         degrees = [degree(interactions.graph, i) - 1 for i in 1:nv(interactions.graph)]

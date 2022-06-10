@@ -340,7 +340,7 @@ function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
         push!(seqs, seq)
         push!(names, key_gen(feature))
     end
-    return Sequences(seqs; seqnames=names)
+    return Sequences(seqs, names)
 end
 
 function covratio(features::Features, coverage::Coverage)

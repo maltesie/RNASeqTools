@@ -406,12 +406,12 @@ function rolling_sum(a, n::Int)
     return out
 end
 
-function Base.diff(coverage::Vector{Float64}, invert::Bool; window_size=10, min_background_ratio=nothing, filter_local_max=true)
+function Base.diff(coverage::Vector{Float64}, invert::Bool; half_window_size=5, min_background_ratio=nothing, filter_local_max=true)
     d = zeros(Float64,length(coverage))
     isnothing(min_background_ratio) || (min_background_increase = min_background_ratio - 1)
     filtered_d = zeros(Float64,length(coverage))
+    window_size = half_window_size * 2
     invert ? d[1:end-1] = @view(coverage[1:end-1]) .- @view(coverage[2:end])  : d[2:end] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
-    half_window_size = floor(Int, window_size/2)
     filtered_d[half_window_size:end-half_window_size] = rolling_sum(d,window_size)
     if filter_local_max
         for i in 1:length(d)-window_size+1
@@ -431,8 +431,8 @@ function Base.diff(coverage::Vector{Float64}, invert::Bool; window_size=10, min_
     end
     return filtered_d
 end
-#using CairoMakie
-function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, window_size=10, min_background_ratio=1.2)
+
+function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, half_window_size=5, min_background_ratio=1.2)
     (notex.chroms == tex.chroms) || throw(Assertion("tex and notex coverage are defined on different reference sequences."))
     chrs = [chr[1] for chr in notex.chroms]
     vals_notex = values(notex)
@@ -441,10 +441,10 @@ function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, wi
     for chr in chrs
         notex_f, notex_r = vals_notex[chr]
         tex_f, tex_r = vals_tex[chr]
-        d_forward = diff(tex_f, false; window_size=window_size, min_background_ratio=min_background_ratio)
-        d_reverse = diff(tex_r, true; window_size=window_size,  min_background_ratio=min_background_ratio)
-        check_d_forward = diff(notex_f, false; window_size=window_size, filter_local_max=false)
-        check_d_reverse = diff(notex_r, true; window_size=window_size, filter_local_max=false)
+        d_forward = diff(tex_f, false; half_window_size=half_window_size, min_background_ratio=min_background_ratio)
+        d_reverse = diff(tex_r, true; half_window_size=half_window_size,  min_background_ratio=min_background_ratio)
+        check_d_forward = diff(notex_f, false; half_window_size=half_window_size, filter_local_max=false)
+        check_d_reverse = diff(notex_r, true; half_window_size=half_window_size, filter_local_max=false)
         af = d_forward ./ check_d_forward
         ar = d_reverse ./ check_d_reverse
         fig = Figure(resolution=(1200,400))
@@ -465,14 +465,14 @@ function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, wi
     return Coverage(IntervalCollection(intervals, true), tex.chroms)
 end
 
-function terms(coverage::Coverage; min_step=10, window_size=10, min_background_ratio=1.2)
+function terms(coverage::Coverage; min_step=10, half_window_size=5, min_background_ratio=1.2)
     vals = values(coverage)
     intervals = Vector{Interval{Float64}}()
     chrs = [chr[1] for chr in coverage.chroms]
     for chr in chrs
         f, r = vals[chr]
-        d_forward = diff(f, true; window_size=window_size, min_background_ratio=min_background_ratio)
-        d_reverse = diff(r, false; window_size=window_size, min_background_ratio=min_background_ratio)
+        d_forward = diff(f, true; half_window_size=half_window_size, min_background_ratio=min_background_ratio)
+        d_reverse = diff(r, false; half_window_size=half_window_size, min_background_ratio=min_background_ratio)
         check_forward = d_forward .>= min_step
         check_reverse = d_reverse .>= min_step
         for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
