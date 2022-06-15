@@ -396,73 +396,78 @@ function Base.merge(coverages::Vector{Coverage})
     return Coverage(vals_f, vals_r, coverages[1].chroms)
 end
 
-function rolling_sum(a, n::Int)
+all_fisher_test_combinations(notex::Vector{Tuple{Int,Int}}, tex::Vector{Tuple{Int,Int}}) = vec([pvalue(FisherExactTest(nt...,t...); tail=:right) for t in tex, nt in notex])
+function all_fisher_test_combinations(notex::Matrix{Int}, tex::Matrix{Int})
+    tex_rows, tex_samples = size(tex)
+    notex_rows, notex_samples = size(notex)
+    tex_rows == notex_rows || throw(AssertionError("tex and notex have to have the same number of rows!"))
+    tex_samples % 2 == 0 && notex_samples % 2 == 0 || throw(AssertionError("tex and notex have to have even amount of columns!"))
+    all_fisher_test_combinations.([[(i,j) for (i,j) in partition(notex[k, :], 2)] for k in 1:size(notex)[2]], [[(i,j) for (i,j) in partition(tex[k, :], 2)] for k in 1:size(tex)[2]])
+end
+
+fisher_combined_pvalue(pvalues::Vector{Float64}) = 1-cdf(Chisq(2*length(pvalues)), -2*sum(log.(pvalues)))
+
+test_multiple_fisher_combined(notex::Matrix{Int}, tex::Matrix{Int}) = adjust(PValues(fisher_combined_pvalue.(all_fisher_test_combinations(notex, tex))), BenjaminiHochberg())
+
+function rolling_sum(a::Vector{Float64}, n::Int; circular=true)
     (1<=n<=length(a)) || throw(Assertion("n has to be betwen 1 and $(length(a))."))
-    out = similar(a, length(a)-n+1)
+    out = similar(a)
     out[1] = sum(a[1:n])
-    for i in eachindex(out)[2:end]
+    for i in 2:length(a)-n+1
         out[i] = out[i-1]-a[i-1]+a[i+n-1]
     end
-    return out
+    for (ii,i) in enumerate(length(a)-n+2:length(a))
+        out[i] = out[i-1]-a[i-1]+ (circular ? a[ii] : 0.0)
+    end
+    return circshift(out, Int((n-1)/2))
 end
 
-function Base.diff(coverage::Vector{Float64}, invert::Bool; half_window_size=5, min_background_ratio=nothing, filter_local_max=true)
-    d = zeros(Float64,length(coverage))
-    isnothing(min_background_ratio) || (min_background_increase = min_background_ratio - 1)
+function maxsignalpositions(coverage::Vector{Float64}; half_window_size=5, circular=true)
+end
+
+function maxdiff(coverage::Vector{Float64}; half_window_size=5, circular=true)
+    all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
+    is_negative_strand = all(coverage .<= 0)
     filtered_d = zeros(Float64,length(coverage))
-    window_size = half_window_size * 2
-    invert ? d[1:end-1] = @view(coverage[1:end-1]) .- @view(coverage[2:end])  : d[2:end] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
-    filtered_d[half_window_size:end-half_window_size] = rolling_sum(d,window_size)
-    if filter_local_max
-        for i in 1:length(d)-window_size+1
-            _, mi = findmax(@view(d[i:i+window_size-1]))
-            for j in 1:window_size
-                mi != j && (d[i+j-1]=0.0)
-            end
+    window_size = half_window_size * 2 + 1
+    filtered_d[is_negative_strand ? (1:length(filtered_d-1)) : (2:length(filtered_d))] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
+    filtered_d = rolling_sum(filtered_d, window_size; circular=circular)
+
+    for i in 1:length(filtered_d)-window_size
+        _, mi = findmax(@view(filtered_d[i:i+window_size]))
+        for j in 1:window_size
+            mi != j && (filtered_d[i+j-1]=0.0)
         end
     end
-    filtered_d[findall(x -> x <= 0, d)] .= 0.0
-    if !isnothing(min_background_ratio)
-        for i in findall(!iszero, filtered_d)
-            check_range = invert ? (i:i+half_window_size) : (i-half_window_size+1:i)
-            lim = filtered_d[i]/min_background_increase
-            any(@view(coverage[check_range]) .< lim) || (filtered_d[i] = 0.0)
-        end
+
+    max_index = filtered_d .> 0
+    background_increase_pairs = Matrix{Int}(undef, sum(max_index), 3)
+    mycoverage = circular ? vcat(coverage[end-half_window_size:end], coverage, coverage[1:half_window_size]) : coverage
+    for (ii,i) in enumerate(findall(max_index))
+        index = circular ? i+half_window_size : i
+        bg = is_negative_strand ?
+            maximum(@view(mycoverage[index-half_window_size:index+half_window_size])) * -1 :
+            minimum(@view(mycoverage[index-half_window_size:index+half_window_size]))
+        background_increase_pairs[ii, 1] = i
+        background_increase_pairs[ii, 2] = bg
+        background_increase_pairs[ii, 3] = bg+filtered_d[i]
     end
-    return filtered_d
+    return background_increase_pairs
 end
 
-function tsss(notex::Coverage, tex::Coverage; min_tex_ratio=1.3, min_step=10, half_window_size=5, min_background_ratio=1.2)
-    (notex.chroms == tex.chroms) || throw(Assertion("tex and notex coverage are defined on different reference sequences."))
+function backgound_increase_matrix(samples::Vector{Coverage}; half_window_size=5, circular=true)
+    chroms = samples[1].chroms
+
+end
+
+function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; half_window_size=5, circular=true)
+    chroms = vcat([s.chroms for s in notex], [s.chroms for s in tex])
+    all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
     chrs = [chr[1] for chr in notex.chroms]
     vals_notex = values(notex)
     vals_tex = values(tex)
-    intervals = Vector{Interval{Float64}}()
-    for chr in chrs
-        notex_f, notex_r = vals_notex[chr]
-        tex_f, tex_r = vals_tex[chr]
-        d_forward = diff(tex_f, false; half_window_size=half_window_size, min_background_ratio=min_background_ratio)
-        d_reverse = diff(tex_r, true; half_window_size=half_window_size,  min_background_ratio=min_background_ratio)
-        check_d_forward = diff(notex_f, false; half_window_size=half_window_size, filter_local_max=false)
-        check_d_reverse = diff(notex_r, true; half_window_size=half_window_size, filter_local_max=false)
-        af = d_forward ./ check_d_forward
-        ar = d_reverse ./ check_d_reverse
-        fig = Figure(resolution=(1200,400))
-		axes = [Axis(fig[1,i]) for i in 1:2]
-		hist!(axes[1], abs.(af[abs.(af) .< 2]); bins=50)
-		hist!(axes[2], abs.(ar[abs.(ar) .< 2]); bins=50)
-        println("infs forward: ", sum(af .=== Inf), "\ninfs reverse: ", sum(ar .=== Inf))
-        save("/home/abc/Workspace/TssTerms/$chr.pdf", fig)
-        check_forward = ((d_forward ./ check_d_forward) .>= min_tex_ratio) .& (d_forward .>= min_step)
-        check_reverse = ((d_reverse ./ check_d_reverse) .>= min_tex_ratio) .& (d_reverse .>= min_step)
-        for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
-            push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
-        end
-        for (pos, val)  in zip(findall(!iszero, check_reverse), abs.(d_reverse[check_reverse]))
-            push!(intervals, Interval(chr, pos, pos, STRAND_NEG, val))
-        end
-    end
-    return Coverage(IntervalCollection(intervals, true), tex.chroms)
+    intervals = Vector{Interval{Annotation}}()
+
 end
 
 function terms(coverage::Coverage; min_step=10, half_window_size=5, min_background_ratio=1.2)
