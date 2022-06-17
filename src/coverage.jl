@@ -498,7 +498,7 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, co
                                         "fdr_glm"=>"$(round(adjp_glm[offset+i], digits=8))",
                                         "height"=>"$(round(mean(background_increase_matrix[offset+i, tex_indices]), digits=2))",
                                         "source"=>source)))
-            for (i,p) in enumerate(cp) if adjp_fisher[offset+i]<max_fdr || adjp_glm[offset+i]<max_fdr])
+            for (i,p) in enumerate(cp) if adjp_fisher[offset+i]<=max_fdr || adjp_glm[offset+i]<=max_fdr])
         offset += length(cp)
     end
     return Features(intervals)
