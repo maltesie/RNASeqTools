@@ -206,11 +206,10 @@ end
 refcount(feature::Interval{BaseAnnotation}) = feature.metadata.ref
 
 function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignments=false, is_reverse_complement=false, max_temp_length=500,
-                                overwrite_existing=false, suffix_forward="_forward", suffix_reverse="_reverse")
+                                suffix_forward="_forward", suffix_reverse="_reverse")
 
     filename_f = bam_file[1:end-4] * suffix_forward * ".bw"
     filename_r = bam_file[1:end-4] * suffix_reverse * ".bw"
-    !overwrite_existing && (isfile(filename_f) || isfile(filename_r)) && (return nothing)
     reader = BAM.Reader(open(bam_file), index = bam_file*".bai")
     chromosome_list = [n for n in zip(
         bam_chromosome_names(reader), bam_chromosome_lengths(reader)
@@ -224,14 +223,14 @@ function compute_coverage(bam_file::String; norm=1000000, include_secondary_alig
                 ref = refname(part)
                 left = leftposition(part)
                 right = rightposition(part)
-                ispositivestrand(part) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .+= 1.0)
+                ispositivestrand(part) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .-= 1.0)
                 count += 1
             end
         else
             ref = refname(alignment[1])
             left = leftposition(alignment)
             right = rightposition(alignment)
-            ispositivestrand(alignment) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .+= 1.0)
+            ispositivestrand(alignment) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .-= 1.0)
             count += 1
         end
     end
@@ -402,7 +401,9 @@ function all_fisher_test_combinations(notex::Matrix{Int}, tex::Matrix{Int})
     notex_rows, notex_samples = size(notex)
     tex_rows == notex_rows || throw(AssertionError("tex and notex have to have the same number of rows!"))
     tex_samples % 2 == 0 && notex_samples % 2 == 0 || throw(AssertionError("tex and notex have to have even amount of columns!"))
-    all_fisher_test_combinations.([[(i,j) for (i,j) in partition(notex[k, :], 2)] for k in 1:size(notex)[2]], [[(i,j) for (i,j) in partition(tex[k, :], 2)] for k in 1:size(tex)[2]])
+    notex_pairs = [[(i+1,j+1) for (i,j) in partition(r, 2)] for r in eachrow(notex)]
+    tex_pairs = [[(i+1,j+1) for (i,j) in partition(r, 2)] for r in eachrow(tex)]
+    all_fisher_test_combinations.(notex_pairs, tex_pairs)
 end
 
 fisher_combined_pvalue(pvalues::Vector{Float64}) = 1-cdf(Chisq(2*length(pvalues)), -2*sum(log.(pvalues)))
@@ -422,52 +423,88 @@ function rolling_sum(a::Vector{Float64}, n::Int; circular=true)
     return circshift(out, Int((n-1)/2))
 end
 
-function maxsignalpositions(coverage::Vector{Float64}; half_window_size=5, circular=true)
-end
-
-function maxdiff(coverage::Vector{Float64}; half_window_size=5, circular=true)
+function maxdiffsignalpositions(coverage::Vector{Float64}; max_ppk=5, circular=true)
     all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
     is_negative_strand = all(coverage .<= 0)
-    filtered_d = zeros(Float64,length(coverage))
-    window_size = half_window_size * 2 + 1
-    filtered_d[is_negative_strand ? (1:length(filtered_d-1)) : (2:length(filtered_d))] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
-    filtered_d = rolling_sum(filtered_d, window_size; circular=circular)
-
-    for i in 1:length(filtered_d)-window_size
-        _, mi = findmax(@view(filtered_d[i:i+window_size]))
-        for j in 1:window_size
-            mi != j && (filtered_d[i+j-1]=0.0)
+    max_nb_peaks = length(coverage) / 1000 * max_ppk
+    d = zeros(Float64,length(coverage))
+    d[is_negative_strand ? (1:length(d)-1) : (2:length(d))] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
+    circular && (d[is_negative_strand ? length(d) : 1] = coverage[1]-coverage[end])
+    peak_index = [i for i in 2:length(d)-1 if d[i-1]<d[i]>d[i+1]]
+    if circular
+        if d[end]<d[1]>d[2]
+            push!(peak_index, 1)
+        elseif d[end-1]<d[end]>d[1]
+            push!(peak_index, length(d))
         end
+    else
+        d[1]>d[2] && push!(peak_index, 1)
+        d[end]>d[end-1] && push!(peak_index, length(d))
     end
-
-    max_index = filtered_d .> 0
-    background_increase_pairs = Matrix{Int}(undef, sum(max_index), 3)
-    mycoverage = circular ? vcat(coverage[end-half_window_size:end], coverage, coverage[1:half_window_size]) : coverage
-    for (ii,i) in enumerate(findall(max_index))
-        index = circular ? i+half_window_size : i
-        bg = is_negative_strand ?
-            maximum(@view(mycoverage[index-half_window_size:index+half_window_size])) * -1 :
-            minimum(@view(mycoverage[index-half_window_size:index+half_window_size]))
-        background_increase_pairs[ii, 1] = i
-        background_increase_pairs[ii, 2] = bg
-        background_increase_pairs[ii, 3] = bg+filtered_d[i]
+    for cut in 1:Int(floor(maximum(d)))
+        length(peak_index) < max_nb_peaks && break
+        peak_index = peak_index[d[peak_index] .>= cut]
     end
-    return background_increase_pairs
+    return peak_index
 end
 
-function backgound_increase_matrix(samples::Vector{Coverage}; half_window_size=5, circular=true)
-    chroms = samples[1].chroms
-
+function background_increase_pairs(coverage::Vector{Float64}, peak_index::Vector{Int}; compute_step_within=3, circular=true)
+    all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
+    is_negative_strand = all(coverage .<= 0)
+    pairs = Matrix{Int}(undef, length(peak_index), 2)
+    mycoverage = circular ? vcat(coverage[end-compute_step_within:end], coverage, coverage[1:compute_step_within]) : coverage
+    circular && peak_index .+ compute_step_within
+    top, bottom = is_negative_strand ? (minimum, maximum) : (maximum, minimum)
+    for (ii, index) in enumerate(peak_index)
+        pairs[ii, 1] = bottom(@view(mycoverage[index-compute_step_within:index+compute_step_within]))
+        pairs[ii, 2] = top(@view(mycoverage[index-compute_step_within:index+compute_step_within]))
+    end
+    is_negative_strand && (pairs .*= -1)
+    return pairs
 end
 
-function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; half_window_size=5, circular=true)
-    chroms = vcat([s.chroms for s in notex], [s.chroms for s in tex])
+function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, compute_step_within=3, max_ppk=5, circular=true, source="NA")
+    chroms = vcat([s.chroms for s in notexs], [s.chroms for s in texs])
     all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
-    chrs = [chr[1] for chr in notex.chroms]
-    vals_notex = values(notex)
-    vals_tex = values(tex)
+    merged_tex_values = values(merge(texs))
+    peaks = Dict{String, Tuple{Vector{Int}, Vector{Int}}}(
+        chrom=>(
+            maxdiffsignalpositions(forward; max_ppk=max_ppk, circular=circular),
+            maxdiffsignalpositions(reverse; max_ppk=max_ppk, circular=circular)
+        )
+        for (chrom, (forward, reverse)) in merged_tex_values
+    )
+    valss = vcat([values(notex) for notex in notexs], [values(tex) for tex in texs])
+    background_increase_matrix =
+    hcat(
+        [vcat(
+            [vcat(
+                background_increase_pairs(vals[chr][1], peaks_forward; compute_step_within=compute_step_within),
+                background_increase_pairs(vals[chr][2], peaks_reverse; compute_step_within=compute_step_within)
+            )
+            for (chr, (peaks_forward, peaks_reverse)) in peaks]...
+        )
+        for vals in valss]...
+    )
+    adjp = test_multiple_fisher_combined(background_increase_matrix[:, 1:(2*length(notexs))], background_increase_matrix[:, (2*length(notexs))+1:end])
+    offset = 0
+    tex_indices = collect((length(notexs)+1):(length(notexs)+length(texs))) .* 2
     intervals = Vector{Interval{Annotation}}()
-
+    for (chr, (peaks_forward, peaks_reverse)) in peaks
+        append!(intervals, [Interval(chr, p, p, STRAND_POS,
+            Annotation("TSS", "", Dict("pvalue"=>"$(round(adjp[offset+i], digits=8))",
+                                        "height"=>"$(round(mean(background_increase_matrix[offset+i, tex_indices]), digits=2))",
+                                        "source"=>source)))
+            for (i,p) in enumerate(peaks_forward) if adjp[offset+i]<max_fdr])
+        offset += length(peaks_forward)
+        append!(intervals, [Interval(chr, p, p, STRAND_NEG,
+            Annotation("TSS", "", Dict("pvalue"=>"$(round(adjp[offset+i], digits=8))",
+                                        "height"=>"$(round(mean(background_increase_matrix[offset+i, tex_indices]), digits=2))",
+                                        "source"=>source)))
+            for (i,p) in enumerate(peaks_reverse) if adjp[offset+i]<max_fdr])
+        offset += length(peaks_reverse)
+    end
+    return Features(intervals)
 end
 
 function terms(coverage::Coverage; min_step=10, half_window_size=5, min_background_ratio=1.2)
