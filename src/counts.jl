@@ -99,7 +99,7 @@ function dge_ttest(counts::Counts, control_condition::String, experiment_conditi
     return (avg_control, fc, padj)
 end
 
-function dge_glm(counts::Counts, control_condition::String, experiment_condition::String; d=NegativeBinomial(), l=LogLink())
+function dge_glm(counts::Counts, control_condition::String, experiment_condition::String; d=NegativeBinomial())
     control_range = counts.conditions[control_condition]
     exp_range = counts.conditions[experiment_condition]
     design_matrix = ones(Int, (length(control_range)+length(exp_range), 2))
@@ -110,7 +110,7 @@ function dge_glm(counts::Counts, control_condition::String, experiment_condition
     ps = empty(Float64, length(counts))
     n = Normal()
     for (i, y) in enumerate(eachrow(data_matrix))
-        g = glm(design_matrix, y, d, l)
+        g = glm(design_matrix, y, d, LogLink())
         base, fc = coef(g)
         _, fc_se = stderror(g)
         z = fc ./ fc_se
