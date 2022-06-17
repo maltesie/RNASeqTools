@@ -24,8 +24,6 @@ export preprocess_data, direct_rna_pipeline, tss_annotation
 export ANNOTATION_VCH, GENOME_VCH
 
 include("types.jl")
-include("misc.jl")
-
 include("files.jl")
 include("preprocess.jl")
 include("sequence.jl")
@@ -35,5 +33,8 @@ include("counts.jl")
 include("alignment.jl")
 include("chimeric.jl")
 include("templates.jl")
+
+const ANNOTATION_VCH = "~/Data/vibrio/annotation/NC_002505_6.gff"
+const GENOME_VCH = "~/Data/vibrio/genome/NC_002505_6.fa"
 
 end

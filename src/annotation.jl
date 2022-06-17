@@ -402,3 +402,35 @@ function Base.show(features::Features)
     end
     println(printstring)
 end
+
+function embl_to_gff(embl_file::String, gff_file::String, chrs::Vector{String})
+
+    chroms = copy(reverse(chrs))
+    writer = GFF3.Writer(open(gff_file, "w"))
+    write(writer, GFF3.Record("##gff-version 3.2.1"))
+    lines = readlines(embl_file)
+    current_refname = pop!(chroms)
+    for i in 1:length(lines)-1
+        line = lines[i]
+        next_line = lines[i+1]
+        if startswith(line, "FT")
+
+            if occursin(line, "source")
+                _, _, r = split(line)
+                _, l = split(r, "..")
+                write(writer, GFF3.Record("##sequence-region $current_refname 1 $l"))
+                write(writer, GFF3.Record("$current_refname\t.\tsource\t1\t$l\t.\t.\t.\tName=$current_refname"))
+            end
+            if occursin(line, "gene")
+                _, _, r = split(line)
+                strand = "+"
+                startswith(r, "complement") && (r = r[12:end-1]; strand="-")
+                l, r = split(r, "..")
+                name = split(next_line, "locus_tag=")[end]
+                write(writer, GFF3.Record("$current_refname\t.\tCDS\t$l\t$r\t.\t$strand\t.\tName=$name"))
+            end
+        end
+
+    end
+    close(writer)
+end

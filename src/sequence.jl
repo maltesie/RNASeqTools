@@ -298,6 +298,27 @@ function read_reads(file1::String, file2::String; is_reverse_complement=false, h
     return seqs
 end
 
+function translation_dict(from_sequence::LongDNASeq, to_sequence::LongDNASeq)
+    scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
+    res = alignment(pairalign(GlobalAlignment(), from_sequence, to_sequence, scoremodel))
+    trans_dict::Dict{Int, Union{Nothing, Int}} = Dict()
+    from_pos = 1
+    to_pos = 1
+    for (b1, b2) in collect(res)
+        if (b1 == '-')
+            to_pos += 1
+        elseif (b2 == '-')
+            transdict[from_pos] = nothing
+            from_pos += 1
+        else
+            trans_dict[from_pos] = to_pos
+            to_pos += 1
+            from_pos += 1
+        end
+    end
+    return trans_dict
+end
+
 function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
     0 <= pos <= length(read) || resize!(read, 0)
 
