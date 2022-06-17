@@ -4,7 +4,7 @@ struct Counts
     features::Features{Annotation}
 end
 
-function Counts(features::Features, samples::Vector{Coverage}, conditions::Dict{String, UnitRange{Int}}; aggregation=maximum, normalization_method=:none)
+function Counts(features::Features, samples::Vector{Coverage}; conditions=Dict("sample"=>1:length(samples)), aggregation=maximum, normalization_method=:none)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     c = coveragecount(features, samples; aggregation=aggregation)
     normalization_method in (:tmm, :tpm) && normalize!(c; normalization_method=normalization_method)
@@ -12,13 +12,13 @@ function Counts(features::Features, samples::Vector{Coverage}, conditions::Dict{
     return Counts(conditions, c, features)
 end
 
-function Counts(features::Features, samples::PairedSingleTypeFiles, conditions::Dict{String, UnitRange{Int}}; aggregation=:maximum, normalization_method=:none)
+function Counts(features::Features, samples::PairedSingleTypeFiles; conditions=Dict("sample"=>1:length(samples)), aggregation=:maximum, normalization_method=:none)
     samples.type === ".bw" || throw(AssertionError("File type has to be .bw"))
     coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in samples]
-    Counts(features, coverages, conditions; aggregation=aggregation, normalization_method=normalization_method)
+    Counts(features, coverages; conditions=conditions, aggregation=aggregation, normalization_method=normalization_method)
 end
 
-function Counts(features::Features, samples::SingleTypeFiles, conditions::Dict{String, UnitRange{Int}};
+function Counts(features::Features, samples::SingleTypeFiles; conditions=Dict("sample"=>1:length(samples)),
         normalization_method=:none, include_secondary_alignments=true, include_alternative_alignments=false)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     samples.type === ".bam" || throw(AssertionError("File type has to be .bam"))
@@ -96,18 +96,38 @@ function dge_ttest(counts::Counts, control_condition::String, experiment_conditi
     ps = pvalue.(UnequalVarianceTTest.(@view(counts[control_condition]), @view(counts[experiment_condition])))
     fc = log2(avg_experiment) - log2(avg_control)
     padj = adjust(PValues(ps), BenjaminiHochberg())
-    return (fc, padj)
+    return (avg_control, fc, padj)
 end
 
-function dge_glm(counts::Counts, control_condition::String, experiment_condition::String)
-    return (fc, padj)
+function dge_glm(counts::Counts, control_condition::String, experiment_condition::String; d=NegativeBinomial(), l=LogLink())
+    control_range = counts.conditions[control_condition]
+    exp_range = counts.conditions[experiment_condition]
+    design_matrix = ones(Int, (length(control_range)+length(exp_range), 2))
+    design_matrix[1:length(control_range), 2] .= 0
+    data_matrix = hcat(counts.values[control_range], counts.values[exp_range])
+    bases = empty(Float64, length(counts))
+    fcs = empty(Float64, length(counts))
+    ps = empty(Float64, length(counts))
+    n = Normal()
+    for (i, y) in enumerate(eachrow(data_matrix))
+        g = glm(design_matrix, y, d, l)
+        base, fc = coef(g)
+        _, fc_se = stderror(g)
+        z = fc ./ fc_se
+        p = 2 * ccdf(n, abs(z))
+        bases[i] = base
+        fcs[i] = fc / log(2)
+        ps[i] = p
+    end
+    padj = adjust(PValues(ps), BenjaminiHochberg())
+    return (exp.(bases), fcs, padj)
 end
 
 function dgetable(counts::Counts, control_condition::String, experiment_condition::String; method=:ttest)
     method in (:glm, :ttest) || throw(AssertionError("Method must be eather :ttest or :glm"))
 
     dge_function = method === :glm ? dge_glm : dge_ttest
-    (fc, padj) = dge_function(counts, control_condition, experiment_condition)
+    (base, fc, padj) = dge_function(counts, control_condition, experiment_condition)
 
     return DataFrame(
         feature=[name(feature) for feature in count.features],
@@ -115,6 +135,7 @@ function dgetable(counts::Counts, control_condition::String, experiment_conditio
         strand=[strand(feature) for feature in count.features],
         left=[leftposition(feature) for feature in count.features],
         right=[rightposition(feature) for feature in count.features],
+        base=base,
         foldChange=round.(2 .^ fc; digits=3),
         log2FoldChange=round.(fc; digits=3),
         fdr=padj,

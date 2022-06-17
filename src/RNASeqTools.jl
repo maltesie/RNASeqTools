@@ -1,10 +1,10 @@
 module RNASeqTools
 
 import XAM: BAM
-using FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig, DelimitedFiles, JLD2, BGZFStreams
+using FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig, DelimitedFiles, JLD2
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 import DataFrames: DataFrame, sort, nrow, names, innerjoin
-using Statistics, HypothesisTests, MultipleTesting, Combinatorics, Random, Distributions
+using Statistics, HypothesisTests, MultipleTesting, Combinatorics, Random, Distributions, GLM
 using LightGraphs, ElasticArrays, IterTools
 
 export align_mem, align_minimap, align_kraken2
@@ -20,7 +20,7 @@ export values, addutrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, m
 export similarity, tsss, terms, hasannotationkey, readid, summarize, missmatchcount, eachpair, isfirstread, testsignificance!, addrelativepositions!
 export checkinteractions, uniqueinteractions, mismatchfractions, ismulti, mismatchpositions, deletionpositions
 export feature_ratio, feature_count, preprocess_data, chimeric_alignments, remove_features, unmapped_reads, full_annotation
-export preprocess_data, deseq2_R, direct_rna_pipeline, tss_annotation
+export preprocess_data, direct_rna_pipeline, tss_annotation
 export ANNOTATION_VCH, GENOME_VCH
 
 include("types.jl")

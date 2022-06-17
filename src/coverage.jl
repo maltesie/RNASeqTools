@@ -448,7 +448,7 @@ function maxdiffsignalpositions(coverage::Vector{Float64}; max_ppk=5, circular=t
     return peak_index
 end
 
-function background_increase_pairs(coverage::Vector{Float64}, peak_index::Vector{Int}; compute_step_within=3, circular=true)
+function background_plateau_pairs(coverage::Vector{Float64}, peak_index::Vector{Int}; compute_step_within=3, circular=true)
     all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
     is_negative_strand = all(coverage .<= 0)
     pairs = Matrix{Int}(undef, length(peak_index), 2)
@@ -479,30 +479,27 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, co
     hcat(
         [vcat(
             [vcat(
-                background_increase_pairs(vals[chr][1], peaks_forward; compute_step_within=compute_step_within),
-                background_increase_pairs(vals[chr][2], peaks_reverse; compute_step_within=compute_step_within)
+                background_plateau_pairs(vals[chr][1], peaks_forward; compute_step_within=compute_step_within),
+                background_plateau_pairs(vals[chr][2], peaks_reverse; compute_step_within=compute_step_within)
             )
             for (chr, (peaks_forward, peaks_reverse)) in peaks]...
         )
         for vals in valss]...
     )
-    adjp = test_multiple_fisher_combined(background_increase_matrix[:, 1:(2*length(notexs))], background_increase_matrix[:, (2*length(notexs))+1:end])
+    adjp_fisher = test_multiple_fisher_combined(background_increase_matrix[:, 1:(2*length(notexs))], background_increase_matrix[:, (2*length(notexs))+1:end])
+    counts = Counts(Dict("notex"=>1:length(notexs), "tex"=>1:(length(texs) .+ length(notexs))), background_increase_matrix[:,2:2:end]-background_increase_matrix[:,1:2:end])
+    (_, _, adjp_glm) = dge_glm(counts, "notex", "tex")
     offset = 0
     tex_indices = collect((length(notexs)+1):(length(notexs)+length(texs))) .* 2
     intervals = Vector{Interval{Annotation}}()
-    for (chr, (peaks_forward, peaks_reverse)) in peaks
-        append!(intervals, [Interval(chr, p, p, STRAND_POS,
-            Annotation("TSS", "", Dict("pvalue"=>"$(round(adjp[offset+i], digits=8))",
+    for (chr, both_peaks) in peaks, (cp, s) in zip(both_peaks, (STRAND_POS, STRAND_NEG))
+        append!(intervals, [Interval(chr, p, p, s,
+            Annotation("TSS", "", Dict("fdr_fisher_combined"=>"$(round(adjp_fisher[offset+i], digits=8))",
+                                        "fdr_glm"=>"$(round(adjp_glm[offset+i], digits=8))",
                                         "height"=>"$(round(mean(background_increase_matrix[offset+i, tex_indices]), digits=2))",
                                         "source"=>source)))
-            for (i,p) in enumerate(peaks_forward) if adjp[offset+i]<max_fdr])
-        offset += length(peaks_forward)
-        append!(intervals, [Interval(chr, p, p, STRAND_NEG,
-            Annotation("TSS", "", Dict("pvalue"=>"$(round(adjp[offset+i], digits=8))",
-                                        "height"=>"$(round(mean(background_increase_matrix[offset+i, tex_indices]), digits=2))",
-                                        "source"=>source)))
-            for (i,p) in enumerate(peaks_reverse) if adjp[offset+i]<max_fdr])
-        offset += length(peaks_reverse)
+            for (i,p) in enumerate(cp) if adjp_fisher[offset+i]<max_fdr || adjp_glm[offset+i]<max_fdr])
+        offset += length(cp)
     end
     return Features(intervals)
 end
