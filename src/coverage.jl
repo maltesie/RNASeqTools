@@ -401,8 +401,8 @@ function all_fisher_test_combinations(notex::Matrix{Int}, tex::Matrix{Int})
     notex_rows, notex_samples = size(notex)
     tex_rows == notex_rows || throw(AssertionError("tex and notex have to have the same number of rows!"))
     tex_samples % 2 == 0 && notex_samples % 2 == 0 || throw(AssertionError("tex and notex have to have even amount of columns!"))
-    notex_pairs = [[(i+1,j+1) for (i,j) in partition(r, 2)] for r in eachrow(notex)]
-    tex_pairs = [[(i+1,j+1) for (i,j) in partition(r, 2)] for r in eachrow(tex)]
+    notex_pairs = [[(i,j) for (i,j) in partition(r, 2)] for r in eachrow(notex)]
+    tex_pairs = [[(i,j) for (i,j) in partition(r, 2)] for r in eachrow(tex)]
     all_fisher_test_combinations.(notex_pairs, tex_pairs)
 end
 
@@ -452,12 +452,12 @@ function background_plateau_pairs(coverage::Vector{Float64}, peak_index::Vector{
     all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
     is_negative_strand = all(coverage .<= 0)
     pairs = Matrix{Int}(undef, length(peak_index), 2)
-    mycoverage = circular ? vcat(coverage[end-compute_step_within:end], coverage, coverage[1:compute_step_within]) : coverage
-    circular && peak_index .+ compute_step_within
+    mycoverage = circular ? vcat(coverage[end-compute_step_within+1:end], coverage, coverage[1:compute_step_within]) : coverage
     top, bottom = is_negative_strand ? (minimum, maximum) : (maximum, minimum)
     for (ii, index) in enumerate(peak_index)
-        pairs[ii, 1] = bottom(@view(mycoverage[index-compute_step_within:index+compute_step_within]))
-        pairs[ii, 2] = top(@view(mycoverage[index-compute_step_within:index+compute_step_within]))
+        circular && (index += compute_step_within)
+        pairs[ii, 1] = bottom(@view(mycoverage[(index-compute_step_within):(index+compute_step_within)]))
+        pairs[ii, 2] = top(@view(mycoverage[(index-compute_step_within):(index+compute_step_within)]))
     end
     is_negative_strand && (pairs .*= -1)
     return pairs
@@ -466,28 +466,34 @@ end
 function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, compute_step_within=3, max_ppk=5, circular=true, source="NA")
     chroms = vcat([s.chroms for s in notexs], [s.chroms for s in texs])
     all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
+    chr_names = collect(chr[1] for chr in chroms[1])
     merged_tex_values = values(merge(texs))
     peaks = Dict{String, Tuple{Vector{Int}, Vector{Int}}}(
-        chrom=>(
-            maxdiffsignalpositions(forward; max_ppk=max_ppk, circular=circular),
-            maxdiffsignalpositions(reverse; max_ppk=max_ppk, circular=circular)
+        chr=>(
+            maxdiffsignalpositions(merged_tex_values[chr][1]; max_ppk=max_ppk, circular=circular),
+            maxdiffsignalpositions(merged_tex_values[chr][2]; max_ppk=max_ppk, circular=circular)
         )
-        for (chrom, (forward, reverse)) in merged_tex_values
+        for chr in chr_names
     )
     valss = vcat([values(notex) for notex in notexs], [values(tex) for tex in texs])
-    background_increase_matrix =
+    background_plateau_matrix =
     hcat(
         [vcat(
             [vcat(
-                background_plateau_pairs(vals[chr][1], peaks_forward; compute_step_within=compute_step_within),
-                background_plateau_pairs(vals[chr][2], peaks_reverse; compute_step_within=compute_step_within)
+                background_plateau_pairs(vals[chr][1], peaks[chr][1]; compute_step_within=compute_step_within),
+                background_plateau_pairs(vals[chr][2], peaks[chr][2]; compute_step_within=compute_step_within)
             )
-            for (chr, (peaks_forward, peaks_reverse)) in peaks]...
+            for chr in chr_names]...
         )
         for vals in valss]...
-    )
-    adjp_fisher = test_multiple_fisher_combined(background_increase_matrix[:, 1:(2*length(notexs))], background_increase_matrix[:, (2*length(notexs))+1:end])
-    counts = Counts(Dict("notex"=>1:length(notexs), "tex"=>1:(length(texs) .+ length(notexs))), background_increase_matrix[:,2:2:end]-background_increase_matrix[:,1:2:end])
+    ) .+ 1
+    adjp_fisher = test_multiple_fisher_combined(background_plateau_matrix[:, 1:(2*length(notexs))], background_plateau_matrix[:, (2*length(notexs))+1:end])
+    counts = Counts(Dict("notex"=>1:length(notexs), "tex"=>length(notexs)+1:(length(texs) .+ length(notexs))), 
+                    background_plateau_matrix[:,2:2:end])
+    #println(counts.values[1:10,:])
+    normalize!(counts; normalization_method=:rle)
+    #println(counts.values[1:10,:])
+    #return Features(Annotation)
     (_, _, adjp_glm) = dge_glm(counts, "notex", "tex")
     offset = 0
     tex_indices = collect((length(notexs)+1):(length(notexs)+length(texs))) .* 2
@@ -496,7 +502,7 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, co
         append!(intervals, [Interval(chr, p, p, s,
             Annotation("TSS", "", Dict("fdr_fisher_combined"=>"$(round(adjp_fisher[offset+i], digits=8))",
                                         "fdr_glm"=>"$(round(adjp_glm[offset+i], digits=8))",
-                                        "height"=>"$(round(mean(background_increase_matrix[offset+i, tex_indices]), digits=2))",
+                                        "height"=>"$(round(mean(background_plateau_matrix[offset+i, tex_indices]), digits=2))",
                                         "source"=>source)))
             for (i,p) in enumerate(cp) if adjp_fisher[offset+i]<=max_fdr || adjp_glm[offset+i]<=max_fdr])
         offset += length(cp)

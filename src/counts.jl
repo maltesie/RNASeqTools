@@ -1,24 +1,29 @@
-struct Counts
+struct Counts <: CountContainer
+    conditions::Dict{String, UnitRange{Int}}
+    values::Matrix{Float64}
+end
+
+struct FeatureCounts <: CountContainer
     conditions::Dict{String, UnitRange{Int}}
     values::Matrix{Float64}
     features::Features{Annotation}
 end
 
-function Counts(features::Features, samples::Vector{Coverage}; conditions=Dict("sample"=>1:length(samples)), aggregation=maximum, normalization_method=:none)
+function FeatureCounts(features::Features, samples::Vector{Coverage}; conditions=Dict("sample"=>1:length(samples)), aggregation=maximum, normalization_method=:none)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     c = coveragecount(features, samples; aggregation=aggregation)
     normalization_method in (:tmm, :tpm) && normalize!(c; normalization_method=normalization_method)
     normalization_method === :tpkm && normalize!(c, features)
-    return Counts(conditions, c, features)
+    return FeatureCounts(conditions, c, features)
 end
 
-function Counts(features::Features, samples::PairedSingleTypeFiles; conditions=Dict("sample"=>1:length(samples)), aggregation=:maximum, normalization_method=:none)
+function FeatureCounts(features::Features, samples::PairedSingleTypeFiles; conditions=Dict("sample"=>1:length(samples)), aggregation=:maximum, normalization_method=:none)
     samples.type === ".bw" || throw(AssertionError("File type has to be .bw"))
     coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in samples]
-    Counts(features, coverages; conditions=conditions, aggregation=aggregation, normalization_method=normalization_method)
+    FeatureCounts(features, coverages; conditions=conditions, aggregation=aggregation, normalization_method=normalization_method)
 end
 
-function Counts(features::Features, samples::SingleTypeFiles; conditions=Dict("sample"=>1:length(samples)),
+function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=Dict("sample"=>1:length(samples)),
         normalization_method=:none, include_secondary_alignments=true, include_alternative_alignments=false)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     samples.type === ".bam" || throw(AssertionError("File type has to be .bam"))
@@ -39,14 +44,15 @@ function Counts(features::Features, samples::SingleTypeFiles; conditions=Dict("s
     end
     normalization_method in (:tmm, :tpm) && normalize!(counts; normalization_method=normalization_method)
     normalization_method === :tpkm && normalize!(counts, features)
-    Counts(conditions, counts, features)
+    FeatureCounts(conditions, counts, features)
 end
 
-function getindex(counts::Counts, condition::String)
-    return counts.values[!, counts.conditions[condition]]
+function Base.getindex(counts::T, condition::String) where {T<:CountContainer}
+    return counts.values[:, counts.conditions[condition]]
 end
+Base.length(counts::T) where {T<:CountContainer} = size(counts.values)[1]
 
-conditionrange(counts::Counts, condition::String) = counts.conditions[condition]
+conditionrange(counts::T, condition::String) where {T<:CountContainer} = counts.conditions[condition]
 
 function coveragecount(features::Features, samples::Vector{Coverage}; aggregation=maximum)
     vals = [values(coverage) for coverage in samples]
@@ -60,18 +66,30 @@ function coveragecount(features::Features, samples::Vector{Coverage}; aggregatio
     return averages
 end
 
+function gmean(a::Array{Float64})
+    s = 0.0
+    n = length(a)
+    for i = 1 : n
+        @inbounds s += log(a[i])
+    end
+    return exp(s / n)
+end
+
 function normalize!(m::Matrix{Float64}; normalization_method=:rle)
     if normalization_method === :rle
-        avg_sample::Vector{Float64} = [geomean(m[i, :]) for i in 1:first(size(m))]
-        norm_factors = 2 .^ [median(log2.(m[:, i]) .- log2.(avg_sample)) for i in 1:last(size(m))]
+        avg_sample::Vector{Float64} = [gmean(m[i, :]) for i in 1:first(size(m))]
+        logdiffs = [log2.(m[:, i]) .- log2.(avg_sample) for i in 1:last(size(m))]
+        norm_factors = 2 .^ [median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs]
         m ./= norm_factors'
     elseif normalization_method === :rpm
-        m ./= (1000000 ./ sum(m; dims=1))'
+        m ./= (1000000 ./ sum(m; dims=1))
     else
         raise(AssertionError("No method implemented for $normalization_method"))
     end
     return m
 end
+normalize!(counts::T; normalization_method=:rle) where {T<:CountContainer} = 
+    normalize!(counts.values; normalization_method=normalization_method)
 
 function normalize!(m::Matrix{Float64}, features::Features; normalization_method=:rpkm)
     normalization_method != :tpkm && raise(AssertionError("No method implemented for $normalization_method"))
@@ -80,6 +98,8 @@ function normalize!(m::Matrix{Float64}, features::Features; normalization_method
         m[i, !] ./= (length(feature) / 1000)
     end
 end
+normalize!(counts::T, features::Features; normalization_method=:rpkm) where {T<:CountContainer} = 
+    normalize!(counts.values, features; normalization_method=normalization_method)
 
 function cqn_offsets(m::Matrix{Float64})
 
@@ -87,10 +107,11 @@ end
 
 function normalize!(m::Matrix{Float64}, features::Features, genome::Genome; normalization_method=:cqn)
     normalization_method != :cqn && raise(AssertionError("No method implemented for $normalization_method"))
-
 end
+normalize!(counts::T, features::Features, genome::Genome; normalization_method=:cqn) where {T<:CountContainer} = 
+    normalize!(counts.values, features, genome; normalization_method=normalization_method)
 
-function dge_ttest(counts::Counts, control_condition::String, experiment_condition::String)
+function dge_ttest(counts::T, control_condition::String, experiment_condition::String) where {T<:CountContainer}
     avg_control = mean(@view(counts[control_condition]), dims=2)
     avg_experiment = mean(@view(counts[experiment_condition]), dims=2)
     ps = pvalue.(UnequalVarianceTTest.(@view(counts[control_condition]), @view(counts[experiment_condition])))
@@ -99,25 +120,32 @@ function dge_ttest(counts::Counts, control_condition::String, experiment_conditi
     return (avg_control, fc, padj)
 end
 
-function dge_glm(counts::Counts, control_condition::String, experiment_condition::String; d=NegativeBinomial())
+function dge_glm(counts::T, control_condition::String, experiment_condition::String; d=NegativeBinomial()) where {T<:CountContainer}
     control_range = counts.conditions[control_condition]
     exp_range = counts.conditions[experiment_condition]
     design_matrix = ones(Int, (length(control_range)+length(exp_range), 2))
     design_matrix[1:length(control_range), 2] .= 0
-    data_matrix = hcat(counts.values[control_range], counts.values[exp_range])
-    bases = empty(Float64, length(counts))
-    fcs = empty(Float64, length(counts))
-    ps = empty(Float64, length(counts))
+    data_matrix = Int.(floor.(hcat(counts[control_condition], counts[experiment_condition])))
+    bases = Vector{Float64}(undef, length(counts))
+    fcs = Vector{Float64}(undef, length(counts))
+    ps = Vector{Float64}(undef, length(counts))
     n = Normal()
+    l = LogLink()
     for (i, y) in enumerate(eachrow(data_matrix))
-        g = glm(design_matrix, y, d, LogLink())
-        base, fc = coef(g)
-        _, fc_se = stderror(g)
-        z = fc ./ fc_se
-        p = 2 * ccdf(n, abs(z))
-        bases[i] = base
-        fcs[i] = fc / log(2)
-        ps[i] = p
+        try
+            g = glm(design_matrix, y, d, l)
+            base, fc = coef(g)
+            _, fc_se = stderror(g)
+            z = fc ./ fc_se
+            p = 2 * ccdf(n, abs(z))
+            bases[i] = base
+            fcs[i] = fc / log(2)
+            ps[i] = p
+        catch e
+            bases[i] = mean(y[control_range])
+            fcs[i] = log2(mean(y[exp_range]) / mean(y[control_range]))
+            ps[i] = 1.0
+        end
     end
     padj = adjust(PValues(ps), BenjaminiHochberg())
     return (exp.(bases), fcs, padj)
