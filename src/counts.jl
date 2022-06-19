@@ -120,7 +120,7 @@ function dge_ttest(counts::T, control_condition::String, experiment_condition::S
     return (avg_control, fc, padj)
 end
 
-function dge_glm(counts::T, control_condition::String, experiment_condition::String; d=NegativeBinomial()) where {T<:CountContainer}
+function dge_glm(counts::T, control_condition::String, experiment_condition::String; d=NegativeBinomial(), tail=:both) where {T<:CountContainer}
     control_range = counts.conditions[control_condition]
     exp_range = counts.conditions[experiment_condition]
     design_matrix = ones(Int, (length(control_range)+length(exp_range), 2))
@@ -129,7 +129,10 @@ function dge_glm(counts::T, control_condition::String, experiment_condition::Str
     bases = Vector{Float64}(undef, length(counts))
     fcs = Vector{Float64}(undef, length(counts))
     ps = Vector{Float64}(undef, length(counts))
-    n = Normal()
+    compute_pvalue = tail === :both ? x -> 2 * ccdf(Normal(), abs(x)) :
+                        tail === :right ? x -> ccdf(Normal(), x) :
+                        tail === :left ? x -> cdf(Normal(), x) : 
+                        raise(AssertionError("tail can be :both, :right or :left"))
     l = LogLink()
     for (i, y) in enumerate(eachrow(data_matrix))
         try
@@ -137,13 +140,13 @@ function dge_glm(counts::T, control_condition::String, experiment_condition::Str
             base, fc = coef(g)
             _, fc_se = stderror(g)
             z = fc ./ fc_se
-            p = 2 * ccdf(n, abs(z))
+            p = compute_pvalue(z)
             bases[i] = base
             fcs[i] = fc / log(2)
             ps[i] = p
         catch e
-            bases[i] = mean(y[control_range])
-            fcs[i] = log2(mean(y[exp_range]) / mean(y[control_range]))
+            bases[i] = mean(y[1:length(control_range)])
+            fcs[i] = log2(mean(y[end-length(exp_range):end]) / mean(y[1:length(control_range)]))
             ps[i] = 1.0
         end
     end

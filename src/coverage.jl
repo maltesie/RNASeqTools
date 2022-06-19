@@ -487,24 +487,35 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, co
         )
         for vals in valss]...
     ) .+ 1
-    adjp_fisher = test_multiple_fisher_combined(background_plateau_matrix[:, 1:(2*length(notexs))], background_plateau_matrix[:, (2*length(notexs))+1:end])
-    counts = Counts(Dict("notex"=>1:length(notexs), "tex"=>length(notexs)+1:(length(texs) .+ length(notexs))), 
-                    background_plateau_matrix[:,2:2:end])
-    #println(counts.values[1:10,:])
-    normalize!(counts; normalization_method=:rle)
-    #println(counts.values[1:10,:])
-    #return Features(Annotation)
-    (_, _, adjp_glm) = dge_glm(counts, "notex", "tex")
+    #adjp_fisher = test_multiple_fisher_combined(background_plateau_matrix[:, 1:(2*length(notexs))], background_plateau_matrix[:, (2*length(notexs))+1:end])
+    counts_between = Counts(Dict("notex_plateau"=>1:length(notexs), 
+                                 "tex_plateau"=>length(notexs)+1:(length(texs) + length(notexs))), 
+                            background_plateau_matrix[:,2:2:end])
+    tex_background_index = collect(2*length(notexs)+1:2:2*(length(notexs)+length(texs)))
+    tex_plateau_index = tex_background_index .+ 1
+    counts_within = Counts(Dict("tex_background"=>1:length(texs), 
+                                "tex_plateau"=>length(texs)+1:(2*length(texs))), 
+                            background_plateau_matrix[:,vcat(tex_background_index,tex_plateau_index)])
+
+    normalize!(counts_between; normalization_method=:rle)
+    avg_sample::Vector{Float64} = [gmean(counts_within.values[i, length(texs)+1:end]) for i in 1:length(counts_within)]
+    logdiffs = [log2.(counts_within.values[:, length(texs)+i]) .- log2.(avg_sample) for i in 1:length(texs)]
+    for (i, nf) in enumerate(2 .^ [median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs])
+        counts_within.values[:, [i,i+length(texs)]] ./= nf
+    end
+    (_, _, adjp_between) = dge_glm(counts_between, "notex_plateau", "tex_plateau"; tail=:right)
+    (_, _, adjp_within) = dge_glm(counts_within, "tex_background", "tex_plateau"; tail=:right)
+
     offset = 0
     tex_indices = collect((length(notexs)+1):(length(notexs)+length(texs))) .* 2
     intervals = Vector{Interval{Annotation}}()
     for (chr, both_peaks) in peaks, (cp, s) in zip(both_peaks, (STRAND_POS, STRAND_NEG))
         append!(intervals, [Interval(chr, p, p, s,
-            Annotation("TSS", "", Dict("fdr_fisher_combined"=>"$(round(adjp_fisher[offset+i], digits=8))",
-                                        "fdr_glm"=>"$(round(adjp_glm[offset+i], digits=8))",
+            Annotation("TSS", "", Dict("fdr_background_ratio"=>"$(round(adjp_within[offset+i], digits=8))",
+                                        "fdr_tex_ratio"=>"$(round(adjp_between[offset+i], digits=8))",
                                         "height"=>"$(round(mean(background_plateau_matrix[offset+i, tex_indices]), digits=2))",
                                         "source"=>source)))
-            for (i,p) in enumerate(cp) if adjp_fisher[offset+i]<=max_fdr || adjp_glm[offset+i]<=max_fdr])
+            for (i,p) in enumerate(cp) if adjp_between[offset+i]<=max_fdr && adjp_within[offset+i]<=max_fdr])
         offset += length(cp)
     end
     return Features(intervals)
