@@ -463,7 +463,7 @@ function background_plateau_pairs(coverage::Vector{Float64}, peak_index::Vector{
     return pairs
 end
 
-function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, compute_step_within=3, max_ppk=5, circular=true, source="NA")
+function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, compute_step_within=1, max_ppk=5, circular=true, source="NA")
     chroms = vcat([s.chroms for s in notexs], [s.chroms for s in texs])
     all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
     chr_names = collect(chr[1] for chr in chroms[1])
@@ -475,6 +475,7 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, co
         )
         for chr in chr_names
     )
+    #println(peaks["NC_002505"][1][1:10])
     valss = vcat([values(notex) for notex in notexs], [values(tex) for tex in texs])
     background_plateau_matrix =
     hcat(
@@ -487,6 +488,7 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, co
         )
         for vals in valss]...
     ) .+ 1
+    #println(background_plateau_matrix[1:10, :])
     #adjp_fisher = test_multiple_fisher_combined(background_plateau_matrix[:, 1:(2*length(notexs))], background_plateau_matrix[:, (2*length(notexs))+1:end])
     counts_between = Counts(Dict("notex_plateau"=>1:length(notexs), 
                                  "tex_plateau"=>length(notexs)+1:(length(texs) + length(notexs))), 
@@ -498,25 +500,30 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, co
                             background_plateau_matrix[:,vcat(tex_background_index,tex_plateau_index)])
 
     normalize!(counts_between; normalization_method=:rle)
+    #println(counts_between.values[1:10, :])
+    (basevals, _, adjp_between) = dge_glm(counts_between, "notex_plateau", "tex_plateau"; tail=:right)
+
     avg_sample::Vector{Float64} = [gmean(counts_within.values[i, length(texs)+1:end]) for i in 1:length(counts_within)]
     logdiffs = [log2.(counts_within.values[:, length(texs)+i]) .- log2.(avg_sample) for i in 1:length(texs)]
     for (i, nf) in enumerate(2 .^ [median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs])
         counts_within.values[:, [i,i+length(texs)]] ./= nf
     end
-    (_, _, adjp_between) = dge_glm(counts_between, "notex_plateau", "tex_plateau"; tail=:right)
     (_, _, adjp_within) = dge_glm(counts_within, "tex_background", "tex_plateau"; tail=:right)
-
+    #println(adjp_between[1:10])
+    #println(adjp_within[1:10])
     offset = 0
-    tex_indices = collect((length(notexs)+1):(length(notexs)+length(texs))) .* 2
     intervals = Vector{Interval{Annotation}}()
-    for (chr, both_peaks) in peaks, (cp, s) in zip(both_peaks, (STRAND_POS, STRAND_NEG))
-        append!(intervals, [Interval(chr, p, p, s,
-            Annotation("TSS", "", Dict("fdr_background_ratio"=>"$(round(adjp_within[offset+i], digits=8))",
-                                        "fdr_tex_ratio"=>"$(round(adjp_between[offset+i], digits=8))",
-                                        "height"=>"$(round(mean(background_plateau_matrix[offset+i, tex_indices]), digits=2))",
-                                        "source"=>source)))
-            for (i,p) in enumerate(cp) if adjp_between[offset+i]<=max_fdr && adjp_within[offset+i]<=max_fdr])
-        offset += length(cp)
+    for chr in chr_names
+        for (cp, s) in zip(peaks[chr], (STRAND_POS, STRAND_NEG))
+            append!(intervals, [Interval(chr, p, p, s,
+                                    Annotation("TSS", "", 
+                                        Dict("fdr_background_ratio"=>"$(round(adjp_within[offset+i], digits=8))",
+                                            "fdr_tex_ratio"=>"$(round(adjp_between[offset+i], digits=8))",
+                                            "height"=>"$(round(mean(basevals[offset+i]), digits=2))",
+                                            "source"=>source))) for (i,p) in enumerate(cp) if adjp_between[offset+i]<=max_fdr && adjp_within[offset+i]<=max_fdr])
+            #offset == 0 && println(intervals[1:10])
+            offset += length(cp)
+        end
     end
     return Features(intervals)
 end
