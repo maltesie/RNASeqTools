@@ -81,8 +81,8 @@ function normalize!(m::Matrix{Float64}; normalization_method=:rle)
         logdiffs = [log2.(m[:, i]) .- log2.(avg_sample) for i in 1:last(size(m))]
         norm_factors = 2 .^ [median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs]
         m ./= norm_factors'
-    elseif normalization_method === :rpm
-        m ./= (1000000 ./ sum(m; dims=1))
+    elseif normalization_method === :tpm
+        m ./= (sum(m; dims=1) ./ 1000000)
     else
         raise(AssertionError("No method implemented for $normalization_method"))
     end
@@ -91,7 +91,7 @@ end
 normalize!(counts::T; normalization_method=:rle) where {T<:CountContainer} = 
     normalize!(counts.values; normalization_method=normalization_method)
 
-function normalize!(m::Matrix{Float64}, features::Features; normalization_method=:rpkm)
+function normalize!(m::Matrix{Float64}, features::Features; normalization_method=:tpkm)
     normalization_method != :tpkm && raise(AssertionError("No method implemented for $normalization_method"))
     normalize!(m; normalization_method=:tpm)
     for feature in features

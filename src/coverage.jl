@@ -463,7 +463,8 @@ function background_plateau_pairs(coverage::Vector{Float64}, peak_index::Vector{
     return pairs
 end
 
-function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, compute_step_within=1, max_ppk=5, circular=true, source="NA")
+function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; 
+                max_fdr=0.05, compute_step_within=1, max_ppk=5, circular=true, source="NA")
     chroms = vcat([s.chroms for s in notexs], [s.chroms for s in texs])
     all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
     chr_names = collect(chr[1] for chr in chroms[1])
@@ -500,7 +501,6 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; max_fdr=0.05, co
                             background_plateau_matrix[:,vcat(tex_background_index,tex_plateau_index)])
 
     normalize!(counts_between; normalization_method=:rle)
-    #println(counts_between.values[1:10, :])
     (basevals, _, adjp_between) = dge_glm(counts_between, "notex_plateau", "tex_plateau"; tail=:right)
 
     avg_sample::Vector{Float64} = [gmean(counts_within.values[i, length(texs)+1:end]) for i in 1:length(counts_within)]
