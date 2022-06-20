@@ -75,11 +75,11 @@ function gmean(a::Array{Float64})
     return exp(s / n)
 end
 
-function normalize!(m::Matrix{Float64}; normalization_method=:rle)
+function normalize!(m::Matrix{Float64}; normalization_method=:rle, q=0.5)
     if normalization_method === :rle
         avg_sample::Vector{Float64} = [gmean(m[i, :]) for i in 1:first(size(m))]
         logdiffs = [log2.(m[:, i]) .- log2.(avg_sample) for i in 1:last(size(m))]
-        norm_factors = 2 .^ [median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs]
+        norm_factors = 2 .^ [quantile(logdiff[(!).(isnan.(logdiff))], q) for logdiff in logdiffs]
         m ./= norm_factors'
     elseif normalization_method === :tpm
         m ./= (sum(m; dims=1) ./ 1000000)
@@ -88,7 +88,7 @@ function normalize!(m::Matrix{Float64}; normalization_method=:rle)
     end
     return m
 end
-normalize!(counts::T; normalization_method=:rle) where {T<:CountContainer} = 
+normalize!(counts::T; normalization_method=:rle) where {T<:CountContainer} =
     normalize!(counts.values; normalization_method=normalization_method)
 
 function normalize!(m::Matrix{Float64}, features::Features; normalization_method=:tpkm)
@@ -98,7 +98,7 @@ function normalize!(m::Matrix{Float64}, features::Features; normalization_method
         m[i, !] ./= (length(feature) / 1000)
     end
 end
-normalize!(counts::T, features::Features; normalization_method=:rpkm) where {T<:CountContainer} = 
+normalize!(counts::T, features::Features; normalization_method=:rpkm) where {T<:CountContainer} =
     normalize!(counts.values, features; normalization_method=normalization_method)
 
 function cqn_offsets(m::Matrix{Float64})
@@ -108,7 +108,7 @@ end
 function normalize!(m::Matrix{Float64}, features::Features, genome::Genome; normalization_method=:cqn)
     normalization_method != :cqn && raise(AssertionError("No method implemented for $normalization_method"))
 end
-normalize!(counts::T, features::Features, genome::Genome; normalization_method=:cqn) where {T<:CountContainer} = 
+normalize!(counts::T, features::Features, genome::Genome; normalization_method=:cqn) where {T<:CountContainer} =
     normalize!(counts.values, features, genome; normalization_method=normalization_method)
 
 function dge_ttest(counts::T, control_condition::String, experiment_condition::String) where {T<:CountContainer}
@@ -131,7 +131,7 @@ function dge_glm(counts::T, control_condition::String, experiment_condition::Str
     ps = Vector{Float64}(undef, length(counts))
     compute_pvalue = tail === :both ? x -> 2 * ccdf(Normal(), abs(x)) :
                         tail === :right ? x -> ccdf(Normal(), x) :
-                        tail === :left ? x -> cdf(Normal(), x) : 
+                        tail === :left ? x -> cdf(Normal(), x) :
                         raise(AssertionError("tail can be :both, :right or :left"))
     l = LogLink()
     for (i, y) in enumerate(eachrow(data_matrix))

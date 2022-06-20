@@ -447,6 +447,16 @@ function maxdiffsignalpositions(coverage::Vector{Float64}; max_ppk=5, circular=t
     end
     return peak_index
 end
+function maxdiffsignalpositions(coverages::Vector{Coverage}; max_ppk=5, circular=true)
+    merged_coverage_values = values(merge(coverages))
+    Dict{String, Tuple{Vector{Int}, Vector{Int}}}(
+        chr=>(
+            maxdiffsignalpositions(merged_coverage_values[chr][1]; max_ppk=max_ppk, circular=circular),
+            maxdiffsignalpositions(merged_coverage_values[chr][2]; max_ppk=max_ppk, circular=circular)
+        )
+        for chr in sort(keys(merged_coverage_values))
+    )
+end
 
 function background_plateau_pairs(coverage::Vector{Float64}, peak_index::Vector{Int}; compute_step_within=3, circular=true)
     all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
@@ -462,45 +472,52 @@ function background_plateau_pairs(coverage::Vector{Float64}, peak_index::Vector{
     is_negative_strand && (pairs .*= -1)
     return pairs
 end
-
-function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage}; 
-                max_fdr=0.05, compute_step_within=1, max_ppk=5, circular=true, source="NA")
-    chroms = vcat([s.chroms for s in notexs], [s.chroms for s in texs])
-    all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
-    chr_names = collect(chr[1] for chr in chroms[1])
-    merged_tex_values = values(merge(texs))
-    peaks = Dict{String, Tuple{Vector{Int}, Vector{Int}}}(
-        chr=>(
-            maxdiffsignalpositions(merged_tex_values[chr][1]; max_ppk=max_ppk, circular=circular),
-            maxdiffsignalpositions(merged_tex_values[chr][2]; max_ppk=max_ppk, circular=circular)
-        )
-        for chr in chr_names
-    )
-    #println(peaks["NC_002505"][1][1:10])
+function background_plateau_pairs(notexs::Vector{Coverage}, texs::Vector{Coverage}, peaks::Dict{String, Tuple{Vector{Int}, Vector{Int}}};
+                                    compute_step_within=1, circular=true)
     valss = vcat([values(notex) for notex in notexs], [values(tex) for tex in texs])
-    background_plateau_matrix =
     hcat(
         [vcat(
             [vcat(
-                background_plateau_pairs(vals[chr][1], peaks[chr][1]; compute_step_within=compute_step_within),
-                background_plateau_pairs(vals[chr][2], peaks[chr][2]; compute_step_within=compute_step_within)
+                background_plateau_pairs(vals[chr][1], peaks[chr][1]; compute_step_within=compute_step_within, circular=circular),
+                background_plateau_pairs(vals[chr][2], peaks[chr][2]; compute_step_within=compute_step_within, circular=circular)
             )
-            for chr in chr_names]...
+            for chr in sort(keys(peaks))]...
         )
         for vals in valss]...
     ) .+ 1
-    #println(background_plateau_matrix[1:10, :])
-    #adjp_fisher = test_multiple_fisher_combined(background_plateau_matrix[:, 1:(2*length(notexs))], background_plateau_matrix[:, (2*length(notexs))+1:end])
-    counts_between = Counts(Dict("notex_plateau"=>1:length(notexs), 
-                                 "tex_plateau"=>length(notexs)+1:(length(texs) + length(notexs))), 
+end
+
+function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage};
+                fdr_tex_enrichment=0.01, fdr_background_step=0.01, compute_step_within=1, max_ppk=5, circular=true, source="NA")
+    chroms = vcat([s.chroms for s in notexs], [s.chroms for s in texs])
+    all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
+
+    peaks = maxdiffsignalpositions(texs; max_ppk=max_ppk, circular=circular)
+    background_plateau_matrix = background_plateau_pairs(notexs, texs, peaks; compute_step_within=compute_step_within, circular=circular)
+
+    counts_between = Counts(Dict("notex_plateau"=>1:length(notexs),
+                                 "tex_plateau"=>length(notexs)+1:(length(texs) + length(notexs))),
                             background_plateau_matrix[:,2:2:end])
     tex_background_index = collect(2*length(notexs)+1:2:2*(length(notexs)+length(texs)))
     tex_plateau_index = tex_background_index .+ 1
-    counts_within = Counts(Dict("tex_background"=>1:length(texs), 
-                                "tex_plateau"=>length(texs)+1:(2*length(texs))), 
+    counts_within = Counts(Dict("tex_background"=>1:length(texs),
+                                "tex_plateau"=>length(texs)+1:(2*length(texs))),
                             background_plateau_matrix[:,vcat(tex_background_index,tex_plateau_index)])
 
-    normalize!(counts_between; normalization_method=:rle)
+    avg_sample_notex::Vector{Float64} = [gmean(counts_between.values[i, 1:length(notexs)]) for i in 1:length(counts_between)]
+    logdiffs_notex = [log.(counts_between.values[:, i]) .- log.(avg_sample_notex) for i in 1:length(notexs)]
+    counts_between.values[:, 1:length(notexs)] ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_notex])'
+
+    avg_sample_tex::Vector{Float64} = [gmean(counts_between.values[i, length(notexs)+1:length(notexs)+length(texs)]) for i in 1:length(counts_between)]
+    logdiffs_tex = [log.(counts_between.values[:, i]) .- log.(avg_sample_tex) for i in length(notexs)+1:length(notexs)+length(texs)]
+    counts_between.values[:, length(notexs)+1:length(notexs)+length(texs)] ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_tex])'
+
+    avg_log_diffs = log.(avg_sample_notex) .- log.(avg_sample_tex)
+    h = fit(Histogram, avg_log_diffs; nbins=100)
+    max_index = sortperm(h.weights)[end-2:end]
+    max_value = (h.edges[1][minimum(max_index)]+h.edges[1][maximum(max_index)+1])/2.0
+    counts_between.values[:, length(notexs)+1:length(notexs)+length(texs)] ./= exp(max_value)
+
     (basevals, _, adjp_between) = dge_glm(counts_between, "notex_plateau", "tex_plateau"; tail=:right)
 
     avg_sample::Vector{Float64} = [gmean(counts_within.values[i, length(texs)+1:end]) for i in 1:length(counts_within)]
@@ -508,20 +525,20 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage};
     for (i, nf) in enumerate(2 .^ [median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs])
         counts_within.values[:, [i,i+length(texs)]] ./= nf
     end
+
     (_, _, adjp_within) = dge_glm(counts_within, "tex_background", "tex_plateau"; tail=:right)
-    #println(adjp_between[1:10])
-    #println(adjp_within[1:10])
+
     offset = 0
     intervals = Vector{Interval{Annotation}}()
-    for chr in chr_names
+    for chr in sort(keys(peaks))
         for (cp, s) in zip(peaks[chr], (STRAND_POS, STRAND_NEG))
             append!(intervals, [Interval(chr, p, p, s,
-                                    Annotation("TSS", "", 
+                                    Annotation("TSS", "",
                                         Dict("fdr_background_ratio"=>"$(round(adjp_within[offset+i], digits=8))",
                                             "fdr_tex_ratio"=>"$(round(adjp_between[offset+i], digits=8))",
-                                            "height"=>"$(round(mean(basevals[offset+i]), digits=2))",
-                                            "source"=>source))) for (i,p) in enumerate(cp) if adjp_between[offset+i]<=max_fdr && adjp_within[offset+i]<=max_fdr])
-            #offset == 0 && println(intervals[1:10])
+                                            "avg_notex_count"=>"$(round(mean(basevals[offset+i]), digits=2))",
+                                            "source"=>source))) for (i,p) in enumerate(cp)
+                                                if adjp_between[offset+i]<=fdr_tex_enrichment && adjp_within[offset+i]<=fdr_background_step])
             offset += length(cp)
         end
     end
