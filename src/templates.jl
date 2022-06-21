@@ -61,7 +61,7 @@ function remove_features(bams::SingleTypeFiles, features::Features; sam_bin="sam
     return SingleTypeFiles(outnames)
 end
 
-function full_annotation(features::Features, texdict::Dict{String,Coverage}, notexdict::Dict{String,Coverage}, termdict::Dict{String,Coverage}, results_gff::String;
+function full_annotation(features::Features, texf::Features, notexf::Features, termf::Features, results_gff::String;
                             cds_type="CDS", five_type="5UTR", three_type="3UTR", igr_type="IGR", min_tex_ratio=1.3, min_step=5, min_background_ratio=1.2, window_size=10)
     @assert keys(texdict) == keys(notexdict)
     tss_pos = Dict(key=>tsss(notexdict[key], texdict[key]; min_tex_ratio=min_tex_ratio, min_step=min_step, min_background_ratio=min_background_ratio, window_size=window_size) for key in keys(texdict))

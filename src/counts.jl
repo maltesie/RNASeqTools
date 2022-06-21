@@ -1,14 +1,3 @@
-struct Counts <: CountContainer
-    conditions::Dict{String, UnitRange{Int}}
-    values::Matrix{Float64}
-end
-
-struct FeatureCounts <: CountContainer
-    conditions::Dict{String, UnitRange{Int}}
-    values::Matrix{Float64}
-    features::Features{Annotation}
-end
-
 function FeatureCounts(features::Features, samples::Vector{Coverage}; conditions=Dict("sample"=>1:length(samples)), aggregation=maximum, normalization_method=:none)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     c = coveragecount(features, samples; aggregation=aggregation)

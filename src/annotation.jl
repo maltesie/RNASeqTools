@@ -1,9 +1,3 @@
-struct Annotation <: AnnotationStyle
-    type::String
-    name::String
-    params::Dict{String, String}
-end
-
 function Annotation()
     Annotation("", "", Dict{String, String}())
 end
@@ -13,12 +7,6 @@ function Annotation(type::String, name::String; args...)
 end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
-
-struct AlignmentAnnotation <: AnnotationStyle
-    type::String
-    name::String
-    overlap::UInt8
-end
 
 function AlignmentAnnotation()
     AlignmentAnnotation("", "", 0)
@@ -219,8 +207,7 @@ function maxsignalposition(leftpos::Int, rightpos::Int, chr::String, st::Strand,
     end
 end
 
-function addutrs!(features::Features; tss_positions::Union{Dict{String,Coverage},Nothing}=nothing, term_positions::Union{Dict{String,Coverage},Nothing}=nothing,
-                    cds_type="CDS", five_type="5UTR", three_type="3UTR", max_utr_length=150, min_utr_length=25, guess_missing=true)
+function add5utrs!(features::Features; tss::Features; cds_type="CDS", utr_type="5UTR", max_utr_length=150, min_utr_length=25, guess_missing=true)
 
     new_features = Vector{Interval{Annotation}}()
     #base_features_pos = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_POS)]
@@ -288,10 +275,8 @@ function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
     new_features = Vector{Interval{Annotation}}()
     base_features_pos = [feature for feature in features if (feature.strand == STRAND_POS)]
     base_features_neg = [feature for feature in features if (feature.strand == STRAND_NEG)]
-    nb_features_pos = length(base_features_pos)
-    nb_features_neg = length(base_features_neg)
     for base_features in (base_features_pos, base_features_neg)
-        nb_features = base_features === base_features_pos ? nb_features_pos : nb_features_neg
+        nb_features = base_features === base_features_pos ? length(base_features_pos) : length(base_features_neg)
         for i in 1:nb_features-1
             feature, next_feature = base_features[i], base_features[i+1]
             refname(feature) == refname(next_feature) || continue

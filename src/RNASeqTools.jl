@@ -34,7 +34,7 @@ include("alignment.jl")
 include("chimeric.jl")
 include("templates.jl")
 
-const ANNOTATION_VCH = "~/Data/vibrio/annotation/NC_002505_6.gff"
-const GENOME_VCH = "~/Data/vibrio/genome/NC_002505_6.fa"
+const ANNOTATION_VCH = "/home/abc/Data/vibrio/annotation/NC_002505_6.gff"
+const GENOME_VCH = "/home/abc/Data/vibrio/genome/NC_002505_6.fa"
 
 end

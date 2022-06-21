@@ -1,8 +1,3 @@
-struct Genome
-    seq::LongDNASeq
-    chroms::Dict{String, UnitRange{Int}}
-end
-
 function Genome(sequences::Vector{LongDNASeq}, names::Vector{String})
     seq = LongDNASeq(0)
     chrs = Dict{String, UnitRange}()
@@ -97,12 +92,6 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
             end
         end
     end
-end
-
-struct Sequences{T<:Union{String, UInt}}
-    seq::LongDNASeq
-    seqnames::Vector{T}
-    ranges::Vector{UnitRange{Int}}
 end
 
 function Sequences()

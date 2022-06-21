@@ -14,12 +14,6 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-struct BaseCoverage
-    genome::Genome
-    fcount::Dict{String, Dict{Symbol, Vector{Int}}}
-    rcount::Dict{String, Dict{Symbol, Vector{Int}}}
-end
-
 function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignments=true, is_reverse_complement=false,
                                                         only_positive_strand=false, quality_cut = 0x01)
     fcount = Dict(chr=>zeros(Int, 7, length(genome.chroms[chr])) for chr in keys(genome.chroms))
@@ -187,26 +181,15 @@ function mismatchcontexthist(base_coverage::BaseCoverage, from::Symbol, to::Symb
     return kmer_histograms
 end
 
-struct BaseAnnotation <: AnnotationStyle
-    type::String
-    name::String
-    ref::Vector{Int}
-    a::Vector{Int}
-    t::Vector{Int}
-    g::Vector{Int}
-    c::Vector{Int}
-    gap::Vector{Int}
-    ins::Vector{Int}
-end
-
 function coverage(feature::Interval{BaseAnnotation})
     return feature.metadata.a .+ feature.metadata.t .+ feature.metadata.g .+ feature.metadata.c .+ feature.metadata.gap
 end
 
 refcount(feature::Interval{BaseAnnotation}) = feature.metadata.ref
 
-function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignments=false, is_reverse_complement=false, max_temp_length=500,
-                                suffix_forward="_forward", suffix_reverse="_reverse")
+function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignments=false,
+                                            is_reverse_complement=false, max_temp_length=500,
+                                            suffix_forward="_forward", suffix_reverse="_reverse")
 
     filename_f = bam_file[1:end-4] * suffix_forward * ".bw"
     filename_r = bam_file[1:end-4] * suffix_reverse * ".bw"
@@ -217,7 +200,8 @@ function compute_coverage(bam_file::String; norm=1000000, include_secondary_alig
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
     count = 0
-    for alignment in Alignments(bam_file; include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
+    for alignment in Alignments(bam_file; include_secondary_alignments=include_secondary_alignments,
+                                            is_reverse_complement=is_reverse_complement)
         if ischimeric(alignment; check_annotation = false, min_distance = max_temp_length)
             for part in alignment
                 ref = refname(part)
@@ -249,7 +233,8 @@ function compute_coverage(bam_file::String; norm=1000000, include_secondary_alig
     close(writer_r)
 end
 
-function compute_coverage(files::SingleTypeFiles; norm=1000000, include_secondary_alignments=true, overwrite_existing=false, is_reverse_complement=false)
+function compute_coverage(files::SingleTypeFiles;
+            norm=1000000, include_secondary_alignments=true, overwrite_existing=false, is_reverse_complement=false)
     files.type == ".bam" || throw(AssertionError("Only .bam files accepted for alignments."))
     bw_files = Vector{Tuple{String, String}}()
     for file in files
@@ -257,14 +242,10 @@ function compute_coverage(files::SingleTypeFiles; norm=1000000, include_secondar
         filename_r = file[1:end-4] * "_reverse.bw"
         push!(bw_files, (filename_f, filename_r))
         (!overwrite_existing && isfile(filename_f) && isfile(filename_r)) && continue
-        compute_coverage(file; norm=norm, include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
+        compute_coverage(file;
+            norm=norm, include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
     end
     return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
-end
-
-struct Coverage <: AnnotationContainer
-    list::IntervalCollection{Float64}
-    chroms::Vector{Tuple{String, Int}}
 end
 
 function Coverage(bigwig_file::String, direction::Symbol)
@@ -358,7 +339,7 @@ function Base.write(filename_f::String, filename_r::String, coverage::Coverage)
     close(writer_r)
 end
 
-function Base.values(coverage::Coverage, interval::Interval)
+function Base.values(coverage::Coverage, interval::Interval; invert=false)
     len = interval.last - interval.first + 1
     vals = zeros(Float64, len)
     offset = interval.first-1
@@ -367,15 +348,15 @@ function Base.values(coverage::Coverage, interval::Interval)
     for olint in eachoverlap(coverage.list, interval; filter=strand_filter)
         vals[max(start,olint.first)-offset:min(olint.last, stop)-offset] .+= olint.metadata
     end
-    return vals
+    return invert ? vals .* -1.0 : vals
 end
 
-function Base.values(coverage::Coverage)
+function Base.values(coverage::Coverage; invert=false)
     vals = Dict{String,Tuple{Vector{Float64},Vector{Float64}}}()
     for (chr, len) in coverage.chroms
         interval_f = Interval(chr, 1, len, STRAND_POS)
         interval_r = Interval(chr, 1, len, STRAND_NEG)
-        push!(vals, chr=>(values(coverage, interval_f), values(coverage, interval_r)))
+        push!(vals, chr=>(values(coverage, interval_f; invert=invert), values(coverage, interval_r; invert=invert)))
     end
     return vals
 end
@@ -394,21 +375,6 @@ function Base.merge(coverages::Vector{Coverage})
     end
     return Coverage(vals_f, vals_r, coverages[1].chroms)
 end
-
-all_fisher_test_combinations(notex::Vector{Tuple{Int,Int}}, tex::Vector{Tuple{Int,Int}}) = vec([pvalue(FisherExactTest(nt...,t...); tail=:right) for t in tex, nt in notex])
-function all_fisher_test_combinations(notex::Matrix{Int}, tex::Matrix{Int})
-    tex_rows, tex_samples = size(tex)
-    notex_rows, notex_samples = size(notex)
-    tex_rows == notex_rows || throw(AssertionError("tex and notex have to have the same number of rows!"))
-    tex_samples % 2 == 0 && notex_samples % 2 == 0 || throw(AssertionError("tex and notex have to have even amount of columns!"))
-    notex_pairs = [[(i,j) for (i,j) in partition(r, 2)] for r in eachrow(notex)]
-    tex_pairs = [[(i,j) for (i,j) in partition(r, 2)] for r in eachrow(tex)]
-    all_fisher_test_combinations.(notex_pairs, tex_pairs)
-end
-
-fisher_combined_pvalue(pvalues::Vector{Float64}) = 1-cdf(Chisq(2*length(pvalues)), -2*sum(log.(pvalues)))
-
-test_multiple_fisher_combined(notex::Matrix{Int}, tex::Matrix{Int}) = adjust(PValues(fisher_combined_pvalue.(all_fisher_test_combinations(notex, tex))), BenjaminiHochberg())
 
 function rolling_sum(a::Vector{Float64}, n::Int; circular=true)
     (1<=n<=length(a)) || throw(Assertion("n has to be betwen 1 and $(length(a))."))
@@ -447,8 +413,8 @@ function maxdiffsignalpositions(coverage::Vector{Float64}; max_ppk=5, circular=t
     end
     return peak_index
 end
-function maxdiffsignalpositions(coverages::Vector{Coverage}; max_ppk=5, circular=true)
-    merged_coverage_values = values(merge(coverages))
+function maxdiffsignalpositions(coverages::Vector{Coverage}; max_ppk=5, circular=true, invert=false)
+    merged_coverage_values = values(merge(coverages); invert=invert)
     Dict{String, Tuple{Vector{Int}, Vector{Int}}}(
         chr=>(
             maxdiffsignalpositions(merged_coverage_values[chr][1]; max_ppk=max_ppk, circular=circular),
@@ -472,9 +438,9 @@ function background_plateau_pairs(coverage::Vector{Float64}, peak_index::Vector{
     is_negative_strand && (pairs .*= -1)
     return pairs
 end
-function background_plateau_pairs(notexs::Vector{Coverage}, texs::Vector{Coverage}, peaks::Dict{String, Tuple{Vector{Int}, Vector{Int}}};
+function background_plateau_pairs(s_ls::Vector{Coverage}, s_is::Vector{Coverage}, peaks::Dict{String, Tuple{Vector{Int}, Vector{Int}}};
                                     compute_step_within=1, circular=true)
-    valss = vcat([values(notex) for notex in notexs], [values(tex) for tex in texs])
+    valss = vcat([values(s_l) for s_l in s_ls], [values(s_i) for s_i in s_is])
     hcat(
         [vcat(
             [vcat(
@@ -485,6 +451,30 @@ function background_plateau_pairs(notexs::Vector{Coverage}, texs::Vector{Coverag
         )
         for vals in valss]...
     ) .+ 1
+end
+
+function normalize_counts_between!(counts_between::Counts)
+    avg_sample_notex::Vector{Float64} = [gmean(counts_between.values[i, 1:length(notexs)]) for i in 1:length(counts_between)]
+    logdiffs_notex = [log.(counts_between.values[:, i]) .- log.(avg_sample_notex) for i in 1:length(notexs)]
+    counts_between.values[:, 1:length(notexs)] ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_notex])'
+
+    avg_sample_tex::Vector{Float64} = [gmean(counts_between.values[i, length(notexs)+1:length(notexs)+length(texs)]) for i in 1:length(counts_between)]
+    logdiffs_tex = [log.(counts_between.values[:, i]) .- log.(avg_sample_tex) for i in length(notexs)+1:length(notexs)+length(texs)]
+    counts_between.values[:, length(notexs)+1:length(notexs)+length(texs)] ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_tex])'
+
+    avg_log_diffs = log.(avg_sample_notex) .- log.(avg_sample_tex)
+    h = fit(Histogram, avg_log_diffs; nbins=100)
+    max_index = sortperm(h.weights)[end-2:end]
+    max_value = (h.edges[1][minimum(max_index)]+h.edges[1][maximum(max_index)+1])/2.0
+    counts_between.values[:, length(notexs)+1:length(notexs)+length(texs)] ./= exp(max_value)
+end
+
+function normalize_counts_within!(counts_within::Counts)
+    avg_sample::Vector{Float64} = [gmean(counts_within.values[i, length(texs)+1:end]) for i in 1:length(counts_within)]
+    logdiffs = [log2.(counts_within.values[:, length(texs)+i]) .- log2.(avg_sample) for i in 1:length(texs)]
+    for (i, nf) in enumerate(2 .^ [median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs])
+        counts_within.values[:, [i,i+length(texs)]] ./= nf
+    end
 end
 
 function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage};
@@ -504,28 +494,10 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage};
                                 "tex_plateau"=>length(texs)+1:(2*length(texs))),
                             background_plateau_matrix[:,vcat(tex_background_index,tex_plateau_index)])
 
-    avg_sample_notex::Vector{Float64} = [gmean(counts_between.values[i, 1:length(notexs)]) for i in 1:length(counts_between)]
-    logdiffs_notex = [log.(counts_between.values[:, i]) .- log.(avg_sample_notex) for i in 1:length(notexs)]
-    counts_between.values[:, 1:length(notexs)] ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_notex])'
-
-    avg_sample_tex::Vector{Float64} = [gmean(counts_between.values[i, length(notexs)+1:length(notexs)+length(texs)]) for i in 1:length(counts_between)]
-    logdiffs_tex = [log.(counts_between.values[:, i]) .- log.(avg_sample_tex) for i in length(notexs)+1:length(notexs)+length(texs)]
-    counts_between.values[:, length(notexs)+1:length(notexs)+length(texs)] ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_tex])'
-
-    avg_log_diffs = log.(avg_sample_notex) .- log.(avg_sample_tex)
-    h = fit(Histogram, avg_log_diffs; nbins=100)
-    max_index = sortperm(h.weights)[end-2:end]
-    max_value = (h.edges[1][minimum(max_index)]+h.edges[1][maximum(max_index)+1])/2.0
-    counts_between.values[:, length(notexs)+1:length(notexs)+length(texs)] ./= exp(max_value)
-
+    normalize_counts_between!(counts_between)
     (basevals, _, adjp_between) = dge_glm(counts_between, "notex_plateau", "tex_plateau"; tail=:right)
 
-    avg_sample::Vector{Float64} = [gmean(counts_within.values[i, length(texs)+1:end]) for i in 1:length(counts_within)]
-    logdiffs = [log2.(counts_within.values[:, length(texs)+i]) .- log2.(avg_sample) for i in 1:length(texs)]
-    for (i, nf) in enumerate(2 .^ [median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs])
-        counts_within.values[:, [i,i+length(texs)]] ./= nf
-    end
-
+    normalize_counts_within!(counts_within)
     (_, _, adjp_within) = dge_glm(counts_within, "tex_background", "tex_plateau"; tail=:right)
 
     offset = 0
@@ -536,7 +508,7 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage};
                                     Annotation("TSS", "",
                                         Dict("fdr_background_ratio"=>"$(round(adjp_within[offset+i], digits=8))",
                                             "fdr_tex_ratio"=>"$(round(adjp_between[offset+i], digits=8))",
-                                            "avg_notex_count"=>"$(round(mean(basevals[offset+i]), digits=2))",
+                                            "avg_notex_plateau"=>"$(round(basevals[offset+i], digits=2))",
                                             "source"=>source))) for (i,p) in enumerate(cp)
                                                 if adjp_between[offset+i]<=fdr_tex_enrichment && adjp_within[offset+i]<=fdr_background_step])
             offset += length(cp)
@@ -545,22 +517,55 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage};
     return Features(intervals)
 end
 
-function terms(coverage::Coverage; min_step=10, half_window_size=5, min_background_ratio=1.2)
-    vals = values(coverage)
-    intervals = Vector{Interval{Float64}}()
-    chrs = [chr[1] for chr in coverage.chroms]
-    for chr in chrs
-        f, r = vals[chr]
-        d_forward = diff(f, true; half_window_size=half_window_size, min_background_ratio=min_background_ratio)
-        d_reverse = diff(r, false; half_window_size=half_window_size, min_background_ratio=min_background_ratio)
-        check_forward = d_forward .>= min_step
-        check_reverse = d_reverse .>= min_step
-        for (pos, val) in zip(findall(!iszero, check_forward), abs.(d_forward[check_forward]))
-            push!(intervals, Interval(chr, pos, pos, STRAND_POS, val))
-        end
-        for (pos, val)  in zip(findall(!iszero, check_reverse), abs.(d_reverse[check_reverse]))
-            push!(intervals, Interval(chr, pos, pos, STRAND_NEG, val))
+all_fisher_test_combinations(s_ls::Vector{Tuple{Int,Int}}, s_hs::Vector{Tuple{Int,Int}}) =
+    vec([pvalue(FisherExactTest(nt...,t...); tail=:right) for t in s_hs, nt in s_ls])
+function all_fisher_test_combinations(s_ls::Matrix{Int}, s_hs::Matrix{Int})
+    s_hs_rows, s_hs_samples = size(s_hs)
+    s_ls_rows, s_ls_samples = size(s_ls)
+    s_hs_rows == s_ls_rows || throw(AssertionError("s_hs and s_ls have to have the same number of rows!"))
+    s_hs_samples % 2 == 0 && s_ls_samples % 2 == 0 || throw(AssertionError("s_hs and s_ls have to have even amount of columns!"))
+    s_ls_pairs = [[(i,j) for (i,j) in partition(r, 2)] for r in eachrow(s_ls)]
+    s_hs_pairs = [[(i,j) for (i,j) in partition(r, 2)] for r in eachrow(s_hs)]
+    all_fisher_test_combinations.(s_ls_pairs, s_hs_pairs)
+end
+
+fisher_combined_pvalue(pvalues::Vector{Float64}) = 1-cdf(Chisq(2*length(pvalues)), -2*sum(log.(pvalues)))
+
+test_multiple_fisher_combined(s_ls::Matrix{Int}, s_hs::Matrix{Int}) =
+    adjust(PValues(fisher_combined_pvalue.(all_fisher_test_combinations(s_ls, s_hs))), BenjaminiHochberg())
+
+function terms(bcms::Vector{Coverage}, nobcms::Vector{Coverage};
+    fdr_bcm_ratio=0.05, fdr_background_step=0.01, compute_step_within=1, max_ppk=5, circular=true, source="NA")
+    chroms = vcat([s.chroms for s in bcms], [s.chroms for s in nobcms])
+    all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
+
+    peaks = maxdiffsignalpositions(nobcms; max_ppk=max_ppk, circular=circular, invert=true)
+    background_plateau_matrix = background_plateau_pairs(bcms, nobcms, peaks; compute_step_within=compute_step_within, circular=circular)
+
+    nobcm_background_index = collect(2*length(bcms)+1:2:2*(length(bcms)+length(nobcms)))
+    nobcm_plateau_index = nobcm_background_index .+ 1
+    counts_within = Counts(Dict("nobcm_background"=>1:length(bcms),
+                                "nobcm_plateau"=>length(bcms)+1:(2*length(texs))),
+                            background_plateau_matrix[:,vcat(nobcm_background_index,nobcm_plateau_index)])
+    normalize!(counts_within)
+    (basevals, fc, adjp_background_step) = dge_glm(counts_within, "nobcm_background", "nobcm_plateau"; tail=:right)
+    adjp_bcm_ratio = test_multiple_fisher_combined(background_plateau_matrix[:, 1:length(bcms)] .+ 1,
+                                                    background_plateau_matrix[:, length(bcms)+1:length(bcms)+length(nobcms)] .+ 1)
+
+    offset = 0
+    intervals = Vector{Interval{Annotation}}()
+    for chr in sort(keys(peaks))
+        for (cp, s) in zip(peaks[chr], (STRAND_POS, STRAND_NEG))
+            append!(intervals, [Interval(chr, p, p, s,
+                                    Annotation("TERM", "",
+                                        Dict("fdr_background_ratio"=>"$(round(adjp_within[offset+i], digits=8))",
+                                            "fdr_bcm_ratio"=>"$(round(adjp_bcm_ratio[offset+i], digits=8))",
+                                            "rho_dependent"=> (adjp_bcm_ratio[offset+i] <= fdr_bcm_ratio) ? "false" : "true",
+                                            "avg_nobcm_plateau"=>"$(round(basevals[offset+i] * 2^fc[offset+i], digits=2))",
+                                            "source"=>source))) for (i,p) in enumerate(cp)
+                                                if adjp_background_step[offset+i]<=fdr_background_step])
+            offset += length(cp)
         end
     end
-    return Coverage(IntervalCollection(intervals, true), coverage.chroms)
+    return Features(intervals)
 end

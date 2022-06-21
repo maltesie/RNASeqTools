@@ -413,24 +413,6 @@ function nmtag(record::BAM.Record)
     return unsafe_load(Ptr{t}(pointer(record.data, BAM.auxdata_position(record)+3)))
 end
 
-struct Alignments{T<:Union{String, UInt}}
-    tempnames::Vector{T}
-    leftpos::Vector{Int}
-    rightpos::Vector{Int}
-    read_leftpos::Vector{Int}
-    read_rightpos::Vector{Int}
-    reads::Vector{Symbol}
-    nms::Vector{UInt32}
-    refnames::Vector{String}
-    strands::Vector{Strand}
-    annames::Vector{String}
-    antypes::Vector{String}
-    anols::Vector{UInt8}
-    anleftrel::Vector{UInt8}
-    anrightrel::Vector{UInt8}
-    ranges::Vector{UnitRange{Int}}
-end
-
 function Alignments(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
@@ -511,12 +493,7 @@ function Base.show(alns::Alignments; n=-1, only_chimeric=false, filter_name=noth
     end
 end
 
-struct AlignedPart
-    ref::Interval{AlignmentAnnotation}
-    seq::UnitRange{Int}
-    nms::UInt32
-    read::Symbol
-end
+
 
 AlignedPart(alns::Alignments, i::Int) =
 AlignedPart(
@@ -775,11 +752,6 @@ distanceonread(aln1::AlignedPart, aln2::AlignedPart) = max(first(aln1.seq), firs
 
 isfirstread(part::AlignedPart) = part.read === :read1
 
-struct AlignedRead
-    range::UnitRange{Int}
-    alns::Alignments
-end
-
 function Base.iterate(alnread::AlignedRead)
     return isnothing(alnread.range) ? nothing : (AlignedPart(alnread.alns, first(alnread.range)), first(alnread.range)+1)
 end
@@ -986,10 +958,7 @@ end
 Base.getindex(genome::Genome, ap::AlignedPart) = refsequence(ap, genome)
 Base.getindex(sequence::LongDNASeq, ap::AlignedPart) = sequence[readrange(ap)]
 
-struct GenomeComparison
-    alns::Vector{PairwiseAlignment}
-    fromto::Vector{Tuple{Interval,Interval}}
-end
+
 
 function GenomeComparison(refgenome_file::String, compgenome_file::String, bam_file::String)
     pairwise_alignments = PairwiseAlignment[]

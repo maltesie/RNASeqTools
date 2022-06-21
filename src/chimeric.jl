@@ -1,11 +1,3 @@
-struct Interactions <: InteractionContainer
-    graph::SimpleDiGraph
-    nodes::DataFrame
-    edges::DataFrame
-    edgestats::ElasticArray{Int}
-    replicate_ids::Vector{Symbol}
-end
-
 """
 Method of write function which saves the Interactions struct in a jld2 file.
 """

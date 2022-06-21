@@ -4,11 +4,6 @@ function Base.write(filename::String, content::String)
     end
 end
 
-mutable struct SingleTypeFiles <: FileCollection
-    list::Vector{String}
-    type::String
-end
-
 function SingleTypeFiles(files::Vector{String})
     endings = [fname[findlast('.', fname):end] for fname in files]
     length(unique(endings)) <= 1
@@ -31,13 +26,6 @@ end
 function Base.dirname(files::SingleTypeFiles)
     @assert hassingledir(files)
     return dirname(files.list[1])
-end
-
-mutable struct PairedSingleTypeFiles <: FileCollection
-    list::Vector{Tuple{String,String}}
-    type::String
-    suffix1::String
-    suffix2::String
 end
 
 function PairedSingleTypeFiles(files1::Vector{String}, files2::Vector{String})
