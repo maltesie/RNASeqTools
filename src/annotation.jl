@@ -1,3 +1,24 @@
+type(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata.type
+name(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata.name
+refname(feature::Interval{T}) where T<:AnnotationStyle = feature.seqname
+featureparams(feature::Interval{Annotation}) = feature.metadata.params
+featureparam(feature::Interval{Annotation}, key::String) = feature.metadata.params[key]
+featureparam(feature::Interval{Annotation}, key::String, ::Type{T}) where {T} = parse(T, feature.metadata.params[key])
+setfeatureparam(feature::Interval{Annotation}, key::String, value::String) = feature.metadata.params[key] = value
+hasannotationkey(feature::Interval{Annotation}, key::String) = key in keys(featureparams(feature))
+annotation(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata
+hasannotation(feature::Interval{T}) where T<:AnnotationStyle = !isempty(annotation(feature))
+ispositivestrand(feature::Interval{T}) where T<:AnnotationStyle = strand(feature) === STRAND_POS
+
+function summarize(feature::Interval{Annotation})
+    s = "Feature (Interval{Annotation}):\n\n[$(leftposition(feature)), $(rightposition(feature))]"
+    s *= "on $(refname(feature)) ($(strand(feature))) with annotation $(type(feature)):$(name(feature))\n"
+    s *= "parameters: $(paramstring(feature))"
+end
+function Base.show(feature::Interval{Annotation})
+    println(summarize(feature))
+end
+
 function Annotation()
     Annotation("", "", Dict{String, String}())
 end
@@ -29,10 +50,7 @@ function BaseAnnotation(feature::Interval{Annotation}, base_coverage::BaseCovera
     BaseAnnotation(type(feature), name(feature), ref, count[ref][:A][r], count[:T][r], count[:G][r], count[:C][r], count[:Gap][r], count[:Ins][r])
 end
 
-struct Features{T} <: AnnotationContainer
-    list::IntervalCollection{T}
-    chroms::Dict{String, Int}
-end
+Features() = Features(Annotation)
 
 function Features(::Type{T}) where T
     return Features(Vector{Interval{T}}())
@@ -137,6 +155,13 @@ Base.iterate(features::T, state::Tuple{Int64,GenomicFeatures.ICTree{I},GenomicFe
 Base.length(features::T) where T<:AnnotationContainer = length(features.list)
 Base.split(features::T) where T<:AnnotationContainer = [Features([feature for feature in features if type(feature)==t], [t]) for t in types(features)]
 
+function Base.getindex(features::T, i::Int) where T<:AnnotationContainer
+    (i < 1 || i > length(features)) && throw(AssertionError("Trying to access $(length(features))-element $T at index $i"))
+    for (c, f) in enumerate(features)
+        c === i && return f
+    end
+end
+
 Base.convert(::Type{Interval{Float64}}, i::Interval{T}) where T<:AnnotationStyle = Interval(refname(i), leftposition(i), rightposition(i), strand(i), 0.0)
 strand_filter(a::Interval, b::Interval)::Bool = strand(a) === strand(b)
 function GenomicFeatures.eachoverlap(features::I, feature::Interval{T}) where {I<:AnnotationContainer,T}
@@ -164,13 +189,20 @@ function firstoverlap(features::Features, feature::Interval)
     end
     return nothing
 end
+function lastoverlap(features::Features, feature::Interval)
+    olpinterval = copy(feature)
+    for int in eachoverlap(features, feature)
+        olpinterval = int
+    end
+    return olpinterval
+end
 
 function paramstring(params::Dict{String,String};priority=("Name",))
     ps = join(("$key=$(params[key])" for key in priority if key in keys(params)), ";")
     os = join(("$key=$(params[key])" for key in sort(collect(keys(params))) if !(key in priority)), ";")
     return ps * ((isempty(ps) || isempty(os)) ? "" : ";") * os
 end
-paramstring(feature::Interval{Annotation}; priority=("Name",)) = paramstring(params(feature); priority=priority)
+paramstring(feature::Interval{Annotation}; priority=("Name",)) = paramstring(featureparams(feature); priority=priority)
 
 function Base.write(file::String, features::Features; zip=false, tabix=false)
     chroms = copy(features.chroms)
@@ -182,7 +214,7 @@ function Base.write(file::String, features::Features; zip=false, tabix=false)
             write(writer, GFF3.Record("##sequence-region $(refname(feature)) 1 $(chroms[refname(feature)])"))
             delete!(chroms, refname(feature))
         end
-        write(writer, GFF3.Record("$(refname(feature))\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(params(feature)))"))
+        write(writer, GFF3.Record("$(refname(feature))\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(featureparams(feature)))"))
     end
     b = close(writer)
     sleep(0.5)
@@ -191,85 +223,64 @@ function Base.write(file::String, features::Features; zip=false, tabix=false)
     return b
 end
 
-function maxsignalposition(leftpos::Int, rightpos::Int, chr::String, st::Strand, coverage_dict::Dict{String,Coverage}, modify::Symbol)
-    maxsignal::Float64 = 0.0
-    pos::Int = -1
-    l = "guess"
-    for (lib, coverage) in coverage_dict
-        for signal in eachoverlap(coverage, Interval(chr, leftpos, rightpos, st, Annotation()))
-            value(signal) > maxsignal && (maxsignal=value(signal); pos=rightposition(signal); l=lib)
+nooverlapfromright(features::Features, f::Interval{Annotation}) = hasoverlap(features, f) ? min(rightposition(f), maximum(rightposition(i)+1 for i in eachoverlap(features, f))) : leftposition(f)
+nooverlapfromleft(features::Features, f::Interval{Annotation}) = hasoverlap(features, f) ? max(leftposition(f), minimum(leftposition(i)-1 for i in eachoverlap(features, f))) : rightposition(f)
+
+function findutr(f::Interval{Annotation}, features::Features{Annotation}, signals::Features{Annotation}, direction::Symbol;
+                        utr_type="UTR", min_utr_length=25, max_utr_length=250,
+                        guess_missing=true, expression_key=nothing, source_key=nothing, extra_key=nothing)
+
+    direction in (:left, :right) || throw(AssertionError("direction has to be either :right or :left"))
+    left, right =  direction === :right ? (rightposition(f)+1,rightposition(f)+max_utr_length) : (leftposition(f)-max_utr_length, leftposition(f)-1)
+    olpinterval =  Interval(refname(f), left, right, strand(f), Annotation())
+    olps = collect(eachoverlap(signals, olpinterval))
+    if isempty(olps)
+        if guess_missing
+            i = Interval(refname(f),
+                            direction === :left ? nooverlapfromright(features, olpinterval) : left,
+                            direction === :right ? nooverlapfromleft(features, olpinterval) : right,
+                            strand(f), Annotation(utr_type, ""; Name=name(f), source="guess", expression="N/A"))
+            return length(i) < min_utr_length ? nothing : i
+        else
+            return nothing
         end
-    end
-    if maxsignal != 0.0
-        return modify === :left ? (pos, rightpos, l) : (leftpos, pos, l)
     else
-        return (leftpos, rightpos, l)
+        maxint = isnothing(expression_key) ? (direction === :left ? olps[end] : olps[1]) : olps[argmax([featureparam(olp, expression_key, Float64) for olp in olps])]
+        expression = isnothing(expression_key) ? "N/A" : featureparam(maxint, expression_key)
+        source = isnothing(source_key) ? "N/A" : featureparam(maxint, source_key)
+        resint = Interval(refname(f),
+                        direction === :left ? leftposition(maxint) : left,
+                        direction === :right ? rightposition(maxint) : right,
+                        strand(f), Annotation(utr_type, ""; Name=name(f), source=source, expression=expression))
+        isnothing(extra_key) || setfeatureparam(resint, extra_key, featureparam(maxint, extra_key))
+        return resint
     end
 end
 
-function add5utrs!(features::Features; tss::Features; cds_type="CDS", utr_type="5UTR", max_utr_length=150, min_utr_length=25, guess_missing=true)
-
+function addutrs!(features::Features, signals::Features, t::Symbol; cds_type="CDS", utr_type="5UTR", min_utr_length=50, max_utr_length=150,
+                                                                    guess_missing=true, expression_key=nothing, source_key=nothing, extra_key=nothing)
+    t in (:five, :three) || throw(AssertionError("$t not supported!"))
     new_features = Vector{Interval{Annotation}}()
-    #base_features_pos = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_POS)]
-    #base_features_neg = [feature for feature in features if (type(feature)==cds_type) && (feature.strand == STRAND_NEG)]
-    base_features_pos = [feature for feature in features if (feature.strand == STRAND_POS)]
-    base_features_neg = [feature for feature in features if (feature.strand == STRAND_NEG)]
-    first_feature, last_feature = base_features_pos[1], base_features_pos[end]
-    stop, start = leftposition(first_feature), rightposition(last_feature)
-    push!(new_features, Interval(refname(last_feature), start+1, start+max_utr_length, STRAND_POS, Annotation(three_type, name(last_feature), params(last_feature))))
-    push!(new_features, Interval(refname(first_feature), max(1, stop-max_utr_length), stop-1, STRAND_POS, Annotation(five_type, name(first_feature), params(first_feature))))
-    first_feature, last_feature = base_features_neg[1], base_features_neg[end]
-    stop, start = leftposition(first_feature), rightposition(last_feature)
-    push!(new_features, Interval(refname(last_feature), start+1, start+max_utr_length, STRAND_NEG, Annotation(five_type, name(last_feature), params(last_feature))))
-    push!(new_features, Interval(refname(first_feature), max(1, stop-max_utr_length), stop-1, STRAND_NEG, Annotation(three_type, name(first_feature), params(first_feature))))
-
-    for base_features in (base_features_pos, base_features_neg)
-        nb_features = length(base_features)
-        stran = base_features === base_features_pos ? STRAND_POS : STRAND_NEG
-        for i in 1:nb_features-1
-            feature, next_feature = base_features[i], base_features[i+1]
-            threeref, fiveref, threename, fivename = refname(feature), refname(next_feature), name(feature), name(next_feature)
-            stop, start = leftposition(next_feature), rightposition(feature)
-            threestart::Int, threestop::Int, fivestart::Int, fivestop::Int = 0, 0, 0, 0
-            if refname(feature) != refname(next_feature)
-                threestart, threestop = start+1, start+max_utr_length
-                fivestart, fivestop = max(1, stop-max_utr_length), stop-1
-            elseif  stop - start > 2 * max_utr_length + 1
-                threestart, threestop = start+1, start+max_utr_length
-                fivestart, fivestop = stop-max_utr_length, stop-1
-            elseif stop - start > min_utr_length
-                new_utr_length = 0
-                if (type(feature) == cds_type) && (type(next_feature) == cds_type) && (stop - start > 2 * min_utr_length + 1)
-                    new_utr_length = floor(Int, (stop-start)/2)
-                elseif (type(feature) != cds_type) || (type(next_feature) != cds_type)
-                    new_utr_length = min(stop-start-1, max_utr_length)
-                else
-                    continue
-                end
-                threestart, threestop = start+1, start+new_utr_length
-                fivestart, fivestop = stop-new_utr_length, stop-1
-            else
-                continue
-            end
-
-            stran === STRAND_NEG && ((threestart, fivestart, threestop, fivestop, threename, fivename, threeref, fiveref) =
-                                        (fivestart, threestart, fivestop, threestop, fivename, threename, fiveref, threeref))
-            check_five = stran === STRAND_NEG ? type(feature) == cds_type : type(next_feature) == cds_type
-            check_three = stran === STRAND_NEG ? type(next_feature) == cds_type : type(feature) == cds_type
-            isnothing(tss_positions) ? (found_five_in="guess") :
-            ((fivestart, fivestop, found_five_in) = maxsignalposition(fivestart, fivestop, fiveref, stran, tss_positions, stran === STRAND_POS ? :left : :right))
-            isnothing(term_positions) ? (found_three_in="guess") :
-            ((threestart, threestop, found_three_in) = maxsignalposition(threestart, threestop, threeref, stran, term_positions, stran === STRAND_POS ? :right : :left))
-            ((guess_missing || (found_five_in != "guess")) && check_five) && push!(new_features, Interval(fiveref, fivestart, fivestop, stran,
-                Annotation(five_type, fivename, merge(Dict("source"=>found_five_in), copy(stran === STRAND_NEG ? params(feature) : params(next_feature))))))
-            ((guess_missing || (found_three_in != "guess")) && check_three) && push!(new_features, Interval(threeref, threestart, threestop, stran,
-                Annotation(three_type, threename, merge(Dict("source"=>found_three_in), copy(stran === STRAND_NEG ? params(next_feature) : params(feature))))))
-        end
+    for feature in features
+        type(feature) != cds_type && continue
+        direction = ((t === :five) != (strand(feature) === STRAND_POS)) ? :right : :left
+        newutr = findutr(feature, features, signals, direction; utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length,
+                                                                    guess_missing=guess_missing, expression_key=expression_key, source_key=source_key, extra_key=extra_key)
+        !isnothing(newutr) && push!(new_features, newutr)
     end
-    for feature in new_features
-        push!(features, feature)
-    end
+    merge!(features, Features(new_features))
 end
+
+add5utrs!(features::Features, tss::Features; cds_type="CDS", utr_type="5UTR", min_utr_length=50, max_utr_length=150,
+            guess_missing=true, expression_key="avg_notex_plateau", source_key="source") =
+addutrs!(features, tss, :five; cds_type=cds_type, utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length,
+                                guess_missing=guess_missing, expression_key=expression_key, source_key=source_key)
+
+add3utrs!(features::Features, terms::Features; cds_type="CDS", utr_type="3UTR", min_utr_length=50, max_utr_length=150,
+            guess_missing=true, expression_key="avg_nobcm_plateau", source_key="source", rho_dependent_key="rho_dependent") =
+addutrs!(features, terms, :three; cds_type=cds_type, utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length,
+                                    guess_missing=guess_missing, expression_key=expression_key, source_key=source_key, extra_key=rho_dependent_key)
+
 
 function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
     new_features = Vector{Interval{Annotation}}()
@@ -284,7 +295,7 @@ function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
             (stop-1) - (start + 1) > min_igr_length || continue
             igr = Interval(refname(feature), start+1, stop-1, base_features === base_features_pos ? STRAND_POS : STRAND_NEG,
                                         Annotation(igr_type, name(feature)*":"*name(next_feature),
-                                        Dict(key=>param(feature, key)*":"*param(next_feature, key) for key in keys(params(feature)) if key in keys(params(next_feature)))))
+                                        Dict(key=>param(feature, key)*":"*param(next_feature, key) for key in keys(featureparams(feature)) if key in keys(featureparams(next_feature)))))
             push!(new_features, igr)
         end
     end
@@ -292,27 +303,6 @@ function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
     for feature in new_features
         push!(features, feature)
     end
-end
-
-type(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata.type
-name(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata.name
-refname(feature::Interval{T}) where T<:AnnotationStyle = feature.seqname
-params(feature::Interval{Annotation}) = feature.metadata.params
-param(feature::Interval{Annotation}, key::String) = feature.metadata.params[key]
-param(feature::Interval{Annotation}, key::String, ::Type{T}) where {T} = parse(T, feature.metadata.params[key])
-setparam(feature::Interval{Annotation}, key::String, value::String) = feature.metadata.params[key] = value
-hasannotationkey(feature::Interval{Annotation}, key::String) = key in keys(params(feature))
-annotation(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata
-hasannotation(feature::Interval{T}) where T<:AnnotationStyle = !isempty(annotation(feature))
-ispositivestrand(feature::Interval{T}) where T<:AnnotationStyle = strand(feature) === STRAND_POS
-
-function summarize(feature::Interval{Annotation})
-    s = "Feature (Interval{Annotation}):\n\n[$(leftposition(feature)), $(rightposition(feature))]"
-    s *= "on $(refname(feature)) ($(strand(feature))) with annotation $(type(feature)):$(name(feature))\n"
-    s *= "parameters: $(paramstring(feature))"
-end
-function Base.show(feature::Interval{Annotation})
-    println(summarize(feature))
 end
 
 typenamekey(feature::Interval{Annotation}) = type(feature) * ":" * name(feature)
@@ -345,7 +335,7 @@ end
 
 function asdataframe(features::Features; add_keys=:all)
     add_keys === :none && (add_keys = Set())
-    add_keys === :all && (add_keys = Set(key for feature in features for key in keys(params(feature))))
+    add_keys === :all && (add_keys = Set(key for feature in features for key in keys(featureparams(feature))))
     df = DataFrame(name=repeat([""], length(features)), refname=repeat([""], length(features)), type=repeat([""], length(features)),
                     left=repeat([-1], length(features)), right=repeat([-1], length(features)), strand=repeat(['*'], length(features)))
     for key in add_keys
@@ -358,7 +348,7 @@ function asdataframe(features::Features; add_keys=:all)
         df[i, :left] = leftposition(feature)
         df[i, :right] = rightposition(feature)
         df[i, :strand] = strand(feature) === STRAND_NEG ? '-' : '+'
-        pa = params(feature)
+        pa = featureparams(feature)
         for key in sort(collect(keys(pa)))
             (key in add_keys || add_keys === :all) && (df[i, Symbol(key)] = pa[key])
         end
@@ -389,7 +379,6 @@ function Base.show(features::Features)
 end
 
 function embl_to_gff(embl_file::String, gff_file::String, chrs::Vector{String})
-
     chroms = copy(reverse(chrs))
     writer = GFF3.Writer(open(gff_file, "w"))
     write(writer, GFF3.Record("##gff-version 3.2.1"))

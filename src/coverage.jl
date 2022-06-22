@@ -420,7 +420,7 @@ function maxdiffsignalpositions(coverages::Vector{Coverage}; max_ppk=5, circular
             maxdiffsignalpositions(merged_coverage_values[chr][1]; max_ppk=max_ppk, circular=circular),
             maxdiffsignalpositions(merged_coverage_values[chr][2]; max_ppk=max_ppk, circular=circular)
         )
-        for chr in sort(keys(merged_coverage_values))
+        for chr in sort(collect(keys(merged_coverage_values)))
     )
 end
 
@@ -447,38 +447,39 @@ function background_plateau_pairs(s_ls::Vector{Coverage}, s_is::Vector{Coverage}
                 background_plateau_pairs(vals[chr][1], peaks[chr][1]; compute_step_within=compute_step_within, circular=circular),
                 background_plateau_pairs(vals[chr][2], peaks[chr][2]; compute_step_within=compute_step_within, circular=circular)
             )
-            for chr in sort(keys(peaks))]...
+            for chr in sort(collect(keys(peaks)))]...
         )
         for vals in valss]...
     ) .+ 1
 end
 
-function normalize_counts_between!(counts_between::Counts)
-    avg_sample_notex::Vector{Float64} = [gmean(counts_between.values[i, 1:length(notexs)]) for i in 1:length(counts_between)]
-    logdiffs_notex = [log.(counts_between.values[:, i]) .- log.(avg_sample_notex) for i in 1:length(notexs)]
-    counts_between.values[:, 1:length(notexs)] ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_notex])'
+function normalize_counts_between!(counts_between::Counts, nb_samples1::Int, nb_samples2::Int)
+    avg_sample_notex::Vector{Float64} = [gmean(counts_between.values[i, 1:nb_samples1]) for i in 1:length(counts_between)]
+    logdiffs_notex = [log.(counts_between.values[:, i]) .- log.(avg_sample_notex) for i in 1:nb_samples1]
+    counts_between.values[:, 1:nb_samples1] ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_notex])'
 
-    avg_sample_tex::Vector{Float64} = [gmean(counts_between.values[i, length(notexs)+1:length(notexs)+length(texs)]) for i in 1:length(counts_between)]
-    logdiffs_tex = [log.(counts_between.values[:, i]) .- log.(avg_sample_tex) for i in length(notexs)+1:length(notexs)+length(texs)]
-    counts_between.values[:, length(notexs)+1:length(notexs)+length(texs)] ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_tex])'
+    avg_sample_tex::Vector{Float64} = [gmean(counts_between.values[i, nb_samples1+1:nb_samples1+nb_samples2]) for i in 1:length(counts_between)]
+    logdiffs_tex = [log.(counts_between.values[:, i]) .- log.(avg_sample_tex) for i in nb_samples1+1:nb_samples1+nb_samples2]
+    counts_between.values[:, nb_samples1+1:nb_samples1+nb_samples2] ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_tex])'
 
     avg_log_diffs = log.(avg_sample_notex) .- log.(avg_sample_tex)
     h = fit(Histogram, avg_log_diffs; nbins=100)
     max_index = sortperm(h.weights)[end-2:end]
     max_value = (h.edges[1][minimum(max_index)]+h.edges[1][maximum(max_index)+1])/2.0
-    counts_between.values[:, length(notexs)+1:length(notexs)+length(texs)] ./= exp(max_value)
+    counts_between.values[:, nb_samples1+1:nb_samples1+nb_samples2] ./= exp(max_value)
 end
 
 function normalize_counts_within!(counts_within::Counts)
-    avg_sample::Vector{Float64} = [gmean(counts_within.values[i, length(texs)+1:end]) for i in 1:length(counts_within)]
-    logdiffs = [log2.(counts_within.values[:, length(texs)+i]) .- log2.(avg_sample) for i in 1:length(texs)]
+    nb_samples = Int(last(size(counts_within.values))/2)
+    avg_sample::Vector{Float64} = [gmean(counts_within.values[i, nb_samples+1:end]) for i in 1:length(counts_within)]
+    logdiffs = [log2.(counts_within.values[:, nb_samples+i]) .- log2.(avg_sample) for i in 1:nb_samples]
     for (i, nf) in enumerate(2 .^ [median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs])
-        counts_within.values[:, [i,i+length(texs)]] ./= nf
+        counts_within.values[:, [i,i+nb_samples]] ./= nf
     end
 end
 
 function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage};
-                fdr_tex_enrichment=0.01, fdr_background_step=0.01, compute_step_within=1, max_ppk=5, circular=true, source="NA")
+                fdr_tex_increase=0.01, fdr_background_step=0.01, compute_step_within=1, max_ppk=5, circular=true, source="N/A")
     chroms = vcat([s.chroms for s in notexs], [s.chroms for s in texs])
     all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
 
@@ -494,7 +495,7 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage};
                                 "tex_plateau"=>length(texs)+1:(2*length(texs))),
                             background_plateau_matrix[:,vcat(tex_background_index,tex_plateau_index)])
 
-    normalize_counts_between!(counts_between)
+    normalize_counts_between!(counts_between, length(notexs), length(texs))
     (basevals, _, adjp_between) = dge_glm(counts_between, "notex_plateau", "tex_plateau"; tail=:right)
 
     normalize_counts_within!(counts_within)
@@ -502,15 +503,15 @@ function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage};
 
     offset = 0
     intervals = Vector{Interval{Annotation}}()
-    for chr in sort(keys(peaks))
+    for chr in sort(collect(keys(peaks)))
         for (cp, s) in zip(peaks[chr], (STRAND_POS, STRAND_NEG))
             append!(intervals, [Interval(chr, p, p, s,
                                     Annotation("TSS", "",
-                                        Dict("fdr_background_ratio"=>"$(round(adjp_within[offset+i], digits=8))",
-                                            "fdr_tex_ratio"=>"$(round(adjp_between[offset+i], digits=8))",
+                                        Dict("fdr_background_step"=>"$(round(adjp_within[offset+i], digits=8))",
+                                            "fdr_tex_increase"=>"$(round(adjp_between[offset+i], digits=8))",
                                             "avg_notex_plateau"=>"$(round(basevals[offset+i], digits=2))",
                                             "source"=>source))) for (i,p) in enumerate(cp)
-                                                if adjp_between[offset+i]<=fdr_tex_enrichment && adjp_within[offset+i]<=fdr_background_step])
+                                                if adjp_between[offset+i]<=fdr_tex_increase && adjp_within[offset+i]<=fdr_background_step])
             offset += length(cp)
         end
     end
@@ -535,7 +536,7 @@ test_multiple_fisher_combined(s_ls::Matrix{Int}, s_hs::Matrix{Int}) =
     adjust(PValues(fisher_combined_pvalue.(all_fisher_test_combinations(s_ls, s_hs))), BenjaminiHochberg())
 
 function terms(bcms::Vector{Coverage}, nobcms::Vector{Coverage};
-    fdr_bcm_ratio=0.05, fdr_background_step=0.01, compute_step_within=1, max_ppk=5, circular=true, source="NA")
+    fdr_bcm_increase=0.05, fdr_background_step=0.05, compute_step_within=1, max_ppk=5, circular=true, source="N/A")
     chroms = vcat([s.chroms for s in bcms], [s.chroms for s in nobcms])
     all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
 
@@ -544,23 +545,23 @@ function terms(bcms::Vector{Coverage}, nobcms::Vector{Coverage};
 
     nobcm_background_index = collect(2*length(bcms)+1:2:2*(length(bcms)+length(nobcms)))
     nobcm_plateau_index = nobcm_background_index .+ 1
-    counts_within = Counts(Dict("nobcm_background"=>1:length(bcms),
-                                "nobcm_plateau"=>length(bcms)+1:(2*length(texs))),
+    counts_within = Counts(Dict("nobcm_background"=>1:length(nobcms),
+                                "nobcm_plateau"=>length(nobcms)+1:(2*length(nobcms))),
                             background_plateau_matrix[:,vcat(nobcm_background_index,nobcm_plateau_index)])
-    normalize!(counts_within)
+    normalize_counts_within!(counts_within)
     (basevals, fc, adjp_background_step) = dge_glm(counts_within, "nobcm_background", "nobcm_plateau"; tail=:right)
-    adjp_bcm_ratio = test_multiple_fisher_combined(background_plateau_matrix[:, 1:length(bcms)] .+ 1,
-                                                    background_plateau_matrix[:, length(bcms)+1:length(bcms)+length(nobcms)] .+ 1)
+    adjp_bcm_increase = test_multiple_fisher_combined(background_plateau_matrix[:, 1:2*length(bcms)] .+ 1,
+                                                    background_plateau_matrix[:, 2*length(bcms)+1:2*(length(bcms)+length(nobcms))] .+ 1)
 
     offset = 0
     intervals = Vector{Interval{Annotation}}()
-    for chr in sort(keys(peaks))
+    for chr in sort(collect(keys(peaks)))
         for (cp, s) in zip(peaks[chr], (STRAND_POS, STRAND_NEG))
             append!(intervals, [Interval(chr, p, p, s,
                                     Annotation("TERM", "",
-                                        Dict("fdr_background_ratio"=>"$(round(adjp_within[offset+i], digits=8))",
-                                            "fdr_bcm_ratio"=>"$(round(adjp_bcm_ratio[offset+i], digits=8))",
-                                            "rho_dependent"=> (adjp_bcm_ratio[offset+i] <= fdr_bcm_ratio) ? "false" : "true",
+                                        Dict("fdr_background_step"=>"$(round(adjp_background_step[offset+i], digits=8))",
+                                            "fdr_bcm_increase"=>"$(round(adjp_bcm_increase[offset+i], digits=8))",
+                                            "rho_dependent"=> (adjp_bcm_increase[offset+i] <= fdr_bcm_increase) ? "true" : "false",
                                             "avg_nobcm_plateau"=>"$(round(basevals[offset+i] * 2^fc[offset+i], digits=2))",
                                             "source"=>source))) for (i,p) in enumerate(cp)
                                                 if adjp_background_step[offset+i]<=fdr_background_step])

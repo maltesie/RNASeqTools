@@ -15,6 +15,17 @@ abstract type CountContainer end
 LongDNASeqPair = Tuple{LongDNASeq, LongDNASeq}
 CoverageValues = Dict{String, Vector{Float64}}
 
+struct Sequences{T<:Union{String, UInt}}
+    seq::LongDNASeq
+    seqnames::Vector{T}
+    ranges::Vector{UnitRange{Int}}
+end
+
+struct Genome
+    seq::LongDNASeq
+    chroms::Dict{String, UnitRange{Int}}
+end
+
 struct Annotation <: AnnotationStyle
     type::String
     name::String
@@ -70,6 +81,11 @@ struct Interactions <: InteractionContainer
     replicate_ids::Vector{Symbol}
 end
 
+struct Features{T} <: AnnotationContainer
+    list::IntervalCollection{T}
+    chroms::Dict{String, Int}
+end
+
 struct Counts <: CountContainer
     conditions::Dict{String, UnitRange{Int}}
     values::Matrix{Float64}
@@ -114,15 +130,4 @@ mutable struct PairedSingleTypeFiles <: FileCollection
     type::String
     suffix1::String
     suffix2::String
-end
-
-struct Sequences{T<:Union{String, UInt}}
-    seq::LongDNASeq
-    seqnames::Vector{T}
-    ranges::Vector{UnitRange{Int}}
-end
-
-struct Genome
-    seq::LongDNASeq
-    chroms::Dict{String, UnitRange{Int}}
 end
