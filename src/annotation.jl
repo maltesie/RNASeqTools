@@ -231,7 +231,7 @@ function findutr(f::Interval{Annotation}, features::Features{Annotation}, signal
                         guess_missing=true, expression_key=nothing, source_key=nothing, extra_key=nothing)
 
     direction in (:left, :right) || throw(AssertionError("direction has to be either :right or :left"))
-    left, right =  direction === :right ? (rightposition(f)+1,rightposition(f)+max_utr_length) : (leftposition(f)-max_utr_length, leftposition(f)-1)
+    left, right =  direction === :right ? (rightposition(f)+1,rightposition(f)+max_utr_length) : (max(leftposition(f)-max_utr_length, 1), leftposition(f)-1)
     olpinterval =  Interval(refname(f), left, right, strand(f), Annotation())
     olps = collect(eachoverlap(signals, olpinterval))
     if isempty(olps)
@@ -253,6 +253,7 @@ function findutr(f::Interval{Annotation}, features::Features{Annotation}, signal
                         direction === :right ? rightposition(maxint) : right,
                         strand(f), Annotation(utr_type, ""; Name=name(f), source=source, expression=expression))
         isnothing(extra_key) || setfeatureparam(resint, extra_key, featureparam(maxint, extra_key))
+        #utr_type == "3UTR" && println(resint)
         return resint
     end
 end

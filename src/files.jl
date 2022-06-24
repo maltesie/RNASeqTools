@@ -106,7 +106,7 @@ end
 function Base.show(files::PairedSingleTypeFiles)
     s = "PairedSingleTypeFiles with file type $(files.type) and $(length(files)) entries:\n\n"
     for (i,(file1, file2)) in enumerate(files)
-        s *= "$(i)_1:\t$file1\n$(i)_2:\t$file2\n"
+        s *= "$(i):\t$file1\n\t$file2\n"
     end
     println(s)
 end
