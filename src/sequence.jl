@@ -178,7 +178,8 @@ end
 function Base.write(fasta_file::String, seqs::Sequences; compression_level=3)
     f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w"); level=compression_level) : open(fasta_file, "w")
     for (i, read) in enumerate(seqs)
-        write(f, ">$(seqs.seqnames[i])\n$(String(read))\n")
+        h = seqs isa Sequences{String} ? replace(seqs.seqnames[i], " "=>"_") : seqs.seqnames[i]
+        write(f, ">$h\n$(String(read))\n")
     end
     close(f)
 end
@@ -187,7 +188,7 @@ function Base.write(fasta_file1::String, fasta_file2::String, seqs::Sequences; c
     f1 = endswith(fasta_file1, ".gz") ? GzipCompressorStream(open(fasta_file1, "w"); level=compression_level) : open(fasta_file1, "w")
     f2 = endswith(fasta_file2, ".gz") ? GzipCompressorStream(open(fasta_file2, "w"); level=compression_level) : open(fasta_file2, "w")
     for (i, (read1, read2)) in enumerate(eachpair(seqs))
-        h = seqs.seqnames[2*i]
+        h = seqs isa Sequences{String} ? replace(seqs.seqnames[2*i], " "=>"_") : seqs.seqnames[2*i]
         write(f1, ">$h\n$(String(read1))\n")
         write(f2, ">$h\n$(String(read2))\n")
     end

@@ -40,9 +40,15 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
     end
     trans = Dict{UInt, Int}(interactions.nodes[i, :hash]=>i for i in 1:nrow(interactions.nodes))
     trans_edges = Dict{Tuple{Int,Int},Int}((interactions.edges[i, :src],interactions.edges[i, :dst])=>i for i in 1:nrow(interactions.edges))
+    exclude_count = 0
+    single_count = 0
+    chimeric_count = 0
+    total_count = 0
     for alignment in alignments
-        !isempty(filter_types) && typein(alignment, filter_types) && continue
+        total_count += 1
+        !isempty(filter_types) && typein(alignment, filter_types) && (exclude_count += 1; continue)
         is_chimeric = ischimeric(alignment; min_distance=min_distance)
+        is_chimeric ? chimeric_count += 1 : single_count +=1
         is_multi = is_chimeric ? ismulti(alignment; method=multi_detection_method) : false
         alnparts = parts(alignment)
 
@@ -96,6 +102,7 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             interactions.edges[iindex, replicate_id] = true
         end
     end
+    println("Processed $total_count reads, found $chimeric_count chimeras and $single_count singles and excluded $exclude_count.")
     return interactions
 end
 

@@ -476,8 +476,8 @@ function normalize_counts_within!(counts_within::Counts)
     end
 end
 
-function tsss(notexs::Vector{Coverage}, texs::Vector{Coverage};
-                fdr_tex_increase=0.05, fdr_background_step=0.01, compute_step_within=1, compute_max_within=5, max_ppk=5, circular=true, source="drna_seq")
+function transcriptionalstartsites(notexs::Vector{Coverage}, texs::Vector{Coverage};
+                fdr_tex_increase=0.05, fdr_background_step=0.05, compute_step_within=1, compute_max_within=5, max_ppk=5, circular=true, source="drna_seq")
     chroms = vcat([s.chroms for s in notexs], [s.chroms for s in texs])
     all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
 
@@ -533,8 +533,9 @@ fisher_combined_pvalue(pvalues::Vector{Float64}) = 1-cdf(Chisq(2*length(pvalues)
 test_multiple_fisher_combined(s_ls::Matrix{Int}, s_hs::Matrix{Int}) =
     adjust(PValues(fisher_combined_pvalue.(all_fisher_test_combinations(s_ls, s_hs))), BenjaminiHochberg())
 
-function terms(bcms::Vector{Coverage}, nobcms::Vector{Coverage};
-    fdr_bcm_increase=0.05, fdr_background_step=0.01, compute_step_within=1, compute_max_within=5, max_ppk=5, circular=true, source="term_seq")
+function terminationsites(bcms::Vector{Coverage}, nobcms::Vector{Coverage};
+    fdr_bcm_increase=0.05, fdr_background_step=0.05, compute_step_within=1, compute_max_within=5, max_ppk=5, circular=true, source="term_seq")
+
     chroms = vcat([s.chroms for s in bcms], [s.chroms for s in nobcms])
     all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
 
@@ -547,7 +548,7 @@ function terms(bcms::Vector{Coverage}, nobcms::Vector{Coverage};
     counts_within = Counts(Dict("nobcm_background"=>1:length(nobcms),
                                 "nobcm_plateau"=>length(nobcms)+1:(2*length(nobcms))),
                             background_plateau_matrix[:,vcat(nobcm_background_index,nobcm_plateau_index)])
-
+    #return background_plateau_matrix
     #l1 = length(peaks["NC_002505"][1])
     #l2 = length(peaks["NC_002505"][2])
     #l3 = length(peaks["NC_002506"][1])
@@ -557,9 +558,10 @@ function terms(bcms::Vector{Coverage}, nobcms::Vector{Coverage};
     #println(counts_within.values[l1+l2+l3+4784, :])
     #println(counts_within.values[l1+l3+l4+4784, :])
     normalize_counts_within!(counts_within)
+    (basevals, fc, adjp_background_step) = dge_glm(counts_within, "nobcm_background", "nobcm_plateau"; tail=:right)
 
     #println(counts_within.values[l1+4750, :])
-    (basevals, fc, adjp_background_step) = dge_glm(counts_within, "nobcm_background", "nobcm_plateau"; tail=:right)
+
     #println(adjp_background_step[l1+4750])
     adjp_bcm_increase = ones(length(adjp_background_step))
     adjp_bcm_increase[adjp_background_step .<= fdr_background_step] = test_multiple_fisher_combined(background_plateau_matrix[:, 1:2*length(bcms)][adjp_background_step .<= fdr_background_step, :],

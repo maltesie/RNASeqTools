@@ -100,11 +100,15 @@ end
 normalize!(counts::T, features::Features, genome::Genome; normalization_method=:cqn) where {T<:CountContainer} =
     normalize!(counts.values, features, genome; normalization_method=normalization_method)
 
-function dge_ttest(counts::T, control_condition::String, experiment_condition::String) where {T<:CountContainer}
-    avg_control = mean(@view(counts[control_condition]), dims=2)
-    avg_experiment = mean(@view(counts[experiment_condition]), dims=2)
-    ps = pvalue.(UnequalVarianceTTest.(@view(counts[control_condition]), @view(counts[experiment_condition])))
-    fc = log2(avg_experiment) - log2(avg_control)
+function dge_ttest(counts::T, control_condition::String, experiment_condition::String; within_sample=false, tail=:both) where {T<:CountContainer}
+    avg_control = vec(mean(counts[control_condition], dims=2))
+    avg_experiment = vec(mean(counts[experiment_condition], dims=2))
+    m_control = counts[control_condition]
+    m_experiment = counts[experiment_condition]
+    m_control = within_sample ? [log.(m_control[i,:]) for i in 1:length(counts)] : [m_control[i,:] for i in 1:length(counts)]
+    m_experiment = within_sample ? [log.(m_experiment[i,:]) for i in 1:length(counts)] : [m_experiment[i,:] for i in 1:length(counts)]
+    ps = pvalue.(within_sample ? OneSampleTTest.(m_control, m_experiment) : UnequalVarianceTTest.(m_control, m_experiment) ; tail=tail)
+    fc = log2.(avg_experiment) .- log2.(avg_control)
     padj = adjust(PValues(ps), BenjaminiHochberg())
     return (avg_control, fc, padj)
 end
