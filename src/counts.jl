@@ -132,8 +132,9 @@ function dge_glm(counts::T, control_condition::String, experiment_condition::Str
             g = glm(design_matrix, y, d, l)
             base, fc = coef(g)
             _, fc_se = stderror(g)
-            z = fc ./ fc_se
+            z = fc / fc_se
             p = compute_pvalue(z)
+            isnan(p) && (p=1.0)
             bases[i] = base
             fcs[i] = fc / log(2)
             ps[i] = p
@@ -143,6 +144,7 @@ function dge_glm(counts::T, control_condition::String, experiment_condition::Str
             ps[i] = 1.0
         end
     end
+    println(sum(isnan(v) for v in ps))
     padj = adjust(PValues(ps), BenjaminiHochberg())
     return (exp.(bases), fcs, padj)
 end

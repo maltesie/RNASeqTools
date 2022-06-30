@@ -389,7 +389,7 @@ function rolling_sum(a::Vector{Float64}, n::Int; circular=true)
     return circshift(out, Int((n-1)/2))
 end
 
-function maxdiffsignalpositions(coverage::Vector{Float64}; max_ppk=5, compute_max_within=3, circular=true)
+function maxdiffsignalpositions(coverage::Vector{Float64}; max_ppk=5, compute_max_within=5, circular=true)
     all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
     is_negative_strand = all(coverage .<= 0)
     max_nb_peaks = length(coverage) / 1000 * max_ppk
@@ -399,14 +399,12 @@ function maxdiffsignalpositions(coverage::Vector{Float64}; max_ppk=5, compute_ma
         d[is_negative_strand ? length(d) : 1] = coverage[1]-coverage[end]
         d = vcat(d[end-compute_max_within+1:end], d, d[1:compute_max_within])
     end
-    #d .+= rand(Uniform(0,0.0001), length(d))
     peak_index = [i-compute_max_within for i in compute_max_within+1:length(d)-compute_max_within if all((d[i] .> d[i-compute_max_within:i-1]) .& (d[i] .> d[i+1:i+compute_max_within]))]
     d = d[compute_max_within+1:end-compute_max_within]
     for cut in 1:Int(floor(maximum(d)))
         length(peak_index) < max_nb_peaks && break
         peak_index = peak_index[d[peak_index] .>= cut]
     end
-    #println(length(coverage), is_negative_strand, " ",(676727 in peak_index), (676726 in peak_index), (676728 in peak_index))
     return peak_index
 end
 function maxdiffsignalpositions(coverages::Vector{Coverage}; max_ppk=5, compute_max_within=3, circular=true, invert=false)
@@ -431,9 +429,7 @@ function background_plateau_pairs(coverage::Vector{Float64}, peak_index::Vector{
         pairs[ii, 1] = bottom(@view(mycoverage[(index-compute_step_within):(index+compute_step_within)]))
         pairs[ii, 2] = top(@view(mycoverage[(index-compute_step_within):(index+compute_step_within)]))
     end
-    #676727 in peak_index && println(is_negative_strand, pairs[findfirst(peak_index .== 676727), :], " ", findfirst(peak_index .== 676727))
     is_negative_strand && (pairs .*= -1)
-    #676727 in peak_index && println(is_negative_strand, pairs[findfirst(peak_index .== 676727), :], " ", findfirst(peak_index .== 676727))
     return pairs
 end
 function background_plateau_pairs(s_ls::Vector{Coverage}, s_is::Vector{Coverage}, peaks::Dict{String, Tuple{Vector{Int}, Vector{Int}}};
@@ -448,7 +444,7 @@ function background_plateau_pairs(s_ls::Vector{Coverage}, s_is::Vector{Coverage}
             for chr in sort(collect(keys(peaks)))]...
         )
         for vals in valss]...
-    ) .+ 1
+    )
 end
 
 function normalize_counts_between!(counts_between::Counts, nb_samples1::Int, nb_samples2::Int)
@@ -462,13 +458,33 @@ function normalize_counts_between!(counts_between::Counts, nb_samples1::Int, nb_
 
     avg_log_diffs = log.(avg_sample_notex) .- log.(avg_sample_tex)
     h = fit(Histogram, avg_log_diffs; nbins=100)
-    max_index = sortperm(h.weights)[end-2:end]
-    max_value = (h.edges[1][minimum(max_index)]+h.edges[1][maximum(max_index)+1])/2.0
+    max_index = argmax(h.weights)
+    max_value = (h.edges[1][max_index]+h.edges[1][max_index+1])/2.0
     counts_between.values[:, nb_samples1+1:nb_samples1+nb_samples2] ./= exp(max_value)
 end
 
-function normalize_counts_within!(counts_within::Counts)
-    nb_samples = Int(last(size(counts_within.values))/2)
+function normalized_notex_tex_increase(notex_background::Matrix{Float64}, notex_plateau::Matrix{Float64}, tex_background::Matrix{Float64}, tex_plateau::Matrix{Float64})
+    avg_notex_plateau::Vector{Float64} = [gmean(notex_plateau[i,:]) for i in 1:size(notex_plateau)[1]]
+    logdiffs_notex = [log.(notex_plateau[:, i]) .- log.(avg_notex_plateau) for i in 1:size(notex_plateau)[2]]
+    notex_background ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_notex])'
+    notex_plateau ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_notex])'
+
+    avg_tex_plateau::Vector{Float64} = [gmean(tex_plateau[i,:]) for i in 1:size(tex_plateau)[1]]
+    logdiffs_notex = [log.(tex_plateau[:, i]) .- log.(avg_tex_plateau) for i in 1:size(tex_plateau)[2]]
+    tex_background ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_notex])'
+    tex_plateau ./= exp.([median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs_notex])'
+
+    avg_log_diffs = log.(avg_notex_plateau) .- log.(avg_tex_plateau)
+    h = fit(Histogram, avg_log_diffs; nbins=100)
+    max_index = argmax(h.weights)
+    max_value = (h.edges[1][max_index]+h.edges[1][max_index+1])/2.0
+    tex_plateau ./= exp(max_value)
+    tex_background ./= exp(max_value)
+    return Counts(Dict("notex_increase"=>1:size(notex_plateau)[2], "tex_increase"=>size(notex_plateau)[2]+1:size(notex_plateau)[2]+size(tex_plateau)[2]),
+                    hcat(notex_plateau .- notex_background, tex_plateau .- tex_background) .+ 1)
+end
+
+function normalize_counts_within!(counts_within::Counts, nb_samples::Int)
     avg_sample::Vector{Float64} = [gmean(counts_within.values[i, nb_samples+1:end]) for i in 1:length(counts_within)]
     logdiffs = [log2.(counts_within.values[:, nb_samples+i]) .- log2.(avg_sample) for i in 1:nb_samples]
     for (i, nf) in enumerate(2 .^ [median(logdiff[(!).(isnan.(logdiff))]) for logdiff in logdiffs])
@@ -477,27 +493,31 @@ function normalize_counts_within!(counts_within::Counts)
 end
 
 function transcriptionalstartsites(notexs::Vector{Coverage}, texs::Vector{Coverage};
-                fdr_tex_increase=0.05, fdr_background_step=0.05, compute_step_within=1, compute_max_within=5, max_ppk=5, circular=true, source="drna_seq")
+                fdr_tex_increase=0.05, fdr_background_step=0.05, min_step_fc=1.2, min_step_reads=10, compute_step_within=1, compute_max_within=5, max_ppk=5, circular=true, source="drna_seq")
     chroms = vcat([s.chroms for s in notexs], [s.chroms for s in texs])
     all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
 
     peaks = maxdiffsignalpositions(texs; max_ppk=max_ppk, compute_max_within=compute_max_within, circular=circular)
-    background_plateau_matrix = background_plateau_pairs(notexs, texs, peaks; compute_step_within=compute_step_within, circular=circular)
+    background_plateau_matrix = background_plateau_pairs(notexs, texs, peaks; compute_step_within=compute_step_within, circular=circular) .+ 1
 
-    counts_between = Counts(Dict("notex_plateau"=>1:length(notexs),
-                                 "tex_plateau"=>length(notexs)+1:(length(texs) + length(notexs))),
-                            background_plateau_matrix[:,2:2:end])
+    notex_background_index = collect(1:2:2*length(notexs))
+    notex_plateau_index = notex_background_index .+ 1
     tex_background_index = collect(2*length(notexs)+1:2:2*(length(notexs)+length(texs)))
     tex_plateau_index = tex_background_index .+ 1
-    counts_within = Counts(Dict("tex_background"=>1:length(texs),
-                                "tex_plateau"=>length(texs)+1:(2*length(texs))),
-                            background_plateau_matrix[:,vcat(tex_background_index,tex_plateau_index)])
 
-    normalize_counts_between!(counts_between, length(notexs), length(texs))
-    (basevals, _, adjp_between) = dge_glm(counts_between, "notex_plateau", "tex_plateau"; tail=:right)
+    counts_notex_tex_increase = normalized_notex_tex_increase(Float64.(background_plateau_matrix[:, notex_background_index]),
+                                                                Float64.(background_plateau_matrix[:, notex_plateau_index]),
+                                                                Float64.(background_plateau_matrix[:, tex_background_index]),
+                                                                Float64.(background_plateau_matrix[:, tex_plateau_index]))
 
-    normalize_counts_within!(counts_within)
-    (_, _, adjp_within) = dge_glm(counts_within, "tex_background", "tex_plateau"; tail=:right)
+    counts_tex_step = Counts(Dict("tex_background"=>1:length(texs),
+                                    "tex_plateau"=>length(texs)+1:(2*length(texs))),
+                                    background_plateau_matrix[:,vcat(tex_background_index,tex_plateau_index)])
+    normalize_counts_within!(counts_tex_step, length(texs))
+
+
+    (_, _, adjp_between) = dge_glm(counts_notex_tex_increase, "notex_increase", "tex_increase"; tail=:right)
+    (basevals, fc, adjp_within) = dge_glm(counts_tex_step, "tex_background", "tex_plateau"; tail=:right)
 
     offset = 0
     intervals = Vector{Interval{Annotation}}()
@@ -507,9 +527,14 @@ function transcriptionalstartsites(notexs::Vector{Coverage}, texs::Vector{Covera
                                     Annotation("TSS", "",
                                         Dict("fdr_background_step"=>"$(round(adjp_within[offset+i], digits=8))",
                                             "fdr_tex_increase"=>"$(round(adjp_between[offset+i], digits=8))",
-                                            "avg_notex_plateau"=>"$(round(basevals[offset+i], digits=2))",
+                                            "avg_tex_plateau"=>"$(round(basevals[offset+i] * 2^fc[offset+i], digits=2))",
+                                            "avg_tex_fc"=>"$(round(2^fc[offset+i], digits=2))",
+                                            "avg_tex_increase"=>"$(round(basevals[offset+i] * 2^fc[offset+i] - basevals[offset+i], digits=2))",
                                             "source"=>source))) for (i,p) in enumerate(cp)
-                                                if adjp_between[offset+i]<=fdr_tex_increase && adjp_within[offset+i]<=fdr_background_step])
+                                                if ((adjp_between[offset+i]<=fdr_tex_increase) &&
+                                                    (adjp_within[offset+i]<=fdr_background_step) &&
+                                                    (2^fc[offset+i] > min_step_fc) &&
+                                                    ((basevals[offset+i] * 2^fc[offset+i] - basevals[offset+i]) > min_step_reads))])
             offset += length(cp)
         end
     end
@@ -534,39 +559,29 @@ test_multiple_fisher_combined(s_ls::Matrix{Int}, s_hs::Matrix{Int}) =
     adjust(PValues(fisher_combined_pvalue.(all_fisher_test_combinations(s_ls, s_hs))), BenjaminiHochberg())
 
 function terminationsites(bcms::Vector{Coverage}, nobcms::Vector{Coverage};
-    fdr_bcm_increase=0.05, fdr_background_step=0.05, compute_step_within=1, compute_max_within=5, max_ppk=5, circular=true, source="term_seq")
+    fdr_bcm_increase=0.05, fdr_background_step=0.05, min_step_fc=1.2, min_step_reads=10, compute_step_within=1, compute_max_within=5, max_ppk=5, circular=true, source="term_seq")
 
     chroms = vcat([s.chroms for s in bcms], [s.chroms for s in nobcms])
     all(chroms[1] == chrom for chrom in chroms) || throw(Assertion("All coverages have to be defined on the same reference sequences."))
 
     peaks = maxdiffsignalpositions(nobcms; max_ppk=max_ppk, compute_max_within=compute_max_within, circular=circular, invert=true)
-    background_plateau_matrix = background_plateau_pairs(bcms, nobcms, peaks; compute_step_within=compute_step_within, circular=circular)
+    background_plateau_matrix = background_plateau_pairs(bcms, nobcms, peaks; compute_step_within=compute_step_within, circular=circular) .+ 1
 
-    #println(length(background_plateau_matrix))
     nobcm_background_index = collect(2*length(bcms)+1:2:2*(length(bcms)+length(nobcms)))
     nobcm_plateau_index = nobcm_background_index .+ 1
+
     counts_within = Counts(Dict("nobcm_background"=>1:length(nobcms),
                                 "nobcm_plateau"=>length(nobcms)+1:(2*length(nobcms))),
                             background_plateau_matrix[:,vcat(nobcm_background_index,nobcm_plateau_index)])
-    #return background_plateau_matrix
-    #l1 = length(peaks["NC_002505"][1])
-    #l2 = length(peaks["NC_002505"][2])
-    #l3 = length(peaks["NC_002506"][1])
-    #l4 = length(peaks["NC_002506"][2])
-    #println(counts_within.values[l3+4784, :])
-    #println(counts_within.values[l1+4750, :])
-    #println(counts_within.values[l1+l2+l3+4784, :])
-    #println(counts_within.values[l1+l3+l4+4784, :])
-    normalize_counts_within!(counts_within)
+    normalize_counts_within!(counts_within, length(nobcms))
+
     (basevals, fc, adjp_background_step) = dge_glm(counts_within, "nobcm_background", "nobcm_plateau"; tail=:right)
 
-    #println(counts_within.values[l1+4750, :])
-
-    #println(adjp_background_step[l1+4750])
     adjp_bcm_increase = ones(length(adjp_background_step))
-    adjp_bcm_increase[adjp_background_step .<= fdr_background_step] = test_multiple_fisher_combined(background_plateau_matrix[:, 1:2*length(bcms)][adjp_background_step .<= fdr_background_step, :],
-                                                                        background_plateau_matrix[:, 2*length(bcms)+1:2*(length(bcms)+length(nobcms))][adjp_background_step .<= fdr_background_step, :])
-    #println(adjp_bcm_increase[l1+4750])
+    adjp_bcm_increase[adjp_background_step .<= fdr_background_step] =
+        test_multiple_fisher_combined(background_plateau_matrix[:, 1:2*length(bcms)][adjp_background_step .<= fdr_background_step, :],
+        background_plateau_matrix[:, 2*length(bcms)+1:2*(length(bcms)+length(nobcms))][adjp_background_step .<= fdr_background_step, :])
+
     offset = 0
     intervals = Vector{Interval{Annotation}}()
     for chr in sort(collect(keys(peaks)))
@@ -577,8 +592,12 @@ function terminationsites(bcms::Vector{Coverage}, nobcms::Vector{Coverage};
                                             "fdr_bcm_increase"=>"$(round(adjp_bcm_increase[offset+i], digits=8))",
                                             "rho_dependent"=> (adjp_bcm_increase[offset+i] <= fdr_bcm_increase) ? "true" : "false",
                                             "avg_nobcm_plateau"=>"$(round(basevals[offset+i] * 2^fc[offset+i], digits=2))",
+                                            "avg_nobcm_fc"=>"$(round(2^fc[offset+i], digits=2))",
+                                            "avg_nobcm_increase"=>"$(round(basevals[offset+i] * 2^fc[offset+i] - basevals[offset+i], digits=2))",
                                             "source"=>source))) for (i,p) in enumerate(cp)
-                                                if adjp_background_step[offset+i]<=fdr_background_step])
+                                                if ((adjp_background_step[offset+i]<=fdr_background_step) &&
+                                                    (2^fc[offset+i] > min_step_fc) &&
+                                                    ((basevals[offset+i] * 2^fc[offset+i] - basevals[offset+i]) > min_step_reads))])
             offset += length(cp)
         end
     end

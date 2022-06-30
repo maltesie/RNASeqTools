@@ -273,7 +273,7 @@ function addutrs!(features::Features, signals::Features, t::Symbol; cds_type="CD
 end
 
 add5utrs!(features::Features, tss::Features; cds_type="CDS", utr_type="5UTR", min_utr_length=50, max_utr_length=150,
-            guess_missing=true, expression_key="avg_notex_plateau", source_key="source") =
+            guess_missing=true, expression_key="avg_tex_plateau", source_key="source") =
 addutrs!(features, tss, :five; cds_type=cds_type, utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length,
                                 guess_missing=guess_missing, expression_key=expression_key, source_key=source_key)
 
