@@ -460,7 +460,7 @@ function normalize_counts_between!(counts_between::Counts, nb_samples1::Int, nb_
     h = fit(Histogram, avg_log_diffs; nbins=100)
     max_index = argmax(h.weights)
     max_value = (h.edges[1][max_index]+h.edges[1][max_index+1])/2.0
-    counts_between.values[:, nb_samples1+1:nb_samples1+nb_samples2] ./= exp(max_value)
+    counts_between.values[:, nb_samples1+1:nb_samples1+nb_samples2] .*= exp(max_value)
 end
 
 function normalized_notex_tex_increase(notex_background::Matrix{Float64}, notex_plateau::Matrix{Float64}, tex_background::Matrix{Float64}, tex_plateau::Matrix{Float64})
@@ -478,8 +478,8 @@ function normalized_notex_tex_increase(notex_background::Matrix{Float64}, notex_
     h = fit(Histogram, avg_log_diffs; nbins=100)
     max_index = argmax(h.weights)
     max_value = (h.edges[1][max_index]+h.edges[1][max_index+1])/2.0
-    tex_plateau ./= exp(max_value)
-    tex_background ./= exp(max_value)
+    tex_plateau .*= exp(max_value)
+    tex_background .*= exp(max_value)
     return Counts(Dict("notex_increase"=>1:size(notex_plateau)[2], "tex_increase"=>size(notex_plateau)[2]+1:size(notex_plateau)[2]+size(tex_plateau)[2]),
                     hcat(notex_plateau .- notex_background, tex_plateau .- tex_background) .+ 1)
 end

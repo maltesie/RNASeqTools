@@ -134,6 +134,12 @@ version = "3.42.0"
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
 
+[[deps.Configurations]]
+deps = ["ExproniconLite", "OrderedCollections", "TOML"]
+git-tree-sha1 = "ab9b7c51e8acdd20c769bccde050b5615921c533"
+uuid = "5218b696-f38b-4ac9-8b61-a12ec717816d"
+version = "0.17.3"
+
 [[deps.ConstructionBase]]
 deps = ["LinearAlgebra"]
 git-tree-sha1 = "f74e9d5388b8620b4cee35d4c5a618dd4dc547f4"
@@ -212,6 +218,11 @@ deps = ["Adapt"]
 git-tree-sha1 = "a0fcc1bb3c9ceaf07e1d0529c9806ce94be6adf9"
 uuid = "fdbdab4c-e67f-52f5-8c3f-e7b388dad3d4"
 version = "1.2.9"
+
+[[deps.ExproniconLite]]
+git-tree-sha1 = "8b08cc88844e4d01db5a2405a08e9178e19e479e"
+uuid = "55351af7-c7e9-48d6-89ff-24e801d99491"
+version = "0.6.13"
 
 [[deps.EzXML]]
 deps = ["Printf", "XML2_jll"]
