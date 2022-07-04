@@ -248,6 +248,38 @@ function compute_coverage(files::SingleTypeFiles;
     return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
 end
 
+function Coverage(alignments::Alignments; norm=1000000, include_secondary_alignments=false,
+    is_reverse_complement=false, max_temp_length=500)
+
+reader = BAM.Reader(open(bam_file), index = bam_file*".bai")
+chromosome_list = [n for n in zip(
+bam_chromosome_names(reader), bam_chromosome_lengths(reader)
+)]
+vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
+vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
+count = 0
+for alignment in Alignments(bam_file; include_secondary_alignments=include_secondary_alignments,
+    is_reverse_complement=is_reverse_complement)
+if ischimeric(alignment; check_annotation = false, min_distance = max_temp_length)
+for part in alignment
+ref = refname(part)
+left = leftposition(part)
+right = rightposition(part)
+ispositivestrand(part) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .-= 1.0)
+count += 1
+end
+else
+ref = refname(alignment[1])
+left = leftposition(alignment)
+right = rightposition(alignment)
+ispositivestrand(alignment) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .-= 1.0)
+count += 1
+end
+end
+norm_factor = norm > 0 ? norm/count : 1.0
+return Coverage(vals_f, vals_r, chromosome_list)
+end
+
 function Coverage(bigwig_file::String, direction::Symbol)
     direction in [:forward, :reverse] || throw(Assertion("Valid values for direction are :forward and :reverse"))
     reader = open(BigWig.Reader, bigwig_file)
@@ -375,6 +407,12 @@ function Base.merge(coverages::Vector{Coverage})
     end
     return Coverage(vals_f, vals_r, coverages[1].chroms)
 end
+
+function correlation(coverages::Coverage ...)
+    vals = [values(c) for c in coverages]
+    Dict(chr=>(cor(hcat([v[chr][1] for v in vals]...)), cor(hcat([v[chr][2] for v in vals]...))) for chr in keys(vals[1]))
+end
+correlation(coverages::Vector{Coverage}) = correlation(coverages...)
 
 function rolling_sum(a::Vector{Float64}, n::Int; circular=true)
     (1<=n<=length(a)) || throw(Assertion("n has to be betwen 1 and $(length(a))."))
