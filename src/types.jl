@@ -39,6 +39,7 @@ struct AlignmentAnnotation <: AnnotationStyle
 end
 
 struct Alignments{T<:Union{String, UInt}}
+    chroms::Vector{Tuple{String,Int}}
     tempnames::Vector{T}
     leftpos::Vector{Int}
     rightpos::Vector{Int}

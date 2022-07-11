@@ -188,53 +188,29 @@ end
 refcount(feature::Interval{BaseAnnotation}) = feature.metadata.ref
 
 function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignments=false,
-                                            is_reverse_complement=false, max_temp_length=500,
+                                            is_reverse_complement=false, max_temp_length=1000, include_chimeric=false,
                                             suffix_forward="_forward", suffix_reverse="_reverse")
 
     filename_f = bam_file[1:end-4] * suffix_forward * ".bw"
     filename_r = bam_file[1:end-4] * suffix_reverse * ".bw"
-    reader = BAM.Reader(open(bam_file), index = bam_file*".bai")
-    chromosome_list = [n for n in zip(
-        bam_chromosome_names(reader), bam_chromosome_lengths(reader)
-    )]
-    vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
-    vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
-    count = 0
-    for alignment in Alignments(bam_file; include_secondary_alignments=include_secondary_alignments,
-                                            is_reverse_complement=is_reverse_complement)
-        if ischimeric(alignment; check_annotation = false, min_distance = max_temp_length)
-            for part in alignment
-                ref = refname(part)
-                left = leftposition(part)
-                right = rightposition(part)
-                ispositivestrand(part) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .-= 1.0)
-                count += 1
-            end
-        else
-            ref = refname(alignment[1])
-            left = leftposition(alignment)
-            right = rightposition(alignment)
-            ispositivestrand(alignment) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .-= 1.0)
-            count += 1
-        end
-    end
-    norm_factor = norm > 0 ? norm/count : 1.0
-    coverage = Coverage(vals_f, vals_r, chromosome_list)
 
-    writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
-    writer_r = BigWig.Writer(open(filename_r, "w"), chromosome_list)
+    alns = Alignments(bam_file; include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
+    coverage = Coverage(alns; include_chimeric=include_chimeric, max_temp_length=max_temp_length)
+    norm_factor = norm > 0 ? norm/length(alns) : 1.0
+    coverage *= norm_factor
+
+    writer_f = BigWig.Writer(open(filename_f, "w"), alns.chroms)
+    writer_r = BigWig.Writer(open(filename_r, "w"), alns.chroms)
     for interval in coverage
         writer = strand(interval) === STRAND_POS ? writer_f : writer_r
-        write(writer,
-            (interval.seqname, interval.first,
-                interval.last, interval.metadata * norm_factor))
+        write(writer, (interval.seqname, interval.first, interval.last, interval.metadata))
     end
     close(writer_f)
     close(writer_r)
 end
 
-function compute_coverage(files::SingleTypeFiles;
-            norm=1000000, include_secondary_alignments=true, overwrite_existing=false, is_reverse_complement=false)
+function compute_coverage(files::SingleTypeFiles; norm=1000000, include_secondary_alignments=true, overwrite_existing=false,
+                                                    is_reverse_complement=false, max_temp_length=1000, include_chimeric=false)
     files.type == ".bam" || throw(AssertionError("Only .bam files accepted for alignments."))
     bw_files = Vector{Tuple{String, String}}()
     for file in files
@@ -242,42 +218,32 @@ function compute_coverage(files::SingleTypeFiles;
         filename_r = file[1:end-4] * "_reverse.bw"
         push!(bw_files, (filename_f, filename_r))
         (!overwrite_existing && isfile(filename_f) && isfile(filename_r)) && continue
-        compute_coverage(file;
-            norm=norm, include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
+        compute_coverage(file; norm=norm, include_secondary_alignments=include_secondary_alignments,
+                                is_reverse_complement=is_reverse_complement, max_temp_length=max_temp_length, include_chimeric=include_chimeric)
     end
     return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
 end
 
-function Coverage(alignments::Alignments; norm=1000000, include_secondary_alignments=false,
-    is_reverse_complement=false, max_temp_length=500)
-
-reader = BAM.Reader(open(bam_file), index = bam_file*".bai")
-chromosome_list = [n for n in zip(
-bam_chromosome_names(reader), bam_chromosome_lengths(reader)
-)]
-vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
-vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in chromosome_list)
-count = 0
-for alignment in Alignments(bam_file; include_secondary_alignments=include_secondary_alignments,
-    is_reverse_complement=is_reverse_complement)
-if ischimeric(alignment; check_annotation = false, min_distance = max_temp_length)
-for part in alignment
-ref = refname(part)
-left = leftposition(part)
-right = rightposition(part)
-ispositivestrand(part) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .-= 1.0)
-count += 1
-end
-else
-ref = refname(alignment[1])
-left = leftposition(alignment)
-right = rightposition(alignment)
-ispositivestrand(alignment) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .-= 1.0)
-count += 1
-end
-end
-norm_factor = norm > 0 ? norm/count : 1.0
-return Coverage(vals_f, vals_r, chromosome_list)
+function Coverage(alignments::Alignments; norm=1000000, max_temp_length=1000, include_chimeric=false)
+    vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in alignments.chroms)
+    vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in alignments.chroms)
+    for alignment in alignments
+        if ischimeric(alignment; check_annotation = false, min_distance = max_temp_length)
+            include_chimeric || continue
+            for part in alignment
+                ref = refname(part)
+                left = leftposition(part)
+                right = rightposition(part)
+                ispositivestrand(part) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .-= 1.0)
+            end
+        else
+            ref = refname(alignment[1])
+            left = leftposition(alignment)
+            right = rightposition(alignment)
+            ispositivestrand(alignment) ? (vals_f[ref][left:right] .+= 1.0) : (vals_r[ref][left:right] .-= 1.0)
+        end
+    end
+    Coverage(vals_f, vals_r, alignments.chroms) * (norm > 0 ? norm/length(alignments) : 1.0)
 end
 
 function Coverage(bigwig_file::String, direction::Symbol)
@@ -350,7 +316,9 @@ function Coverage(paired_files::PairedSingleTypeFiles)
     return merge(coverages...)
 end
 
-function Coverage(bc::BaseCoverage)
+function Base.:*(coverage::Coverage, factor::Float64)
+    vals = values(coverage)
+    Coverage(Dict(chr=>(val[1] .* factor) for (chr,val) in vals), Dict(chr=>(val[2] .* factor) for (chr,val) in vals), coverage.chroms)
 end
 
 value(interval::Interval{Float64}) = interval.metadata

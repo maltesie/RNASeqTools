@@ -125,6 +125,8 @@ Interactions(filepath::String) = load(filepath, "interactions")
 
 Base.length(interactions::Interactions) = nrow(interactions.edges)
 
+hasfdrvalues(interactions::Interactions) = "fdr" in names(interactions.edges)
+
 function checkinteractions(ints::Interactions, verified_pairs::Vector{Tuple{String,String}}; min_reads=5, max_fdr=0.05, check_uppercase=true)
 	verified_dict = merge(Dict(pair=>zeros(2) for pair in verified_pairs),
 							Dict(reverse(pair)=>zeros(2) for pair in verified_pairs))
@@ -174,19 +176,33 @@ function uniqueinteractions(ints::Interactions; min_reads=5, max_fdr=0.05)
     Set(Set((a,b)) for (a,b) in zip(df[!, :name1], df[!, :name2]))
 end
 
-function addpvalues!(interactions::Interactions; method=:fisher)
+function checktopsingles(interactions::Interactions; top_singles=20)
+    hasfdrvalues(interactions) || throw(AssertionError("Assign p-values before running this."))
+    top_nodes = sortperm(interactions.nodes[!, :nb_single]; rev=true)[1:top_singles]
+    filtered_edges = Dict{Tuple{String, String}, Tuple{Float64, Float64}}()
+    for edge in eachrow(interactions.edges)
+        (edge[:src] in top_nodes) && (edge[:dst] in top_nodes) || continue
+        push!(filtered_edges, (interactions.nodes[edge[:src], :name], interactions.nodes[edge[:dst], :name]) => (edge[:fdr], edge[:odds_ratio]))
+    end
+    return filtered_edges
+end
+
+function addpvalues!(interactions::Interactions; method=:fisher, fisher_tail=:right)
     @assert method in (:disparity, :fisher)
     pvalues = ones(ne(interactions.graph))
 
+    check_dict = Dict((s,d)=>n for (s,d,n) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]]))
+    ints_between = [(d,s) in keys(check_dict) ? check_dict[(d,s)]+ints : ints for (s,d,ints) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]])]
+    other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between .+ interactions.nodes[interactions.edges[!, :src], :nb_single]
+    other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between .+ interactions.nodes[interactions.edges[!, :dst], :nb_single]
+    total_other = sum(interactions.edges[!, :nb_ints]) + sum(interactions.nodes[!, :nb_single]) .- ints_between .- other_source .- other_target
+
+    odds_ratio = (ints_between ./ other_source) ./ (other_target ./ total_other)
+
     if method === :fisher
-        check_dict = Dict((s,d)=>n for (s,d,n) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]]))
-        ints_between = [(d,s) in keys(check_dict) ? check_dict[(d,s)]+ints : ints for (s,d,ints) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]])]
-        other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between .+ interactions.nodes[interactions.edges[!, :src], :nb_single]
-        other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between .+ interactions.nodes[interactions.edges[!, :dst], :nb_single]
-        total_other = sum(interactions.edges[!, :nb_ints]) + sum(interactions.nodes[!, :nb_single]) .- ints_between .- other_source .- other_target
         tests = FisherExactTest.(ints_between, other_target, other_source, total_other)
         #tests = ChisqTest.(hcat(vcat(ints_between, other_target), vcat(other_source, total_other)))
-        pvalues = pvalue.(tests; tail=:right)
+        pvalues = pvalue.(tests; tail=fisher_tail)
     elseif method === :disparity
         degrees = [degree(interactions.graph, i) - 1 for i in 1:nv(interactions.graph)]
         p_source = (1 .- interactions.edges[!,:nb_ints] ./ interactions.nodes[interactions.edges[!, :src], :nb_ints]).^degrees[interactions.edges[!, :src]]
@@ -195,6 +211,7 @@ function addpvalues!(interactions::Interactions; method=:fisher)
     end
 
     adjp = adjust(PValues(pvalues), BenjaminiHochberg())
+    interactions.edges[:, :odds_ratio] = odds_ratio
     interactions.edges[:, :p_value] = pvalues
     interactions.edges[:, :fdr] = adjp
     for colname in (:relmean1, :relmean2, :relmin1, :relmin2, :relmax1, :relmax2)

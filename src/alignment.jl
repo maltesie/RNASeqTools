@@ -416,6 +416,9 @@ end
 function Alignments(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
+    chromosome_list = [n for n in zip(
+        bam_chromosome_names(reader), bam_chromosome_lengths(reader)
+    )]
     ns = Vector{hash_id ? UInt : String}(undef, 10000)
     ls = Vector{Int}(undef, 10000)
     rs = Vector{Int}(undef, 10000)
@@ -461,7 +464,7 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
     ns = ns[nindex]
     ranges = samevalueintervals(ns)
     pindex = partsindex(ranges, nindex, rls, rds)
-    return Alignments(ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex],
+    return Alignments(chromosome_list, ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex],
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)),
                         ones(UInt8,length(ns)) .* 0xff, ones(UInt8,length(ns)) .* 0xff, ranges)
 end
@@ -524,7 +527,7 @@ AlignedPart(
 )
 
 Base.getindex(alns::Alignments, i::Int) = AlignedRead(alns.ranges[i], alns)
-Base.getindex(alns::Alignments, r::UnitRange{Int}) = Alignments(alns.tempnames, alns.leftpos, alns.rightpos, alns.read_leftpos, alns.read_rightpos,
+Base.getindex(alns::Alignments, r::UnitRange{Int}) = Alignments(alns.chroms, alns.tempnames, alns.leftpos, alns.rightpos, alns.read_leftpos, alns.read_rightpos,
                                                                 alns.reads, alns.nms, alns.refnames, alns.strands, alns.annames, alns.antypes,
                                                                 alns.anols, alns.anleftrel, alns.anrightrel, alns.ranges[r])
 
@@ -682,6 +685,13 @@ Returns the Interval of the alignment on the read sequence as a UnitRange.
 readrange(aln::AlignedPart) = aln.seq
 
 """
+    Base.length(aln::AlignedPart)::Int
+
+Returns the the length of the alignment on the read sequence.
+"""
+Base.length(aln::AlignedPart) = length(readrange(aln))
+
+"""
     nms(aln::AlignedPart)::UInt32
 
 Returns the edit distance of the AlignedPart.
@@ -774,6 +784,8 @@ hasannotation(alnread::AlignedRead) = any(isassigned(alnread.alns.annames, i) &&
 annotatedcount(alnread::AlignedRead) = sum(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
 annotationcount(alnread::AlignedRead) = length(Set(name(part) for part in alnread))
 isfullyannotated(alnread::AlignedRead) = all(isassigned(alnread.alns.annames, i) && isassigned(alnread.alns.antypes, i) for i in alnread.range)
+alignednucleotidescount(alnread::AlignedRead) = sum(length(part) for part in alnread)
+
 function BioGenerics.leftposition(alnread::AlignedRead)
     check_refname = alnread.alns.refnames[first(alnread.range)]
     all(v .== check_refname for v in view(alnread.alns.refnames, alnread.range)) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
@@ -945,12 +957,12 @@ end
 function annotate!(features::Features, feature_alignments::Alignments; key_gen=typenamekey)
     for feature in features
         key = key_gen(feature)
-        push!(params(feature), "Count"=>"0")
-        push!(params(feature), "Key"=>key)
+        push!(featureparams(feature), "Count"=>"0")
+        push!(featureparams(feature), "Key"=>key)
         if key in keys(feature_alignments)
             refs = Set(refname(aln) for aln in feature_alignments[key])
-            merge!(params(feature), Dict(ref=>join(("$(readrange(aln))" for aln in feature_alignments[key] if refname(aln)==ref), ",") for ref in refs))
-            push!(params(feature), "Count"=>"$(length(refs))")
+            merge!(featureparams(feature), Dict(ref=>join(("$(readrange(aln))" for aln in feature_alignments[key] if refname(aln)==ref), ",") for ref in refs))
+            push!(featureparams(feature), "Count"=>"$(length(refs))")
         end
     end
 end

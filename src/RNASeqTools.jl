@@ -14,11 +14,11 @@ export Interactions, Annotation, AlignmentAnnotation, BaseAnnotation, BaseCovera
 export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles, GraphFiles
 export PairedFastaFiles, PairedFastagzFiles, PaireFastqFiles, PairedFastqgzFiles
 export cut!, approxoccursin, nucleotidecount, similarcount, approxcount, hassimilar, annotate!, featureseqs, asdataframe, transform, ispositivestrand
-export hasannotation, ischimeric, refinterval, readrange, refrange, annotation, hasannotation, ispositivestrand, sameread
-export name, type, overlap, count, parts, refname, params, param, setparam, hastype, hasname, typein, namein, distanceonread
+export hasannotation, annotatedcount, annotationcount, alignednucleotidescount, ischimeric, refinterval, readrange, refrange, annotation, hasannotation, ispositivestrand, sameread
+export name, type, overlap, count, parts, refname, featureparams, featureparam, setfeatureparam, hastype, hasname, typein, namein, distanceonread
 export values, add5utrs!, add3utrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, covratio
 export similarity, transcriptionalstartsites, terminationsites, hasannotationkey, readid, summarize, missmatchcount, eachpair, isfirstread, testsignificance!, addrelativepositions!
-export checkinteractions, uniqueinteractions, mismatchfractions, ismulti, mismatchpositions, deletionpositions, normalize!
+export checkinteractions, checktopsingles, uniqueinteractions, mismatchfractions, ismulti, mismatchpositions, deletionpositions, normalize!, addpvalues!
 export feature_ratio, feature_count, preprocess_data, chimeric_alignments, remove_features, unmapped_reads, full_annotation
 export preprocess_data, direct_rna_pipeline, tss_annotation
 export ANNOTATION_VCH, GENOME_VCH
