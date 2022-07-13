@@ -60,7 +60,7 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             if !(h in keys(trans))
                 trans[h] = length(trans) + 1
                 add_vertex!(interactions.graph)
-                push!(interactions.nodes, (name(part), (merge_annotation_types && (type(part) in (cds_type, three_type, five_type))) ? merge_type : type(part), refname(part), 0, 0, strand(part), h))
+                push!(interactions.nodes, (name(part), (merge_annotation_types && (type(part) in (cds_type, three_type, five_type))) ? merge_type : type(part), refname(part), 0, 0, 0, 0, strand(part), h))
             end
             is_chimeric || (interactions.nodes[trans[h], :nb_single] += 1)
         end
@@ -72,7 +72,9 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             ischimeric(part1, part2; min_distance=min_distance) || continue
             a, b = trans[myhash(part1; use_type=!merge_annotation_types)], trans[myhash(part2; use_type=!merge_annotation_types)]
             interactions.nodes[a, :nb_ints] += 1
+            interactions.nodes[a, :nb_ints_src] += 1
             interactions.nodes[b, :nb_ints] += 1
+            interactions.nodes[b, :nb_ints_dst] += 1
             if !has_edge(interactions.graph, a, b)
                 add_edge!(interactions.graph, a, b)
                 trans_edges[(a,b)] = ne(interactions.graph)
@@ -107,7 +109,7 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
 end
 
 function Interactions()
-    nodes = DataFrame(:name=>String[], :type=>String[], :ref=>String[], :nb_single=>Int[], :nb_ints=>Int[], :strand=>Char[], :hash=>UInt[])
+    nodes = DataFrame(:name=>String[], :type=>String[], :ref=>String[], :nb_single=>Int[], :nb_ints=>Int[], :nb_ints_src=>Int[], :nb_ints_dst=>Int[], :strand=>Char[], :hash=>UInt[])
     edges = DataFrame(:src=>Int[], :dst=>Int[], :nb_ints=>Int[], :nb_multi=>Int[], :minleft1=>Int[], :maxright1=>Int[], :minleft2=>Int[],
                         :maxright2=>Int[], :meanlength1=>Float64[], :meanlength2=>Float64[], :meanleft1=>Float64[], :meanleft2=>Float64[],
                         :meanright1=>Float64[], :meanright2=>Float64[], :nms1=>Float64[], :nms2=>Float64[], :meanmiss1=>Float64[], :meanmiss2=>Float64[])
@@ -176,9 +178,10 @@ function uniqueinteractions(ints::Interactions; min_reads=5, max_fdr=0.05)
     Set(Set((a,b)) for (a,b) in zip(df[!, :name1], df[!, :name2]))
 end
 
-function checktopsingles(interactions::Interactions; top_singles=20)
+function checktops(interactions::Interactions; top_cut=20, check=:singles)
+    check in (:singles, :interactions) || throw(AssertionError("check has to be :singles or :interactions"))
     hasfdrvalues(interactions) || throw(AssertionError("Assign p-values before running this."))
-    top_nodes = sortperm(interactions.nodes[!, :nb_single]; rev=true)[1:top_singles]
+    top_nodes = checksortperm(interactions.nodes[!, check === :singles ? :nb_single : :nb_ints]; rev=true)[1:top_cut]
     filtered_edges = Dict{Tuple{String, String}, Tuple{Float64, Float64}}()
     for edge in eachrow(interactions.edges)
         (edge[:src] in top_nodes) && (edge[:dst] in top_nodes) || continue
@@ -187,17 +190,26 @@ function checktopsingles(interactions::Interactions; top_singles=20)
     return filtered_edges
 end
 
-function addpvalues!(interactions::Interactions; method=:fisher, fisher_tail=:right)
+function addpvalues!(interactions::Interactions; method=:fisher, fisher_tail=:right, include_read_identity=true, include_singles=true)
     @assert method in (:disparity, :fisher)
     pvalues = ones(ne(interactions.graph))
 
-    check_dict = Dict((s,d)=>n for (s,d,n) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]]))
-    ints_between = [(d,s) in keys(check_dict) ? check_dict[(d,s)]+ints : ints for (s,d,ints) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]])]
-    other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between .+ interactions.nodes[interactions.edges[!, :src], :nb_single]
-    other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between .+ interactions.nodes[interactions.edges[!, :dst], :nb_single]
-    total_other = sum(interactions.edges[!, :nb_ints]) + sum(interactions.nodes[!, :nb_single]) .- ints_between .- other_source .- other_target
+    if include_read_identity
+        ints_between = interactions.edges[!, :nb_ints]
+        other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints_src] .- ints_between
+        other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints_dst] .- ints_between
+    else
+        check_dict = Dict((s,d)=>n for (s,d,n) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]]))
+        ints_between = [(d,s) in keys(check_dict) ? check_dict[(d,s)]+ints : ints for (s,d,ints) in eachrow(interactions.edges[!, [:src, :dst, :nb_ints]])]
+        other_source = interactions.nodes[interactions.edges[!, :src], :nb_ints] .- ints_between
+        other_target = interactions.nodes[interactions.edges[!, :dst], :nb_ints] .- ints_between
+    end
 
-    odds_ratio = (ints_between ./ other_source) ./ (other_target ./ total_other)
+    include_singles && (other_source .+= interactions.nodes[interactions.edges[!, :src], :nb_single])
+    include_singles && (other_target .+= interactions.nodes[interactions.edges[!, :dst], :nb_single])
+    total_other = sum(interactions.edges[!, :nb_ints]) .- ints_between .- other_source .- other_target .+ (include_singles ? sum(interactions.nodes[!, :nb_single]) : 0)
+
+    odds_ratio = (ints_between .* total_other) ./ (other_target .* other_source)
 
     if method === :fisher
         tests = FisherExactTest.(ints_between, other_target, other_source, total_other)
