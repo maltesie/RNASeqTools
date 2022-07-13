@@ -76,6 +76,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
     count_string *= "\nnot identifyable - $(stats[end])\n"
     count_string = "Counted $c entries in total:\n\n$count_string\n"
     write(infile1 * ".log", count_string)
+    return isnothing(infile2) ? FastqgzFiles(output_files) : PairedFastqgzFiles(output_files)
 end
 
 function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String; bc_len=8, check_range=1:bc_len)
