@@ -29,7 +29,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
     for file in output_files
         isnothing(infile2) ?
         (isfile(file) && (return FastqgzFiles(output_files))) :
-        ((isfile(file[1]) || isfile(file[2])) && (return FastqgzFiles(output_files)))
+        ((isfile(file[1]) || isfile(file[2])) && (return PairedSingleTypeFiles(output_files, ".fastq.gz", "_1", "_2")))
     end
     nb_stats = length(libname_to_barcode)+1
     stats::Vector{Int} = zeros(Int, nb_stats)
@@ -78,7 +78,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
     count_string *= "\nnot identifyable - $(stats[end])\n"
     count_string = "Counted $c entries in total:\n\n$count_string\n"
     write(infile1 * ".log", count_string)
-    return isnothing(infile2) ? FastqgzFiles(output_files) : PairedFastqgzFiles(output_files)
+    return isnothing(infile2) ? FastqgzFiles(output_files) : PairedSingleTypeFiles(output_files, ".fastq.gz", "_1", "_2")
 end
 
 function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
