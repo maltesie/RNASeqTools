@@ -20,7 +20,7 @@ function download_sra(sra_ids::Vector{String}, output_path::String; fastqdump_bi
 end
 
 function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String;
-                        bc_len=8, check_range=1:bc_len)
+                        bc_len=8, check_range=1:bc_len, overwrite_existing=false)
 
     dplxr = Demultiplexer(collect(values(libname_to_barcode)), n_max_errors=1, distance=:hamming)
     output_files = isnothing(infile2) ?
@@ -28,8 +28,8 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
     [(joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")) for name in keys(libname_to_barcode)]
     for file in output_files
         isnothing(infile2) ?
-        (isfile(file) && return) :
-        ((isfile(file[1]) || isfile(file[2])) && return)
+        (isfile(file) && (return FastqgzFiles(output_files))) :
+        ((isfile(file[1]) || isfile(file[2])) && (return FastqgzFiles(output_files)))
     end
     nb_stats = length(libname_to_barcode)+1
     stats::Vector{Int} = zeros(Int, nb_stats)
@@ -81,12 +81,12 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
     return isnothing(infile2) ? FastqgzFiles(output_files) : PairedFastqgzFiles(output_files)
 end
 
-function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String; bc_len=8, check_range=1:bc_len)
-    split_libs(infile1, nothing, infile2, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range)
+function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
+    split_libs(infile1, nothing, infile2, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range, overwrite_existing=overwrite_existing)
 end
 
-function split_libs(infile::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String; bc_len=8, check_range=1:bc_len)
-    split_libs(infile, nothing, nothing, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range)
+function split_libs(infile::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
+    split_libs(infile, nothing, nothing, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range, overwrite_existing=overwrite_existing)
 end
 
 function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
