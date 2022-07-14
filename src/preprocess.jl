@@ -25,7 +25,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
     dplxr = Demultiplexer(collect(values(libname_to_barcode)), n_max_errors=1, distance=:hamming)
     output_files = isnothing(infile2) ?
     [joinpath(output_path, "$(name).fastq.gz") for name in keys(libname_to_barcode)] :
-    [[joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")] for name in keys(libname_to_barcode)]
+    [(joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")) for name in keys(libname_to_barcode)]
     for file in output_files
         isnothing(infile2) ?
         (isfile(file) && return) :
@@ -72,7 +72,9 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
         close(w) :
         (close(w[1]);close(w[2]))
     end
-    count_string = join(["$(name) - $(stat)\n" for (name, stat) in zip(libname_to_barcode, stats)])
+    libnames = String.(keys(libname_to_barcode))
+    sorted_index = sortperm(libnames)
+    count_string = join(["$(name) - $(stat)\n" for (name, stat) in zip(libnames[sorted_index], stats[sorted_index])])
     count_string *= "\nnot identifyable - $(stats[end])\n"
     count_string = "Counted $c entries in total:\n\n$count_string\n"
     write(infile1 * ".log", count_string)
