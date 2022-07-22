@@ -24,6 +24,7 @@ function download_sras(sra_ids::Vector{String}, output_path::String; fastqdump_b
     rm(f)
 end
 function download_fasterq()
+end
 
 function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String;
                         bc_len=8, check_range=1:bc_len, overwrite_existing=false)
