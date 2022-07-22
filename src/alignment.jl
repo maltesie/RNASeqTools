@@ -547,7 +547,22 @@ function AlignedPart(xapart::String; read=:read1)
 end
 
 """
+    Base.summarize(part::AlignedPart, readseq::LongDNASeq)::IO
 
+Generates string with information on the AlignedPart combined with the read sequence.
+"""
+function summarize(part::AlignedPart, readseqpart::LongDNASeq)
+    s = "[$(first(part.seq)), $(last(part.seq))] on $(part.read) - "
+    s *= "[$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) "
+    s *= "with edit distance $(part.nms) - "
+    s *= isempty(annotation(part)) ? "not annotated." : "$(type(part)):$(name(part)) ($(overlap(part))% in annotation)\n"
+    s *= "\t$(first(part.seq)) - " * join(["$(readseqpart[l:r-1])" for (l,r) in partition(1:100:length(readseqpart), 2, 1)], "\n\t") *
+        (isempty([true for (l,r) in partition(1:100:length(readseqpart), 2, 1)]) ? "" : "\n\t") *
+        "$(readseqpart[last(1:100:length(readseqpart)):length(readseqpart)]) - $(last(part.seq))"
+    return s
+end
+
+"""
     Base.summarize(part::AlignedPart)::IO
 
 Generates string with information on the AlignedPart.
@@ -559,6 +574,16 @@ function summarize(part::AlignedPart)
     s *= isempty(annotation(part)) ? "not annotated." : "$(type(part)):$(name(part)) ($(overlap(part))% in annotation)"
     return s
 end
+
+"""
+    Base.show(part::AlignedPart)::IO
+
+Function for structured printing of the content of AlignedPart
+"""
+function Base.show(part::AlignedPart, readseqpart::LongDNASeq)
+    println(summarize(part, readseqpart))
+end
+
 """
     Base.show(part::AlignedPart)::IO
 
@@ -813,10 +838,15 @@ end
 
 summarize(alnread::AlignedRead) =   (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
                                     " Alignment with $(length(alnread)) part(s):\n   " *
-                                    join([summarize(part) for part in alnread], "\n   ") *
-                                    "\n"
+                                    join([summarize(part) for part in alnread], "\n   ") * "\n"
+summarize(alnread::AlignedRead, readseq::LongDNASeq) =   (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
+                                    " Alignment with $(length(alnread)) part(s) on $(length(readseq)) nt read:\n   " *
+                                    join([summarize(part, readseq[part]) for part in alnread], "\n   ") * "\n"
 function Base.show(alnread::AlignedRead)
     println(summarize(alnread))
+end
+function Base.show(alnread::AlignedRead, readseq::LongDNASeq)
+    println(summarize(alnread, readseq))
 end
 
 refname(i::Interval) = i.seqname
@@ -969,8 +999,6 @@ end
 
 Base.getindex(genome::Genome, ap::AlignedPart) = refsequence(ap, genome)
 Base.getindex(sequence::LongDNASeq, ap::AlignedPart) = sequence[readrange(ap)]
-
-
 
 function GenomeComparison(refgenome_file::String, compgenome_file::String, bam_file::String)
     pairwise_alignments = PairwiseAlignment[]

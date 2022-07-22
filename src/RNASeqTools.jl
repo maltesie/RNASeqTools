@@ -1,7 +1,7 @@
 module RNASeqTools
 
 import XAM: BAM
-using FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig, DelimitedFiles, JLD2
+using FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig, DelimitedFiles, JLD2, BGZFStreams
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 import DataFrames: DataFrame, sort, nrow, names, innerjoin
 using Statistics, HypothesisTests, MultipleTesting, Combinatorics, Random, Distributions, GLM, StatsBase

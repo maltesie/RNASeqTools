@@ -272,10 +272,16 @@ function addutrs!(features::Features, signals::Features, t::Symbol; cds_type="CD
     merge!(features, Features(new_features))
 end
 
+add5utrs!(features::Features; cds_type="CDS", utr_type="5UTR", min_utr_length=50, max_utr_length=150) =
+add5utrs!(features::Features, Features(); cds_type=cds_type, utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length, guess_missing=true)
+
 add5utrs!(features::Features, tss::Features; cds_type="CDS", utr_type="5UTR", min_utr_length=50, max_utr_length=150,
             guess_missing=true, expression_key="avg_tex_plateau", source_key="source") =
 addutrs!(features, tss, :five; cds_type=cds_type, utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length,
                                 guess_missing=guess_missing, expression_key=expression_key, source_key=source_key)
+
+add3utrs!(features::Features; cds_type="CDS", utr_type="3UTR", min_utr_length=50, max_utr_length=150) =
+add3utrs!(features::Features, Features(); cds_type=cds_type, utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length, guess_missing=true)
 
 add3utrs!(features::Features, terms::Features; cds_type="CDS", utr_type="3UTR", min_utr_length=50, max_utr_length=150,
             guess_missing=true, expression_key="avg_nobcm_plateau", source_key="source", rho_dependent_key="rho_dependent") =
@@ -296,7 +302,7 @@ function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
             (stop-1) - (start + 1) > min_igr_length || continue
             igr = Interval(refname(feature), start+1, stop-1, base_features === base_features_pos ? STRAND_POS : STRAND_NEG,
                                         Annotation(igr_type, name(feature)*":"*name(next_feature),
-                                        Dict(key=>param(feature, key)*":"*param(next_feature, key) for key in keys(featureparams(feature)) if key in keys(featureparams(next_feature)))))
+                                        Dict(key=>featureparam(feature, key)*":"*featureparam(next_feature, key) for key in keys(featureparams(feature)) if key in keys(featureparams(next_feature)))))
             push!(new_features, igr)
         end
     end

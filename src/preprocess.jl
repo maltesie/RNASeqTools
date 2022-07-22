@@ -1,23 +1,29 @@
-function download_sra(input_file::String; output_path=dirname(input_file), fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
+function download_sras(input_file::String; output_path=dirname(input_file), fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
     open(input_file) do f
         for accession_number in eachline(f)
             sra_file = joinpath(output_path, "$accession_number.sra")
             fastqgz_file = sra_file[1:end-3] * "fastq.gz"
-            (isfile(sra_file) || isfile(fastqgz_file)) && !overwrite_existing && continue
-            isfile(sra_file) && rm(sra_file)
-            isfile(fastqgz_file) && rm(fastqgz_file)
-            run(`$prefetch_bin --output-directory $output_path $accession_number`)
-            run(`$fastqdump_bin --gzip --outdir $output_path $sra_file`)
+            isfile(sra_file) && overwrite_existing && rm(sra_file)
+            isfile(fastqgz_file) && overwrite_existing && rm(fastqgz_file)
+            if !isfile(sra_file)
+                run(`$prefetch_bin --output-directory $output_path $accession_number`)
+                if isdir(joinpath(output_path, accession_number))
+                    mv(joinpath(output_path, accession_number, "$accession_number.sra"), joinpath(output_path, "$accession_number.sra"))
+                    rm(joinpath(output_path, accession_number))
+                end
+            end
+            !isfile(fastqgz_file) && run(`$fastqdump_bin --gzip --outdir $output_path $sra_file`)
             keep_sra || rm(sra_file)
         end
     end
 end
-function download_sra(sra_ids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
+function download_sras(sra_ids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
     f = tempname()
     write(f, join(sra_ids, "\n"))
     download_sra(f; output_path=output_path, fastqdump_bin=fastqdump_bin, prefetch_bin=prefetch_bin, keep_sra=keep_sra, overwrite_existing=overwrite_existing)
     rm(f)
 end
+function download_fasterq()
 
 function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String;
                         bc_len=8, check_range=1:bc_len, overwrite_existing=false)

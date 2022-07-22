@@ -33,7 +33,8 @@ function unmapped_reads(bams::SingleTypeFiles)
     end
 end
 
-function remove_features(bams::SingleTypeFiles, features::Features; sam_bin="samtools", is_reverse_complement=false, overwrite_existing=false, remove_unmapped=true, prefix="filtered_")
+function remove_features(bams::SingleTypeFiles, features::Features; sam_bin="samtools", is_reverse_complement=false,
+                                                                    overwrite_existing=false, remove_unmapped=true, prefix="filtered_")
     outnames = String[]
     for bam_file in bams
         startswith(bam_file, prefix) && continue
@@ -88,7 +89,7 @@ function conserved_features(features::Features, source_genome::Genome, target_ge
 end
 
 function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String, conditions::Dict{String, Vector{Int}};
-                            filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", cds_type="CDS", merge_annotation_types=true,
+                            filter_types=["rRNA", "tRNA"], min_distance=1000, prioritize_type="sRNA", overwrite_type="IGR", cds_type="CDS", merge_annotation_types=true,
                             is_reverse_complement=true, include_secondary_alignments=true, include_alternative_alignments=false, model=:fisher, min_reads=5, max_fdr=0.05,
                             overwrite_existing=false, include_read_identity=true, include_singles=true, multi_detection_method=:annotation)
 
@@ -113,7 +114,7 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
                                     include_alternative_alignments=include_alternative_alignments,
                                     is_reverse_complement=is_reverse_complement)
             println("Annotating alignments...")
-            annotate!(alignments, features; prioritize_type=priorityze_type, overwrite_type=overwrite_type)
+            annotate!(alignments, features; prioritize_type=prioritize_type, overwrite_type=overwrite_type)
             println("Building graph for replicate $replicate_id...")
             append!(interactions, alignments, replicate_id; min_distance=min_distance, filter_types=filter_types,
                                                             merge_annotation_types=merge_annotation_types,
@@ -150,11 +151,11 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
 	write(joinpath(results_path, "interactions.xlsx"), ints)
 end
 chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String; conditions::Dict{String, UnitRange{Int}}=Dict("chimeras"=>1:length(bams)),
-    filter_types=["rRNA", "tRNA"], min_distance=1000, priorityze_type="sRNA", overwrite_type="IGR", cds_type="CDS", merge_annotation_types=true,
+    filter_types=["rRNA", "tRNA"], min_distance=1000, prioritize_type="sRNA", overwrite_type="IGR", cds_type="CDS", merge_annotation_types=true,
     is_reverse_complement=true, include_secondary_alignments=true, include_alternative_alignments=false, model=:fisher, min_reads=5, max_fdr=0.05,
     overwrite_existing=false, include_read_identity=true, include_singles=true, multi_detection_method=:annotation) =
 chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String, Dict(c=>collect(r) for (c,r) in conditions);
-    filter_types=filter_types, min_distance=min_distance, priorityze_type=priorityze_type, overwrite_type=overwrite_type, cds_type=cds_type, merge_annotation_types=merge_annotation_types,
+    filter_types=filter_types, min_distance=min_distance, prioritize_type=prioritize_type, overwrite_type=overwrite_type, cds_type=cds_type, merge_annotation_types=merge_annotation_types,
     is_reverse_complement=is_reverse_complement, include_secondary_alignments=include_secondary_alignments, include_alternative_alignments=include_alternative_alignments, model=model, min_reads=min_reads, max_fdr=max_fdr,
     overwrite_existing=overwrite_existing, include_read_identity=include_read_identity, include_singles=include_singles, multi_detection_method=multi_detection_method)
 
@@ -212,7 +213,7 @@ function kronaplot_pipeline(
 end
 
 function direct_rna_pipeline(seqs_file::String, genome_file::String, annotation_file::Union{String, Nothing};
-                                minimap2_bin="minimap2", sam_bin="samtools", filter_types=["rRNA"],
+                                minimap2_bin="minimap2", sam_bin="samtools", filter_types=[],
                                 prefix="filtered_", overwrite_existing=false)
     ending = ""
     occursin(".fasta", seqs_file) && (ending=".fasta")
@@ -224,17 +225,16 @@ function direct_rna_pipeline(seqs_file::String, genome_file::String, annotation_
     stats_file = out_file * ".log"
     (overwrite_existing || !isfile(out_file)) &&
         run(pipeline(`$minimap2_bin -ax map-ont -k14 --MD -Y $genome_file $seqs_file`, stdout=pipeline(`$sam_bin view -u`, stdout=pipeline(`$sam_bin sort -o $out_file`))))
-    (overwrite_existing || !isfile(stats_file)) &&
-        run(pipeline(`$sam_bin index $out_file`, `$sam_bin stats $out_file`, stats_file))
+    run(pipeline(`$sam_bin index $out_file`, `$sam_bin stats $out_file`, stats_file))
     compute_coverage(out_file; overwrite_existing=overwrite_existing)
 
-    if !isnothing(annotation_file) && (!isnothing(filter_types) && length(filter_types) > 0)
+    if !isnothing(annotation_file) && length(filter_types) > 0
         features = Features(annotation_file, filter_types)
         remove_features(SingleTypeFiles([out_file]), features; prefix=prefix, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
         compute_coverage(joinpath(dir_name, prefix * basename(seqs_file)[1:end-length(ending)] * ".bam"); overwrite_existing=overwrite_existing)
     end
 end
-direct_rna_pipeline(seqs_file::String; minimap2_bin="minimap2", sam_bin="samtools", filter_types=["rRNA"], prefix="filtered_", overwrite_existing=false) =
+direct_rna_pipeline(seqs_file::String; minimap2_bin="minimap2", sam_bin="samtools", filter_types=[], prefix="filtered_", overwrite_existing=false) =
     direct_rna_pipeline(seqs_file, GENOME_VCH, ANNOTATION_VCH; minimap2_bin=minimap2_bin, sam_bin=sam_bin, filter_types=filter_types, prefix=prefix, overwrite_existing=overwrite_existing)
 direct_rna_pipeline(seqs_file::String, genome_file::String; minimap2_bin="minimap2", sam_bin="samtools", overwrite_existing=false) =
     direct_rna_pipeline(seqs_file, genome_file, nothing; minimap2_bin=minimap2_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)

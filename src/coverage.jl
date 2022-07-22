@@ -189,15 +189,15 @@ refcount(feature::Interval{BaseAnnotation}) = feature.metadata.ref
 
 function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignments=false,
                                             is_reverse_complement=false, max_temp_length=1000, include_chimeric=false,
-                                            suffix_forward="_forward", suffix_reverse="_reverse")
+                                            overwrite_existing=false, suffix_forward="_forward", suffix_reverse="_reverse")
 
     filename_f = bam_file[1:end-4] * suffix_forward * ".bw"
     filename_r = bam_file[1:end-4] * suffix_reverse * ".bw"
 
+    (isfile(filename_f) && isfile(filename_r)) && !overwrite_existing && return (filename_f, filename_r)
+
     alns = Alignments(bam_file; include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
-    coverage = Coverage(alns; include_chimeric=include_chimeric, max_temp_length=max_temp_length)
-    norm_factor = norm > 0 ? norm/length(alns) : 1.0
-    coverage *= norm_factor
+    coverage = Coverage(alns; norm=norm, include_chimeric=include_chimeric, max_temp_length=max_temp_length)
 
     writer_f = BigWig.Writer(open(filename_f, "w"), alns.chroms)
     writer_r = BigWig.Writer(open(filename_r, "w"), alns.chroms)
@@ -207,20 +207,17 @@ function compute_coverage(bam_file::String; norm=1000000, include_secondary_alig
     end
     close(writer_f)
     close(writer_r)
+    return (filename_f, filename_r)
 end
 
 function compute_coverage(files::SingleTypeFiles; norm=1000000, include_secondary_alignments=true, overwrite_existing=false,
-                                                    is_reverse_complement=false, max_temp_length=1000, include_chimeric=false)
+                                                    is_reverse_complement=false, max_temp_length=1000, include_chimeric=false,
+                                                    suffix_forward="_forward", suffix_reverse="_reverse")
     files.type == ".bam" || throw(AssertionError("Only .bam files accepted for alignments."))
-    bw_files = Vector{Tuple{String, String}}()
-    for file in files
-        filename_f = file[1:end-4] * "_forward.bw"
-        filename_r = file[1:end-4] * "_reverse.bw"
-        push!(bw_files, (filename_f, filename_r))
-        (!overwrite_existing && isfile(filename_f) && isfile(filename_r)) && continue
-        compute_coverage(file; norm=norm, include_secondary_alignments=include_secondary_alignments,
-                                is_reverse_complement=is_reverse_complement, max_temp_length=max_temp_length, include_chimeric=include_chimeric)
-    end
+    bw_files = [compute_coverage(file; norm=norm, include_secondary_alignments=include_secondary_alignments, overwrite_existing=overwrite_existing,
+                                        is_reverse_complement=is_reverse_complement, max_temp_length=max_temp_length,
+                                        include_chimeric=include_chimeric, suffix_forward=suffix_forward, suffix_reverse=suffix_reverse)
+                                        for file in files]
     return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
 end
 
