@@ -1,4 +1,4 @@
-function download_sras(input_file::String; output_path=dirname(input_file), fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
+function download_prefetch(input_file::String; output_path=dirname(input_file), fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
     open(input_file) do f
         for accession_number in eachline(f)
             sra_file = joinpath(output_path, "$accession_number.sra")
@@ -17,7 +17,7 @@ function download_sras(input_file::String; output_path=dirname(input_file), fast
         end
     end
 end
-function download_sras(sra_ids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
+function download_prefetch(sra_ids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
     f = tempname()
     write(f, join(sra_ids, "\n"))
     download_sra(f; output_path=output_path, fastqdump_bin=fastqdump_bin, prefetch_bin=prefetch_bin, keep_sra=keep_sra, overwrite_existing=overwrite_existing)
