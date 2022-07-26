@@ -325,19 +325,24 @@ function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
     return Sequences(seqs, names)
 end
 
-function covratio(features::Features, coverage::Coverage)
+function covratio(features::Features, coverage::Coverage; round_digits=2)
     vals = values(coverage)
     total = 0.0
     for val in values(vals)
-        total += sum(first(val)) + sum(last(val))
+        total += sum(first(val)) - sum(last(val))
     end
     s = 0.0
     for feature in features
-        picker = strand(feature) === STRAND_NEG ? last : first
-        rightposition(feature) > length(picker(vals[refname(feature)])) && continue
-        s += sum(picker(vals[refname(feature)])[leftposition(feature):rightposition(feature)])
+        is_negative_strand = strand(feature) === STRAND_NEG
+        v = vals[refname(feature)][is_negative_strand ? 2 : 1]
+        if rightposition(feature) > length(v)
+            x = sum(v[leftposition(feature):end]) + sum(v[1:(rightposition(feature)-length(v))])
+        else
+            x = sum(v[leftposition(feature):rightposition(feature)])
+        end
+        s += is_negative_strand ? x : -x
     end
-    return s/total
+    return round(s/total; digits=round_digits)
 end
 
 function asdataframe(features::Features; add_keys=:all)

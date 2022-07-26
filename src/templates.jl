@@ -1,15 +1,15 @@
-function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, genome::Genome)
+function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, genome::Genome; overwrite_existing=false)
     println("Preprocessing files:")
     show(files)
-    trimmed = trim_fastp(files)
+    trimmed = trim_fastp(files; overwrite_existing=overwrite_existing)
     println("Aligning files...")
-    bams = align_mem(trimmed, genome;)
+    bams = align_mem(trimmed, genome; overwrite_existing=overwrite_existing)
     println("Computing coverage...")
-    compute_coverage(bams);
+    compute_coverage(bams; overwrite_existing=overwrite_existing);
     println("Done.")
 end
 
-function feature_ratio(features::Features, coverage_files::PairedSingleTypeFiles, results_file::String)
+function feature_ratio(coverage_files::PairedSingleTypeFiles, features::Features, results_file::String)
     result_string = ""
     for (file1,file2) in coverage_files
         coverage = Coverage(file1,file2)
@@ -17,6 +17,22 @@ function feature_ratio(features::Features, coverage_files::PairedSingleTypeFiles
     end
     write(results_file, result_string)
 end
+feature_ratio(coverage_files::PairedSingleTypeFiles, features::Features) = feature_ratio(coverage_files, features, dirname(coverage_files))
+function feature_ratio(bam_files::SingleTypeFiles, features::Features, results_file::String; is_reverse_complement=false, include_secondary_alignments=true,
+                            include_alternative_alignments=false)
+    result_string = ""
+    for file in bam_files
+        alns = Alignments(file; is_reverse_complement=is_reverse_complement, include_secondary_alignments=include_secondary_alignments,
+                                include_alternative_alignments=include_alternative_alignments)
+        annotate!(alns, features)
+        result_string *= "$(basename(file))\t$(annotatedcount(alns)/length(alns))\n"
+        empty!(alns)
+    end
+    write(results_file, result_string)
+end
+feature_ratio(bam_files::SingleTypeFiles, features::Features; is_reverse_complement=false, include_secondary_alignments=true, include_alternative_alignments=false) =
+feature_ratio(bam_files, features, dirname(bam_files); is_reverse_complement=is_reverse_complement, include_secondary_alignments=include_secondary_alignments,
+                include_alternative_alignments=include_alternative_alignments)
 
 function unmapped_reads(bams::SingleTypeFiles)
     for bam_file in bams
