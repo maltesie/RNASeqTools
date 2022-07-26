@@ -137,7 +137,7 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
     fileparams = isnothing(in_file2) ? [genome_file, in_file1] : [genome_file, in_file1, in_file2]
     stats_file = out_file * ".log"
     run(pipeline(
-        `$bwa_bin mem -v 1 -t 6 $params $fileparams`,
+        `$bwa_bin mem -v 1 $params $fileparams`,
         stdout = pipeline(
             `$sam_bin view -u`,
             stdout = pipeline(
