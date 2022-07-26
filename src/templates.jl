@@ -1,11 +1,24 @@
-function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, genome::Genome; overwrite_existing=false)
+function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, genome::Genome;
+    fastp_bin="fastp", trimmed_prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=25, max_length=nothing,
+    cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
+    average_window_quality=25, deduplicate=true, skip_quality_filtering=true,
+    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
+    min_seed_len=19, reseeding_factor=1.5, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools",
+    norm=1000000, include_secondary_alignments=true, suffix_forward="_forward", suffix_reverse="_reverse",
+    overwrite_existing=false)
+
     println("Preprocessing files:")
     show(files)
-    trimmed = trim_fastp(files; overwrite_existing=overwrite_existing)
+    trimmed = trim_fastp(files; overwrite_existing=overwrite_existing, fastp_bin=fastp_bin, prefix=trimmed_prefix, adapter=adapter, trim=trim, trim_loc=trim_loc,
+                        min_length=min_length, max_length=max_length, cut_front=cut_front, cut_tail=cut_tail, trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x,
+                        filter_complexity=filter_complexity, average_window_quality=average_window_quality, deduplicate=deduplicate, skip_quality_filtering=skip_quality_filtering)
     println("Aligning files...")
-    bams = align_mem(trimmed, genome; overwrite_existing=overwrite_existing)
+    bams = align_mem(trimmed, genome; overwrite_existing=overwrite_existing, min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
+                        clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
+                        is_ont=is_ont, threads=threads, bwa_bin=bwa_bin, sam_bin=sam_bin)
     println("Computing coverage...")
-    compute_coverage(bams; overwrite_existing=overwrite_existing);
+    compute_coverage(bams; overwrite_existing=overwrite_existing, norm=norm, include_secondary_alignments=include_secondary_alignments,
+                        suffix_forward=suffix_forward, suffix_reverse=suffix_reverse);
     println("Done.")
 end
 
@@ -34,7 +47,7 @@ feature_ratio(bam_files::SingleTypeFiles, features::Features; is_reverse_complem
 feature_ratio(bam_files, features, dirname(bam_files); is_reverse_complement=is_reverse_complement, include_secondary_alignments=include_secondary_alignments,
                 include_alternative_alignments=include_alternative_alignments)
 
-function unmapped_reads(bams::SingleTypeFiles)
+function extract_unmapped_reads(bams::SingleTypeFiles)
     for bam_file in bams
         record = BAM.Record()
         reader = BAM.Reader(open(bam_file))

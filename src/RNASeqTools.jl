@@ -19,7 +19,7 @@ export name, type, overlap, count, parts, refname, featureparams, featureparam, 
 export values, add5utrs!, add3utrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, covratio
 export similarity, transcriptionalstartsites, terminationsites, hasannotationkey, readid, summarize, missmatchcount, eachpair, isfirstread, testsignificance!, addrelativepositions!
 export checkinteractions, checktopsingles, uniqueinteractions, mismatchfractions, ismulti, mismatchpositions, deletionpositions, normalize!, addpvalues!
-export feature_ratio, feature_count, preprocess_data, chimeric_alignments, remove_features, unmapped_reads, full_annotation
+export feature_ratio, feature_count, preprocess_data, chimeric_alignments, remove_features, extract_unmapped_reads, full_annotation
 export preprocess_data, direct_rna_pipeline, tss_annotation
 export ANNOTATION_VCH, GENOME_VCH
 
