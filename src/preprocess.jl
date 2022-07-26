@@ -137,7 +137,7 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
 end
 
 function trim_fastp(input_files::SingleTypeFiles;
-    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, min_length=25,
+    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=nothing, min_length=25,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, deduplicate=false, skip_quality_filtering=true, overwrite_existing=false)
 
@@ -151,8 +151,8 @@ function trim_fastp(input_files::SingleTypeFiles;
 end
 
 function trim_fastp(input_files::PairedSingleTypeFiles;
-    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=25, max_length=nothing,
-    cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
+    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=25,
+    max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, deduplicate=true, skip_quality_filtering=true, overwrite_existing=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}(input_files.list)
