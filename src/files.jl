@@ -4,10 +4,60 @@ function Base.write(filename::String, content::String)
     end
 end
 
+function commonstart(strs::Vector{String})
+    for c in 1:minimum(length(s) for s in strs)
+        all(s[c] == strs[1][c] for s in strs) || return strs[1][1:c-1]
+    end
+    return sortperm(strs)[1]
+end
+
+function commonprefix(files::Vector{String}; delimiter='_')
+    common_start = commonstart(files)
+    i = findfirst(delimiter, common_start)
+    return isnothing(i) ? common_start : common_start[1:i]
+end
+
+function commonend(strs::Vector{String})
+    for c in 0:minimum(length(s) for s in strs)
+        all(s[end-c] == strs[1][end-c] for s in strs) || return strs[1][end-c+1:end]
+    end
+    return sortperm(strs)[1]
+end
+
+function commonfiletype(files::Vector{Sting}; delimiter='.')
+    common_end = commonend(files)
+    i = findfirst(Char(delimiter), common_end)
+    return isnothing(i) ? "" : common_end[i:end]
+end
+
+function commonsuffix(files::Vector{String}; delimiter_suffix='_', delimiter_filetype='.')
+    common_filetype_len = length(commonfiletype(files; delimiter=delimiter_filetype))
+    common_suffix = commonend([f[1:end-common_filetype_len] for f in files])
+    i = findlast(delimiter_suffix, common_suffix)
+    return isnothing(i) ? common_suffix : common_suffix[i:end]
+end
+
+function conditiondict(files::Vector{String}; delimiter_prefix='_')
+    stretches = String[]
+    offset = length(commonprefix(files; delimiter=delimiter_prefix)) + 1
+    stripped_strs = [s[offset:end] for s in files]
+    for stripped_str in stripped_strs
+        for (i, c) in enumerate(stripped_str)
+            if sum(c === s[i] for s in stripped_strs) == 1
+                push!(stretches, stripped_str[1:i-1])
+                break
+            end
+        end
+    end
+    common_end_len = length(commonend(stretches))
+    conds = [s[1:end-common_end_len] for s in stretches]
+    return Dict(c => collect(findall(c, conds)) for c in unique(conds))
+end
+
 function SingleTypeFiles(files::Vector{String})
-    endings = [fname[findlast('.', fname):end] for fname in files]
-    length(unique(endings)) <= 1
-    SingleTypeFiles(files, isempty(endings) ? "" : endings[1])
+    ending = commonfiletype(files)
+    isempty(ending) && throw(AssertionError("Could not detect common file ending."))
+    SingleTypeFiles(files, ending)
 end
 
 function SingleTypeFiles(folder::String, type::String; prefix=nothing)
@@ -29,19 +79,15 @@ function Base.dirname(files::SingleTypeFiles)
 end
 
 function PairedSingleTypeFiles(files1::Vector{String}, files2::Vector{String})
-    endingsa = unique([fname[findlast('.', fname):end] for fname in files1])
-    endingsb = unique([fname[findlast('.', fname):end] for fname in files2])
-    @assert (length(endingsa) == 1) && (endingsa == endingsb)
-    typ = endingsa[1]
-    PairedSingleTypeFiles(collect(zip(files1, files2)), typ, "", "")
+    ending = commonfiletype(vcat(files1, files2))
+    isempty(ending) && throw(AssertionError("Could not detect common file ending."))
+    suffix1 = commonsuffix(files1)
+    suffix2 = commonsuffix(files2)
+    PairedSingleTypeFiles(collect(zip(files1, files2)), ending, suffix1, suffix2)
 end
 
 function PairedSingleTypeFiles(list::Vector{Tuple{String,String}})
-    endingsa = unique([fname[1][findlast('.', fname[1]):end] for fname in list])
-    endingsb = unique([fname[2][findlast('.', fname[2]):end] for fname in list])
-    @assert (length(endingsa) == 1) && (endingsa == endingsb)
-    typ = endingsa[1]
-    PairedSingleTypeFiles(list, typ, "", "")
+    PairedSingleTypeFiles([f[1] for f in list], [f[2] for f in list])
 end
 
 function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffix2="_2", prefix=nothing)
@@ -52,6 +98,9 @@ function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffi
     @assert Set(names1) == Set(names2)
     PairedSingleTypeFiles([(joinpath(folder, name * suffix1 * type), joinpath(folder, name * suffix2 * type)) for name in names1], type, suffix1, suffix2)
 end
+
+conditionsdict(files::SingleTypeFiles) = conditionsdict([basename(f) for f in files.list])
+conditionsdict(files::PairedSingleTypeFiles) = conditionsdict([basename(f[1]) for f in files.list])
 
 type(files::T) where {T<:FileCollection} = files.type
 Base.length(files::T) where {T<:FileCollection} = length(files.list)

@@ -1,4 +1,4 @@
-function FeatureCounts(features::Features, samples::Vector{Coverage}; conditions=Dict("sample"=>1:length(samples)), aggregation=maximum, normalization_method=:none)
+function FeatureCounts(features::Features, samples::Vector{Coverage}; conditions=Dict("sample"=>collect(1:length(samples))), aggregation=maximum, normalization_method=:none)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     c = coveragecount(features, samples; aggregation=aggregation)
     normalization_method in (:tmm, :tpm) && normalize!(c; normalization_method=normalization_method)
@@ -6,13 +6,13 @@ function FeatureCounts(features::Features, samples::Vector{Coverage}; conditions
     return FeatureCounts(conditions, c, features)
 end
 
-function FeatureCounts(features::Features, samples::PairedSingleTypeFiles; conditions=Dict("sample"=>1:length(samples)), aggregation=:maximum, normalization_method=:none)
+function FeatureCounts(features::Features, samples::PairedSingleTypeFiles; conditions=conditionsdict(samples), aggregation=:maximum, normalization_method=:none)
     samples.type === ".bw" || throw(AssertionError("File type has to be .bw"))
     coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in samples]
     FeatureCounts(features, coverages; conditions=conditions, aggregation=aggregation, normalization_method=normalization_method)
 end
 
-function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=Dict("sample"=>1:length(samples)),
+function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=conditionsdict(samples),
         normalization_method=:none, include_secondary_alignments=true, include_alternative_alignments=false)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     samples.type === ".bam" || throw(AssertionError("File type has to be .bam"))

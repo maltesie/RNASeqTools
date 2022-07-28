@@ -179,11 +179,11 @@ function chimeric_alignments(features::Features, bams::SingleTypeFiles, results_
 	write(joinpath(results_path, "singles.xlsx"), singles)
 	write(joinpath(results_path, "interactions.xlsx"), ints)
 end
-chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String; conditions::Dict{String, UnitRange{Int}}=Dict("chimeras"=>1:length(bams)),
+chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String; conditions=conditionsdict(bams),
     filter_types=["rRNA", "tRNA"], min_distance=1000, prioritize_type="sRNA", overwrite_type="IGR", cds_type="CDS", merge_annotation_types=true,
     is_reverse_complement=true, include_secondary_alignments=true, include_alternative_alignments=false, model=:fisher, min_reads=5, max_fdr=0.05,
     overwrite_existing=false, include_read_identity=true, include_singles=true, multi_detection_method=:annotation) =
-chimeric_alignments(features::Features, bams::SingleTypeFiles, results_path::String, Dict(c=>collect(r) for (c,r) in conditions);
+chimeric_alignments(features, bams, results_path, conditions;
     filter_types=filter_types, min_distance=min_distance, prioritize_type=prioritize_type, overwrite_type=overwrite_type, cds_type=cds_type, merge_annotation_types=merge_annotation_types,
     is_reverse_complement=is_reverse_complement, include_secondary_alignments=include_secondary_alignments, include_alternative_alignments=include_alternative_alignments, model=model, min_reads=min_reads, max_fdr=max_fdr,
     overwrite_existing=overwrite_existing, include_read_identity=include_read_identity, include_singles=include_singles, multi_detection_method=multi_detection_method)
