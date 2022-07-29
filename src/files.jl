@@ -18,13 +18,13 @@ function commonprefix(files::Vector{String}; delimiter='_')
 end
 
 function commonend(strs::Vector{String})
-    for c in 0:minimum(length(s) for s in strs)
-        all(s[end-c] == strs[1][end-c] for s in strs) || return strs[1][end-c+1:end]
+    for c in 0:minimum(length(s) for s in strs)-1
+        all(s[end-c] == strs[1][end-c] for s in strs) || (return strs[1][end-c+1:end])
     end
-    return sortperm(strs)[1]
+    return strs[sortperm(strs)[1]]
 end
 
-function commonfiletype(files::Vector{Sting}; delimiter='.')
+function commonfiletype(files::Vector{String}; delimiter='.')
     common_end = commonend(files)
     i = findfirst(Char(delimiter), common_end)
     return isnothing(i) ? "" : common_end[i:end]
@@ -37,7 +37,7 @@ function commonsuffix(files::Vector{String}; delimiter_suffix='_', delimiter_fil
     return isnothing(i) ? common_suffix : common_suffix[i:end]
 end
 
-function conditiondict(files::Vector{String}; delimiter_prefix='_')
+function conditionsdict(files::Vector{String}; delimiter_prefix='_')
     stretches = String[]
     offset = length(commonprefix(files; delimiter=delimiter_prefix)) + 1
     stripped_strs = [s[offset:end] for s in files]

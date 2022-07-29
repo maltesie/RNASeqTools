@@ -27,6 +27,20 @@ function rightmostrelposition(alnpart::AlignedPart, alnread::AlignedRead; five_t
         for i::Int in alnread.range if (isassigned(alnread.alns.annames, i) && alnread.alns.annames[i] === name(alnpart)))
 end
 
+function leftmostreadposition(alnpart::AlignedPart, alnread::AlignedRead)
+    for i::Int in alnread.range
+        (isassigned(alnread.alns.annames, i) && alnread.alns.annames[i] === name(alnpart)) && return (alnread.aln.reads[i], alnread.aln.read_leftpos[i])
+    end
+    return nothing
+end
+
+function rightmostreadposition(alnpart::AlignedPart, alnread::AlignedRead)
+    for i::Int in reverse(alnread.range)
+        (isassigned(alnread.alns.annames, i) && alnread.alns.annames[i] === name(alnpart)) && return (alnread.aln.reads[i], alnread.aln.read_rightpos[i])
+    end
+    return nothing
+end
+
 function myhash(part::AlignedPart; use_type=false)
     return use_type ? hash(name(part)*type(part)) : hash(name(part))
 end
@@ -86,7 +100,7 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             nms1, nms2 = editdistance(part1), editdistance(part2)
             if iindex > nrow(interactions.edges)
                 push!(interactions.edges, (a, b, 0, 0, left1, right1, left2, right2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                            (nms1>1 ? 1.0 : 0.0), (nms2>1 ? 1.0 : 0.0), (false for i in 1:length(interactions.replicate_ids))...))
+                                            (nms1>1 ? 1.0 : 0.0), (nms2>1 ? 1.0 : 0.0), 0.0, 0.0, (false for i in 1:length(interactions.replicate_ids))...))
                 append!(interactions.edgestats, zeros(Int, 204))
             end
             interactions.edges[iindex, :nb_ints] += 1
@@ -97,8 +111,8 @@ function Base.append!(interactions::Interactions, alignments::Alignments, replic
             interactions.edges[iindex, :maxright1] = max(interactions.edges[iindex, :maxright1], right1)
             interactions.edges[iindex, :minleft2] = min(interactions.edges[iindex, :minleft2], left2)
             interactions.edges[iindex, :maxright2] = max(interactions.edges[iindex, :maxright2], right2)
-            for (s,v) in zip((:meanleft1, :meanright1, :meanleft2, :meanright2, :meanlength1, :meanlength2, :meanmiss1, :meanmiss2, :nms1, :nms2),
-                             (left1, right1, left2, right2, right1 - left1 + 1, right2 - left2 + 1, nms1, nms2, Int(nms1>0), Int(nms2>0)))
+            for (s,v) in zip((:meanleft1, :meanright1, :meanleft2, :meanright2, :meanlength1, :meanlength2, :meanmiss1, :meanmiss2, :nms1, :nms2, :lps1, :lps2),
+                             (left1, right1, left2, right2, right1 - left1 + 1, right2 - left2 + 1, nms1, nms2, Int(nms1>0), Int(nms2>0), 0.0, 0.0))
                 interactions.edges[iindex, s] += (v - interactions.edges[iindex, s]) / interactions.edges[iindex, :nb_ints]
             end
             interactions.edges[iindex, replicate_id] = true
@@ -112,7 +126,8 @@ function Interactions()
     nodes = DataFrame(:name=>String[], :type=>String[], :ref=>String[], :nb_single=>Int[], :nb_ints=>Int[], :nb_ints_src=>Int[], :nb_ints_dst=>Int[], :strand=>Char[], :hash=>UInt[])
     edges = DataFrame(:src=>Int[], :dst=>Int[], :nb_ints=>Int[], :nb_multi=>Int[], :minleft1=>Int[], :maxright1=>Int[], :minleft2=>Int[],
                         :maxright2=>Int[], :meanlength1=>Float64[], :meanlength2=>Float64[], :meanleft1=>Float64[], :meanleft2=>Float64[],
-                        :meanright1=>Float64[], :meanright2=>Float64[], :nms1=>Float64[], :nms2=>Float64[], :meanmiss1=>Float64[], :meanmiss2=>Float64[])
+                        :meanright1=>Float64[], :meanright2=>Float64[], :nms1=>Float64[], :nms2=>Float64[], :lps1=>Float64[], :lps2=>Float64[],
+                        :meanmiss1=>Float64[], :meanmiss2=>Float64[])
     return Interactions(SimpleDiGraph(), nodes, edges, ElasticArray{Int}(undef, 204, 0), Symbol[])
 end
 
