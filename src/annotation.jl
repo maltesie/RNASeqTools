@@ -223,95 +223,6 @@ function Base.write(file::String, features::Features; zip=false, tabix=false)
     return b
 end
 
-nooverlapfromright(features::Features, f::Interval{Annotation}) = hasoverlap(features, f) ? min(rightposition(f), maximum(rightposition(i)+1 for i in eachoverlap(features, f))) : leftposition(f)
-nooverlapfromleft(features::Features, f::Interval{Annotation}) = hasoverlap(features, f) ? max(leftposition(f), minimum(leftposition(i)-1 for i in eachoverlap(features, f))) : rightposition(f)
-
-function findutr(f::Interval{Annotation}, features::Features{Annotation}, signals::Features{Annotation}, direction::Symbol;
-                        utr_type="UTR", min_utr_length=25, max_utr_length=250,
-                        guess_missing=true, expression_key=nothing, source_key=nothing, extra_key=nothing)
-
-    direction in (:left, :right) || throw(AssertionError("direction has to be either :right or :left"))
-    left, right =  direction === :right ? (rightposition(f)+1,rightposition(f)+max_utr_length) : (max(leftposition(f)-max_utr_length, 1), leftposition(f)-1)
-    olpinterval =  Interval(refname(f), left, right, strand(f), Annotation())
-    olps = collect(eachoverlap(signals, olpinterval))
-    if isempty(olps)
-        if guess_missing
-            i = Interval(refname(f),
-                            direction === :left ? nooverlapfromright(features, olpinterval) : left,
-                            direction === :right ? nooverlapfromleft(features, olpinterval) : right,
-                            strand(f), Annotation(utr_type, ""; Name=name(f), source="guess", expression="N/A"))
-            return length(i) < min_utr_length ? nothing : i
-        else
-            return nothing
-        end
-    else
-        maxint = isnothing(expression_key) ? (direction === :left ? olps[end] : olps[1]) : olps[argmax([featureparam(olp, expression_key, Float64) for olp in olps])]
-        expression = isnothing(expression_key) ? "N/A" : featureparam(maxint, expression_key)
-        source = isnothing(source_key) ? "N/A" : featureparam(maxint, source_key)
-        resint = Interval(refname(f),
-                        direction === :left ? leftposition(maxint) : left,
-                        direction === :right ? rightposition(maxint) : right,
-                        strand(f), Annotation(utr_type, ""; Name=name(f), source=source, expression=expression))
-        isnothing(extra_key) || setfeatureparam(resint, extra_key, featureparam(maxint, extra_key))
-        #utr_type == "3UTR" && println(resint)
-        return resint
-    end
-end
-
-function addutrs!(features::Features, signals::Features, t::Symbol; cds_type="CDS", utr_type="5UTR", min_utr_length=50, max_utr_length=150,
-                                                                    guess_missing=true, expression_key=nothing, source_key=nothing, extra_key=nothing)
-    t in (:five, :three) || throw(AssertionError("$t not supported!"))
-    new_features = Vector{Interval{Annotation}}()
-    for feature in features
-        type(feature) != cds_type && continue
-        direction = ((t === :five) != (strand(feature) === STRAND_POS)) ? :right : :left
-        newutr = findutr(feature, features, signals, direction; utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length,
-                                                                    guess_missing=guess_missing, expression_key=expression_key, source_key=source_key, extra_key=extra_key)
-        !isnothing(newutr) && push!(new_features, newutr)
-    end
-    merge!(features, Features(new_features))
-end
-
-add5utrs!(features::Features; cds_type="CDS", utr_type="5UTR", min_utr_length=50, max_utr_length=150) =
-add5utrs!(features::Features, Features(); cds_type=cds_type, utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length, guess_missing=true)
-
-add5utrs!(features::Features, tss::Features; cds_type="CDS", utr_type="5UTR", min_utr_length=50, max_utr_length=150,
-            guess_missing=true, expression_key="avg_tex_plateau", source_key="source") =
-addutrs!(features, tss, :five; cds_type=cds_type, utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length,
-                                guess_missing=guess_missing, expression_key=expression_key, source_key=source_key)
-
-add3utrs!(features::Features; cds_type="CDS", utr_type="3UTR", min_utr_length=50, max_utr_length=150) =
-add3utrs!(features::Features, Features(); cds_type=cds_type, utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length, guess_missing=true)
-
-add3utrs!(features::Features, terms::Features; cds_type="CDS", utr_type="3UTR", min_utr_length=50, max_utr_length=150,
-            guess_missing=true, expression_key="avg_nobcm_plateau", source_key="source", rho_dependent_key="rho_dependent") =
-addutrs!(features, terms, :three; cds_type=cds_type, utr_type=utr_type, min_utr_length=min_utr_length, max_utr_length=max_utr_length,
-                                    guess_missing=guess_missing, expression_key=expression_key, source_key=source_key, extra_key=rho_dependent_key)
-
-
-function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
-    new_features = Vector{Interval{Annotation}}()
-    base_features_pos = [feature for feature in features if (feature.strand == STRAND_POS)]
-    base_features_neg = [feature for feature in features if (feature.strand == STRAND_NEG)]
-    for base_features in (base_features_pos, base_features_neg)
-        nb_features = base_features === base_features_pos ? length(base_features_pos) : length(base_features_neg)
-        for i in 1:nb_features-1
-            feature, next_feature = base_features[i], base_features[i+1]
-            refname(feature) == refname(next_feature) || continue
-            stop, start = leftposition(next_feature), rightposition(feature)
-            (stop-1) - (start + 1) > min_igr_length || continue
-            igr = Interval(refname(feature), start+1, stop-1, base_features === base_features_pos ? STRAND_POS : STRAND_NEG,
-                                        Annotation(igr_type, name(feature)*":"*name(next_feature),
-                                        Dict(key=>featureparam(feature, key)*":"*featureparam(next_feature, key) for key in keys(featureparams(feature)) if key in keys(featureparams(next_feature)))))
-            push!(new_features, igr)
-        end
-    end
-
-    for feature in new_features
-        push!(features, feature)
-    end
-end
-
 typenamekey(feature::Interval{Annotation}) = type(feature) * ":" * name(feature)
 function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
     seqs = Vector{LongDNASeq}()
@@ -367,8 +278,6 @@ function asdataframe(features::Features; add_keys=:all)
     end
     return df
 end
-
-Base.write(fname::String, df::DataFrame) = CSV.write(fname, df)
 
 function Base.show(features::Features)
     chrs = refnames(features)

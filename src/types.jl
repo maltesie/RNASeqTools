@@ -74,14 +74,6 @@ struct GenomeComparison
     fromto::Vector{Tuple{Interval,Interval}}
 end
 
-struct Interactions <: InteractionContainer
-    graph::SimpleDiGraph
-    nodes::DataFrame
-    edges::DataFrame
-    edgestats::ElasticArray{Int}
-    replicate_ids::Vector{Symbol}
-end
-
 struct Features{T} <: AnnotationContainer
     list::IntervalCollection{T}
     chroms::Dict{String, Int}

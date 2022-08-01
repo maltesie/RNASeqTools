@@ -32,26 +32,34 @@ end
 
 function commonsuffix(files::Vector{String}; delimiter_suffix='_', delimiter_filetype='.')
     common_filetype_len = length(commonfiletype(files; delimiter=delimiter_filetype))
-    common_suffix = commonend([f[1:end-common_filetype_len] for f in files])
-    i = findlast(delimiter_suffix, common_suffix)
-    return isnothing(i) ? common_suffix : common_suffix[i:end]
+    common_end = commonend([f[1:end-common_filetype_len] for f in files])
+    i = findlast(delimiter_suffix, common_end)
+    return isnothing(i) ? common_end : common_suffix[i:end]
 end
 
-function conditionsdict(files::Vector{String}; delimiter_prefix='_')
+function groups(files::Vector{String}; delimiter_prefix='_', delimiter_suffix='_')
     stretches = String[]
     offset = length(commonprefix(files; delimiter=delimiter_prefix)) + 1
     stripped_strs = [s[offset:end] for s in files]
+    println(stripped_strs)
     for stripped_str in stripped_strs
+        check_strs = copy(stripped_strs)
         for (i, c) in enumerate(stripped_str)
-            if sum(c === s[i] for s in stripped_strs) == 1
+            check_index = [((i <= length(check_str)) && (c === check_str[i])) for check_str in check_strs]
+            if sum(check_index) == 1
                 push!(stretches, stripped_str[1:i-1])
                 break
             end
+            check_strs = check_strs[check_index]
         end
     end
-    common_end_len = length(commonend(stretches))
+    println(stretches)
+    common_end = commonend(stretches)
+    i = findlast(delimiter_suffix, common_end)
+    println(i)
+    common_end_len = isnothing(i) ? length(common_end) : length(common_end)-i+1
     conds = [s[1:end-common_end_len] for s in stretches]
-    return Dict(c => collect(findall(c, conds)) for c in unique(conds))
+    return Dict(c => collect(findall(c .== conds)) for c in unique(conds))
 end
 
 function SingleTypeFiles(files::Vector{String})
@@ -99,8 +107,8 @@ function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffi
     PairedSingleTypeFiles([(joinpath(folder, name * suffix1 * type), joinpath(folder, name * suffix2 * type)) for name in names1], type, suffix1, suffix2)
 end
 
-conditionsdict(files::SingleTypeFiles) = conditionsdict([basename(f) for f in files.list])
-conditionsdict(files::PairedSingleTypeFiles) = conditionsdict([basename(f[1]) for f in files.list])
+groupfiles(files::SingleTypeFiles) = groups([basename(f) for f in files.list])
+groupfiles(files::PairedSingleTypeFiles) = groups([basename(f[1]) for f in files.list])
 
 type(files::T) where {T<:FileCollection} = files.type
 Base.length(files::T) where {T<:FileCollection} = length(files.list)
@@ -129,19 +137,6 @@ end
 function Base.dirname(files::PairedSingleTypeFiles)
     hassingledir(files) || throw(AssertionError("Files have to be in a single folder."))
     return dirname(files.list[1][1])
-end
-
-function Base.write(fname::String, files::SingleTypeFiles)
-    files.type in (".csv",) || throw(AssertionError("File type has to be .csv"))
-    if files.type == ".csv"
-        tables = Vector{Tuple{String,Vector{Any},Vector{String}}}()
-        for file in files
-            sheetname = basename(file)[1:end-length(files.type)]
-            dataframe = DataFrame(CSV.File(file; stringtype=String))
-            push!(tables,(sheetname,collect(eachcol(dataframe)), names(dataframe)))
-        end
-        XLSX.writetable(fname, tables; overwrite=true)
-    end
 end
 
 function Base.show(files::SingleTypeFiles)
@@ -174,4 +169,5 @@ PairedFastqFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = P
 PairedFastqgzFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fastq.gz"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
 PairedFastaFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fasta"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
 PairedFastagzFiles(folder::String; suffix1="_1", suffix2="_2", prefix=nothing) = PairedSingleTypeFiles(folder, ".fasta.gz"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
-CoverageFiles(folder::String; suffix1="_forward", suffix2="_reverse", prefix=nothing) = PairedSingleTypeFiles(folder, ".bw"; suffix1=suffix1, suffix2=suffix2, prefix=prefix)
+CoverageFiles(folder::String; suffix_forward="_forward", suffix_reverse="_reverse", prefix=nothing) =
+    PairedSingleTypeFiles(folder, ".bw"; suffix1=suffix_forward, suffix2=suffix_reverse, prefix=prefix)

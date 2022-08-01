@@ -1,11 +1,11 @@
 module RNASeqTools
 
 import XAM: BAM
-using FASTX, CSV, XLSX, CodecZlib, GFF3, BigWig, DelimitedFiles, JLD2, BGZFStreams
+using FASTX, CodecZlib, GFF3, BigWig, DelimitedFiles, BGZFStreams
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 import DataFrames: DataFrame, sort, nrow, names, innerjoin
 using Statistics, HypothesisTests, MultipleTesting, Combinatorics, Random, Distributions, GLM, StatsBase
-using LightGraphs, ElasticArrays, IterTools
+using ElasticArrays, IterTools
 
 export align_mem, align_minimap, align_kraken2
 export trim_fastp, split_libs, download_prefetch, download_fasterq
@@ -16,11 +16,9 @@ export PairedFastaFiles, PairedFastagzFiles, PaireFastqFiles, PairedFastqgzFiles
 export cut!, approxoccursin, nucleotidecount, similarcount, approxcount, hassimilar, annotate!, featureseqs, asdataframe, transform, ispositivestrand
 export hasannotation, annotatedcount, annotationcount, alignednucleotidescount, ischimeric, refinterval, readrange, refrange, annotation, hasannotation, ispositivestrand, sameread
 export name, type, overlap, count, parts, refname, featureparams, featureparam, setfeatureparam, hastype, hasname, typein, namein, distanceonread
-export values, add5utrs!, add3utrs!, addigrs!, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, covratio, conditionsdict
+export values, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, covratio, conditionsdict
 export similarity, transcriptionalstartsites, terminationsites, hasannotationkey, readid, summarize, missmatchcount, eachpair, isfirstread, testsignificance!, addrelativepositions!
-export checkinteractions, checktopsingles, uniqueinteractions, mismatchfractions, ismulti, mismatchpositions, deletionpositions, normalize!, addpvalues!
-export feature_ratio, feature_count, preprocess_data, chimeric_alignments, remove_features, extract_unmapped_reads, full_annotation
-export preprocess_data, direct_rna_pipeline, tss_annotation
+export preprocess_data, groupfiles
 export ANNOTATION_VCH, GENOME_VCH
 
 include("types.jl")
@@ -31,8 +29,6 @@ include("coverage.jl")
 include("annotation.jl")
 include("counts.jl")
 include("alignment.jl")
-include("chimeric.jl")
-include("templates.jl")
 
 const ANNOTATION_VCH = "/home/abc/Data/vibrio/annotation/NC_002505_6.gff"
 const GENOME_VCH = "/home/abc/Data/vibrio/genome/NC_002505_6.fa"

@@ -1,3 +1,15 @@
+function coveragecount(features::Features, samples::Vector{Coverage}; aggregation=maximum)
+    vals = [values(coverage) for coverage in samples]
+    averages = zeros(Float64, length(features), length(samples))
+    for (j,rep) in enumerate(vals)
+        for (i,feature) in enumerate(features)
+            strand_vals = strand(feature) === STRAND_NEG ? last(rep[refname(feature)]) : first(rep[refname(feature)])
+            averages[i,j] = aggregation(strand_vals[leftposition(feature):rightposition(feature)])
+        end
+    end
+    return averages
+end
+
 function FeatureCounts(features::Features, samples::Vector{Coverage}; conditions=Dict("sample"=>collect(1:length(samples))), aggregation=maximum, normalization_method=:none)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     c = coveragecount(features, samples; aggregation=aggregation)
@@ -6,13 +18,13 @@ function FeatureCounts(features::Features, samples::Vector{Coverage}; conditions
     return FeatureCounts(conditions, c, features)
 end
 
-function FeatureCounts(features::Features, samples::PairedSingleTypeFiles; conditions=conditionsdict(samples), aggregation=:maximum, normalization_method=:none)
+function FeatureCounts(features::Features, samples::PairedSingleTypeFiles; conditions=groups(samples), aggregation=:maximum, normalization_method=:none)
     samples.type === ".bw" || throw(AssertionError("File type has to be .bw"))
     coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in samples]
     FeatureCounts(features, coverages; conditions=conditions, aggregation=aggregation, normalization_method=normalization_method)
 end
 
-function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=conditionsdict(samples),
+function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=groups(samples),
         normalization_method=:none, include_secondary_alignments=true, include_alternative_alignments=false)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     samples.type === ".bam" || throw(AssertionError("File type has to be .bam"))
@@ -42,18 +54,6 @@ end
 Base.length(counts::T) where {T<:CountContainer} = size(counts.values)[1]
 
 conditionrange(counts::T, condition::String) where {T<:CountContainer} = counts.conditions[condition]
-
-function coveragecount(features::Features, samples::Vector{Coverage}; aggregation=maximum)
-    vals = [values(coverage) for coverage in samples]
-    averages = zeros(Float64, length(features), length(samples))
-    for (j,rep) in enumerate(vals)
-        for (i,feature) in enumerate(features)
-            strand_vals = strand(feature) === STRAND_NEG ? last(rep[refname(feature)]) : first(rep[refname(feature)])
-            averages[i,j] = aggregation(strand_vals[leftposition(feature):rightposition(feature)])
-        end
-    end
-    return averages
-end
 
 function gmean(a::Array{Float64})
     s = 0.0
@@ -100,7 +100,7 @@ end
 normalize!(counts::T, features::Features, genome::Genome; normalization_method=:cqn) where {T<:CountContainer} =
     normalize!(counts.values, features, genome; normalization_method=normalization_method)
 
-function dge_ttest(counts::T, control_condition::String, experiment_condition::String; within_sample=false, tail=:both) where {T<:CountContainer}
+function difference_ttest(counts::T, control_condition::String, experiment_condition::String; within_sample=false, tail=:both) where {T<:CountContainer}
     avg_control = vec(mean(counts[control_condition], dims=2))
     avg_experiment = vec(mean(counts[experiment_condition], dims=2))
     m_control = counts[control_condition]
@@ -113,7 +113,7 @@ function dge_ttest(counts::T, control_condition::String, experiment_condition::S
     return (avg_control, fc, padj)
 end
 
-function dge_glm(counts::T, control_condition::String, experiment_condition::String; d=NegativeBinomial(), tail=:both) where {T<:CountContainer}
+function difference_glm(counts::T, control_condition::String, experiment_condition::String; d=NegativeBinomial(), tail=:both) where {T<:CountContainer}
     control_range = counts.conditions[control_condition]
     exp_range = counts.conditions[experiment_condition]
     design_matrix = ones(Int, (length(control_range)+length(exp_range), 2))
@@ -125,7 +125,7 @@ function dge_glm(counts::T, control_condition::String, experiment_condition::Str
     compute_pvalue = tail === :both ? x -> 2 * ccdf(Normal(), abs(x)) :
                         tail === :right ? x -> ccdf(Normal(), x) :
                         tail === :left ? x -> cdf(Normal(), x) :
-                        raise(AssertionError("tail can be :both, :right or :left"))
+                        raise(AssertionError("tail can be :right, :left or :both"))
     l = LogLink()
     for (i, y) in enumerate(eachrow(data_matrix))
         try
@@ -149,7 +149,7 @@ function dge_glm(counts::T, control_condition::String, experiment_condition::Str
     return (exp.(bases), fcs, padj)
 end
 
-function dgetable(counts::Counts, control_condition::String, experiment_condition::String; method=:ttest)
+function differential_counts_table(counts::Counts, control_condition::String, experiment_condition::String; method=:glm)
     method in (:glm, :ttest) || throw(AssertionError("Method must be eather :ttest or :glm"))
 
     dge_function = method === :glm ? dge_glm : dge_ttest

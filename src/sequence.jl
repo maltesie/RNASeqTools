@@ -175,27 +175,6 @@ function Base.filter!(seqs::Sequences{T}, ids::Set{T}) where {T<:Union{String, U
     resize!(seqs.seqnames, n_seqs)
 end
 
-function Base.write(fasta_file::String, seqs::Sequences; compression_level=3)
-    f = endswith(fasta_file, ".gz") ? GzipCompressorStream(open(fasta_file, "w"); level=compression_level) : open(fasta_file, "w")
-    for (i, read) in enumerate(seqs)
-        h = seqs isa Sequences{String} ? replace(seqs.seqnames[i], " "=>"_") : seqs.seqnames[i]
-        write(f, ">$h\n$(String(read))\n")
-    end
-    close(f)
-end
-
-function Base.write(fasta_file1::String, fasta_file2::String, seqs::Sequences; compression_level=3)
-    f1 = endswith(fasta_file1, ".gz") ? GzipCompressorStream(open(fasta_file1, "w"); level=compression_level) : open(fasta_file1, "w")
-    f2 = endswith(fasta_file2, ".gz") ? GzipCompressorStream(open(fasta_file2, "w"); level=compression_level) : open(fasta_file2, "w")
-    for (i, (read1, read2)) in enumerate(eachpair(seqs))
-        h = seqs isa Sequences{String} ? replace(seqs.seqnames[2*i], " "=>"_") : seqs.seqnames[2*i]
-        write(f1, ">$h\n$(String(read1))\n")
-        write(f2, ">$h\n$(String(read2))\n")
-    end
-    close(f1)
-    close(f2)
-end
-
 function read_reads(file::String; is_reverse_complement=false, hash_id=true)::Sequences
     seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
     is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
@@ -339,19 +318,20 @@ approxcount(test_sequence::LongDNASeq, genomes::Vector{Genome}; k=1) = sum(appro
 
 approxcount(genome::Genome, test_sequences::Sequences; k=1) = sum(approxoccursin(s, genome.seq; k=k) for s in test_sequences)
 
-similarcount(test_sequence::LongDNASeq, seqs::Sequences, similarity_cut::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
-    sum(similarity(test_sequence, seq; score_model=score_model) > similarity_cut for seq in seqs)
+similarcount(test_sequence::LongDNASeq, seqs::Sequences, min_score::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
+    sum(normalized_alignment_score(test_sequence, seq; score_model=score_model) >= min_score for seq in seqs)
 
-hassimilar(genome::Genome, test_sequence::LongDNASeq, similarity_cut::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
-    similarity(test_sequence, genome.seq; score_model=score_model) > similarity_cut
+hassimilar(genome::Genome, test_sequence::LongDNASeq, min_score::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
+    normalized_alignment_score(test_sequence, genome.seq; score_model=score_model) >= min_score
 
-function similarity(read1::LongDNASeq, read2::LongDNASeq; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1))
+function normalized_alignment_score(read1::LongDNASeq, read2::LongDNASeq; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1))
     (length(read1) > length(read2)) ? ((short_seq, long_seq) = (read2, read1)) : ((short_seq, long_seq) = (read1, read2))
     aln = pairalign(OverlapAlignment(), long_seq, short_seq, score_model; score_only=false)
     return max(BioAlignments.score(aln), 0.0)/length(short_seq)
 end
 
-function nucleotidecount(seqs::Sequences; normalize=true)
+function nucleotidecount(seqs::Sequences; normalize=true, align=:left)
+    align in (:left, :right) || throw(AssertionError("align has to be :left or :right"))
     max_length = maximum([length(read) for read in seqs])
     count = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     for read in seqs
