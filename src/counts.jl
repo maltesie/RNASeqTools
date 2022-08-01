@@ -1,10 +1,12 @@
-function coveragecount(features::Features, samples::Vector{Coverage}; aggregation=maximum)
+function coveragecount(features::Features, samples::Vector{Coverage}; aggregation=:max)
+    aggregation in (:max, :mean) || throw(AssertionError("aggretation must be :max or :mean"))
     vals = [values(coverage) for coverage in samples]
     averages = zeros(Float64, length(features), length(samples))
+    aggfn = aggregation == :max ? maximum : mean
     for (j,rep) in enumerate(vals)
         for (i,feature) in enumerate(features)
             strand_vals = strand(feature) === STRAND_NEG ? last(rep[refname(feature)]) : first(rep[refname(feature)])
-            averages[i,j] = aggregation(strand_vals[leftposition(feature):rightposition(feature)])
+            averages[i,j] = aggfn(abs.(strand_vals[leftposition(feature):rightposition(feature)]))
         end
     end
     return averages
@@ -18,14 +20,14 @@ function FeatureCounts(features::Features, samples::Vector{Coverage}; conditions
     return FeatureCounts(conditions, c, features)
 end
 
-function FeatureCounts(features::Features, samples::PairedSingleTypeFiles; conditions=groups(samples), aggregation=:maximum, normalization_method=:none)
+function FeatureCounts(features::Features, samples::PairedSingleTypeFiles; conditions=groupfiles(samples), aggregation=:max, normalization_method=:none)
     samples.type === ".bw" || throw(AssertionError("File type has to be .bw"))
     coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in samples]
     FeatureCounts(features, coverages; conditions=conditions, aggregation=aggregation, normalization_method=normalization_method)
 end
 
-function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=groups(samples),
-        normalization_method=:none, include_secondary_alignments=true, include_alternative_alignments=false)
+function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=groupfiles(samples),
+        normalization_method=:none, include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     samples.type === ".bam" || throw(AssertionError("File type has to be .bam"))
     counts = zeros(Float64, length(features), sum(length(v) for v in values(conditions)))
@@ -33,7 +35,8 @@ function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=
     for range in values(conditions)
         mybams = samples[range]
         for (i, bam_file) in enumerate(mybams)
-            alignments = Alignments(bam_file; include_secondary_alignments=include_secondary_alignments, include_alternative_alignments=include_alternative_alignments)
+            alignments = Alignments(bam_file; include_secondary_alignments=include_secondary_alignments,
+                                    include_alternative_alignments=include_alternative_alignments, is_reverse_complement=is_reverse_complement)
             annotate!(alignments, features)
             for alignment in alignments
                 for part in alignment
@@ -100,6 +103,25 @@ end
 normalize!(counts::T, features::Features, genome::Genome; normalization_method=:cqn) where {T<:CountContainer} =
     normalize!(counts.values, features, genome; normalization_method=normalization_method)
 
+function asdataframe(counts::T, names=nothing) where {T<:CountContainer}
+    df = DataFrame()
+    if counts isa FeatureCounts
+        df[!, :name] = length(types(counts.features)) > 1 ? [name(feature) * "_" * type(feature) for feature in counts.features] : [name(feature) for feature in counts.features]
+        df[!, :strand]  = [strand(feature) for feature in counts.features]
+        df[!, :left] = [leftposition(feature) for feature in counts.features]
+        df[!, :right] = [rightposition(feature) for feature in counts.features]
+    else
+        df[!, :name] = ["$i" for i in 1:length(counts)]
+    end
+    isnothing(names) || (df[!, :name] = names)
+    for (c, r) in counts.conditions
+        for (i, ii) in enumerate(r)
+            df[!, Symbol("$(c)_$i")] = vec(counts.values[:, ii])
+        end
+    end
+    return df
+end
+
 function difference_ttest(counts::T, control_condition::String, experiment_condition::String; within_sample=false, tail=:both) where {T<:CountContainer}
     avg_control = vec(mean(counts[control_condition], dims=2))
     avg_experiment = vec(mean(counts[experiment_condition], dims=2))
@@ -144,28 +166,21 @@ function difference_glm(counts::T, control_condition::String, experiment_conditi
             ps[i] = 1.0
         end
     end
-    println(sum(isnan(v) for v in ps))
     padj = adjust(PValues(ps), BenjaminiHochberg())
     return (exp.(bases), fcs, padj)
 end
 
-function differential_counts_table(counts::Counts, control_condition::String, experiment_condition::String; method=:glm)
+function difference_table(counts::T, control_condition::String, experiment_condition::String; method=:glm) where {T<:CountContainer}
     method in (:glm, :ttest) || throw(AssertionError("Method must be eather :ttest or :glm"))
 
-    dge_function = method === :glm ? dge_glm : dge_ttest
-    (base, fc, padj) = dge_function(counts, control_condition, experiment_condition)
+    difference_function = method === :glm ? difference_glm : difference_ttest
+    (base_mean, fc, padj) = difference_function(counts, control_condition, experiment_condition)
 
-    return DataFrame(
-        feature=[name(feature) for feature in count.features],
-        type=[type(feature) for feature in count.features],
-        strand=[strand(feature) for feature in count.features],
-        left=[leftposition(feature) for feature in count.features],
-        right=[rightposition(feature) for feature in count.features],
-        base=base,
-        foldChange=round.(2 .^ fc; digits=3),
-        log2FoldChange=round.(fc; digits=3),
-        fdr=padj,
-    )
+    df = asdataframe(counts)
+    df.base_mean = base_mean
+    df.fdr = padj
+    df.fc = fc
+    return df
 end
 
 function correlation(counts::Counts)

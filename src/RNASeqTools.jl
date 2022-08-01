@@ -10,15 +10,15 @@ using ElasticArrays, IterTools
 export align_mem, align_minimap, align_kraken2
 export trim_fastp, split_libs, download_prefetch, download_fasterq
 export Genome, Sequences, PairedSequences, Alignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage
-export Interactions, Annotation, AlignmentAnnotation, BaseAnnotation, BaseCoverage, Counts, GenomeComparison
+export Interactions, Annotation, AlignmentAnnotation, BaseAnnotation, BaseCoverage, Counts, FeatureCounts, GenomeComparison
 export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles, GraphFiles
 export PairedFastaFiles, PairedFastagzFiles, PaireFastqFiles, PairedFastqgzFiles
 export cut!, approxoccursin, nucleotidecount, similarcount, approxcount, hassimilar, annotate!, featureseqs, asdataframe, transform, ispositivestrand
 export hasannotation, annotatedcount, annotationcount, alignednucleotidescount, ischimeric, refinterval, readrange, refrange, annotation, hasannotation, ispositivestrand, sameread
 export name, type, overlap, count, parts, refname, featureparams, featureparam, setfeatureparam, hastype, hasname, typein, namein, distanceonread
-export values, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, covratio, conditionsdict
-export similarity, transcriptionalstartsites, terminationsites, hasannotationkey, readid, summarize, missmatchcount, eachpair, isfirstread, testsignificance!, addrelativepositions!
-export preprocess_data, groupfiles
+export values, hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, mincorrelation, covratio, conditionsdict, normalize!
+export similarity, transcriptionalstartsites, terminationsites, hasannotationkey, readid, summarize, missmatchcount, eachpair, isfirstread
+export preprocess_data, groupfiles, difference_table
 export ANNOTATION_VCH, GENOME_VCH
 
 include("types.jl")

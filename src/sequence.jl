@@ -290,16 +290,12 @@ end
 
 function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
     0 <= pos <= length(read) || resize!(read, 0)
-
     if (from == :left) && (keep == :left)
         resize!(read, pos)
-
     elseif (from == :left) && (keep == :right)
         reverse!(resize!(reverse!(read), length(read)-pos))
-
     elseif (from == :right) && (keep == :left)
         resize!(read, length(read)-pos)
-
     elseif (from == :right) && (keep == :right)
         reverse!(resize!(reverse!(read), pos))
     end
@@ -316,7 +312,7 @@ end
 
 approxcount(test_sequence::LongDNASeq, genomes::Vector{Genome}; k=1) = sum(approxoccursin(test_sequence, genome.seq; k=k) for genome in genomes)
 
-approxcount(genome::Genome, test_sequences::Sequences; k=1) = sum(approxoccursin(s, genome.seq; k=k) for s in test_sequences)
+approxcount(test_sequences::Sequences, genome::Genome; k=1) = sum(approxoccursin(s, genome.seq; k=k) for s in test_sequences)
 
 similarcount(test_sequence::LongDNASeq, seqs::Sequences, min_score::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
     sum(normalized_alignment_score(test_sequence, seq; score_model=score_model) >= min_score for seq in seqs)
@@ -324,9 +320,11 @@ similarcount(test_sequence::LongDNASeq, seqs::Sequences, min_score::Float64; sco
 hassimilar(genome::Genome, test_sequence::LongDNASeq, min_score::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
     normalized_alignment_score(test_sequence, genome.seq; score_model=score_model) >= min_score
 
-function normalized_alignment_score(read1::LongDNASeq, read2::LongDNASeq; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1))
+function normalized_alignment_score(read1::LongDNASeq, read2::LongDNASeq;
+    score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1), alignment_type=OverlapAlignment())
+
     (length(read1) > length(read2)) ? ((short_seq, long_seq) = (read2, read1)) : ((short_seq, long_seq) = (read1, read2))
-    aln = pairalign(OverlapAlignment(), long_seq, short_seq, score_model; score_only=false)
+    aln = pairalign(alignment_type, long_seq, short_seq, score_model; score_only=false)
     return max(BioAlignments.score(aln), 0.0)/length(short_seq)
 end
 
@@ -349,3 +347,4 @@ function nucleotidecount(seqs::Sequences; normalize=true, align=:left)
     end
     return count
 end
+

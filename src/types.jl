@@ -21,6 +21,11 @@ struct Sequences{T<:Union{String, UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
+struct SequenceLogo
+    alphabet::Alphabet
+    bits::Matrix{Float64}
+end
+
 struct Genome
     seq::LongDNASeq
     chroms::Dict{String, UnitRange{Int}}
@@ -80,12 +85,12 @@ struct Features{T} <: AnnotationContainer
 end
 
 struct Counts <: CountContainer
-    conditions::Dict{String, UnitRange{Int}}
+    conditions::Dict{String, Vector{Int}}
     values::Matrix{Float64}
 end
 
 struct FeatureCounts <: CountContainer
-    conditions::Dict{String, UnitRange{Int}}
+    conditions::Dict{String, Vector{Int}}
     values::Matrix{Float64}
     features::Features{Annotation}
 end

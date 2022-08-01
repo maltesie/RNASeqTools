@@ -124,7 +124,7 @@ function Features(gff_file::String, bam_file::String, genome::Genome)
     return Features(IntervalCollection(new_intervals, true), genome.chroms)
 end
 
-type(features::Features) = Set(type(f) for f in features)
+types(features::Features) = Set(type(f) for f in features)
 refnames(features::Features) = collect(keys(features.list.trees))
 function overlaps(alignmentinterval::Interval{T}, feature::Interval{Annotation}) where T<:AnnotationStyle
     refname(feature) == refname(alignmentinterval) || return false

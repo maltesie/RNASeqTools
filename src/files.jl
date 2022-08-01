@@ -41,7 +41,6 @@ function groups(files::Vector{String}; delimiter_prefix='_', delimiter_suffix='_
     stretches = String[]
     offset = length(commonprefix(files; delimiter=delimiter_prefix)) + 1
     stripped_strs = [s[offset:end] for s in files]
-    println(stripped_strs)
     for stripped_str in stripped_strs
         check_strs = copy(stripped_strs)
         for (i, c) in enumerate(stripped_str)
@@ -53,10 +52,8 @@ function groups(files::Vector{String}; delimiter_prefix='_', delimiter_suffix='_
             check_strs = check_strs[check_index]
         end
     end
-    println(stretches)
     common_end = commonend(stretches)
     i = findlast(delimiter_suffix, common_end)
-    println(i)
     common_end_len = isnothing(i) ? length(common_end) : length(common_end)-i+1
     conds = [s[1:end-common_end_len] for s in stretches]
     return Dict(c => collect(findall(c .== conds)) for c in unique(conds))
