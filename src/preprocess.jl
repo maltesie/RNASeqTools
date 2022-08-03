@@ -137,7 +137,7 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
 end
 
 function trim_fastp(input_files::SingleTypeFiles;
-    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=nothing, min_length=25,
+    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=nothing, min_length=20,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, deduplicate=false, skip_quality_filtering=true, overwrite_existing=false)
 
@@ -151,7 +151,7 @@ function trim_fastp(input_files::SingleTypeFiles;
 end
 
 function trim_fastp(input_files::PairedSingleTypeFiles;
-    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=25,
+    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, deduplicate=true, skip_quality_filtering=true, overwrite_existing=false)
 
@@ -367,8 +367,8 @@ end
     - ´reseeding_factor::Float64´: Trigger re-seeding for a MEM longer than minSeedLenFLOAT. Larger value yields fewer seeds, which leads to faster alignment speed but lower accuracy.
 """
 function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::String, genome_file::String;
-    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
-    min_seed_len=19, reseeding_factor=1.5, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools")
+    min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
+    min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools")
 
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
@@ -390,8 +390,8 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
         stats_file))
 end
 align_mem(in_file::String, out_file::String, genome_file::String;
-    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=19,
-    reseeding_factor=1.5, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools") =
+    min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=18,
+    reseeding_factor=1.4, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools") =
     align_mem(in_file, nothing, out_file::String, genome_file::String;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, min_seed_len=min_seed_len,
         reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, bwa_bin=bwa_bin, sam_bin=sam_bin)
@@ -401,8 +401,8 @@ align_mem(in_file::String, out_file::String, genome_file::String;
     where T is a FileCollection and aligns it against `genome::Genome`. This enables easy handling of
     whole folders containing sequence files and the manipulation of a genome using Genome.
 """
-function align_mem(read_files::T, genome::Genome; min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1,
-    clipping_penalty=5, unpair_penalty=9, reseeding_factor=1.5, min_seed_len=19, unpair_rescue=false, is_ont=false,
+function align_mem(read_files::T, genome::Genome; min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1,
+    clipping_penalty=5, unpair_penalty=9, reseeding_factor=1.4, min_seed_len=18, unpair_rescue=false, is_ont=false,
     threads=6, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
 
     tmp_genome = tempname()
@@ -435,8 +435,8 @@ end
     is a SequenceContainer and aligns it against `genomes::Vector{Genome}`. This enables easy handling
     of Sequences and their alignment against multiple genomes.
 """
-function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String; min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1,
-    clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, min_seed_len=19, reseeding_factor=1.5, is_ont=false, threads=6,
+function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String; min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1,
+    clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6,
     bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
 
     (isfile(out_file) && !overwrite_existing) && return
@@ -487,7 +487,7 @@ function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String; 
     end
 end
 align_mem(reads::T, genome::Genome, out_file::String;
-    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, unpair_penalty=9, min_seed_len=19, reseeding_factor=1.5,
+    min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, unpair_penalty=9, min_seed_len=18, reseeding_factor=1.4,
     unpair_rescue=false, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:Sequences} =
     align_mem(reads, [genome], out_file;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty,
@@ -495,11 +495,11 @@ align_mem(reads::T, genome::Genome, out_file::String;
         bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
 function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, genome::Genome;
-    fastp_bin="fastp", trimmed_prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=25, max_length=nothing,
+    fastp_bin="fastp", trimmed_prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20, max_length=nothing,
     cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=25, deduplicate=false, skip_quality_filtering=false,
-    min_score=25, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
-    min_seed_len=19, reseeding_factor=1.5, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools",
+    min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
+    min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools",
     norm=1000000, include_secondary_alignments=true, suffix_forward="_forward", suffix_reverse="_reverse",
     overwrite_existing=false)
 

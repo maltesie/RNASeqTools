@@ -34,7 +34,7 @@ function commonsuffix(files::Vector{String}; delimiter_suffix='_', delimiter_fil
     common_filetype_len = length(commonfiletype(files; delimiter=delimiter_filetype))
     common_end = commonend([f[1:end-common_filetype_len] for f in files])
     i = findlast(delimiter_suffix, common_end)
-    return isnothing(i) ? common_end : common_suffix[i:end]
+    return isnothing(i) ? common_end : common_end[i:end]
 end
 
 function groups(files::Vector{String}; delimiter_prefix='_', delimiter_suffix='_')
