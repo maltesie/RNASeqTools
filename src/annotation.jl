@@ -239,22 +239,28 @@ end
 function covratio(features::Features, coverage::Coverage; round_digits=2)
     vals = values(coverage)
     total = 0.0
-    for val in values(vals)
-        total += sum(first(val)) - sum(last(val))
+    for (values_forward, values_reverse) in values(vals)
+        total += sum(values_forward) - sum(values_reverse)
     end
-    s = 0.0
-    for feature in features
-        is_negative_strand = strand(feature) === STRAND_NEG
-        v = vals[refname(feature)][is_negative_strand ? 2 : 1]
-        if rightposition(feature) > length(v)
-            x = sum(v[leftposition(feature):end]) + sum(v[1:(rightposition(feature)-length(v))])
-        else
-            x = sum(v[leftposition(feature):rightposition(feature)])
+    ratios = Pair{String, Float64}[]
+    for t in types(features)
+        s = 0.0
+        check_index = Dict(chr=>(zeros(Bool, length(v1)), zeros(Bool, length(v2))) for (chr, (v1,v2)) in vals)
+        for feature in features
+            type(feature) == t || continue
+            is_negative_strand = strand(feature) === STRAND_NEG
+            check_index[refname(feature)][is_negative_strand ? 2 : 1][leftposition(feature):rightposition(feature)] .= true
         end
-        s += is_negative_strand ? x : -x
+        for (chr, (v1, v2)) in vals
+            s += sum(v1[check_index[chr][1]])
+            s -= sum(v2[check_index[chr][2]])
+        end
+        push!(ratios, t=>round(s/total; digits=round_digits))
     end
-    return round(s/total; digits=round_digits)
+    return ratios
 end
+covratio(features::Features, coverages::PairedSingleTypeFiles; round_digits=2) =
+    [covratio(features, Coverage(f1, f2); round_digits=round_digits) for (f1, f2) in coverages]
 
 function asdataframe(features::Features; add_keys=:all)
     add_keys === :none && (add_keys = Set())
@@ -281,7 +287,7 @@ end
 
 function Base.show(features::Features)
     chrs = refnames(features)
-    ts = type(features)
+    ts = types(features)
     stats = Dict(chr=>Dict(t=>0 for t in ts) for chr in chrs)
     nb_pos = 0
     nb_neg = 0
