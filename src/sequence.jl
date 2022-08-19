@@ -341,10 +341,17 @@ function nucleotidecount(seqs::Sequences; normalize=true, align=:left)
         end
     end
     if normalize
-        for (_, c) in count
-            c /= length(seqs)
+        for c in values(count)
+            c ./= length(seqs)
         end
     end
     return count
 end
 
+information_content(m::Matrix{Float64}; n=Inf) = m .* (2 .- [-1 * sum(x > 0 ? x .* log2.(x) : 0 for x in r) for r in eachcol(m)] .- (3/(2*log(2)*n)))'
+
+function logo(seqs::Sequences)
+    nc = nucleotidecount(seqs)
+    m = hcat(nc[DNA_A], nc[DNA_T], nc[DNA_G], nc[DNA_C])
+    information_content(m; n=length(seqs))
+end
