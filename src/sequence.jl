@@ -1,5 +1,5 @@
-function Genome(sequences::Vector{LongDNASeq}, names::Vector{String})
-    seq = LongDNASeq(0)
+function Genome(sequences::Vector{LongDNA}, names::Vector{String})
+    seq = LongDNA(0)
     chrs = Dict{String, UnitRange}()
     sequence_position = 1
     for (sequence, name) in zip(sequences, names)
@@ -10,7 +10,7 @@ function Genome(sequences::Vector{LongDNASeq}, names::Vector{String})
     return Genome(seq, chrs)
 end
 
-function Genome(sequence::LongDNASeq, name::String)
+function Genome(sequence::LongDNA, name::String)
     return Genome([sequence], [name])
 end
 
@@ -24,7 +24,7 @@ function Genome(genome_fasta::String)
         temp_start += length(chr_seq)
         total_seq *= chr_seq
     end
-    Genome(LongDNASeq(total_seq), chrs)
+    Genome(LongDNA(total_seq), chrs)
 end
 
 Base.length(genome::Genome) = length(genome.seq)
@@ -95,18 +95,18 @@ function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String; n
 end
 
 function Sequences()
-    Sequences(LongDNASeq(""), UInt[], UnitRange{Int}[])
+    Sequences(LongDNA(""), UInt[], UnitRange{Int}[])
 end
 
 function Sequences(::Type{T}) where {T<:Union{String, UInt}}
-    Sequences(LongDNASeq(""), T[], UnitRange{Int}[])
+    Sequences(LongDNA(""), T[], UnitRange{Int}[])
 end
 
-function Sequences(seqs::Vector{LongDNASeq}, seqnames::Vector{UInt})
+function Sequences(seqs::Vector{LongDNA}, seqnames::Vector{UInt})
     (length(seqnames) == length(seqs)) || throw(AssertionError("number of names must match the number of sequences!"))
     (length(seqnames) == length(unique(seqnames))) || throw(AssertionError("names must be unique!"))
     ranges = Vector{UnitRange{Int}}(undef, length(seqs))
-    seq = LongDNASeq("")
+    seq = LongDNA("")
     resize!(seq, sum(length(s) for s in seqs))
     current_range = 1:0
     for (i,s) in enumerate(seqs)
@@ -117,13 +117,13 @@ function Sequences(seqs::Vector{LongDNASeq}, seqnames::Vector{UInt})
     sortindex = sortperm(seqnames)
     return Sequences(seq, seqnames[sortindex], ranges[sortindex])
 end
-Sequences(seqs::Vector{LongDNASeq}) = Sequences(seqs, Vector{UInt}(1:length(seqs)))
+Sequences(seqs::Vector{LongDNA}) = Sequences(seqs, Vector{UInt}(1:length(seqs)))
 
-function Sequences(seqs::Vector{LongDNASeq}, seqnames::Vector{String})
+function Sequences(seqs::Vector{LongDNA}, seqnames::Vector{String})
     (length(seqnames) == length(seqs)) || throw(AssertionError("number of names must match the number of sequences!"))
     (length(seqnames) == length(unique(seqnames))) || throw(AssertionError("names must be unique!"))
     ranges = Vector{UnitRange{Int}}(undef, length(seqs))
-    seq = LongDNASeq("")
+    seq = LongDNA("")
     resize!(seq, sum(length(s) for s in seqs))
     current_range = 1:0
     for (i,s) in enumerate(seqs)
@@ -187,7 +187,7 @@ function read_reads(file::String; is_reverse_complement=false, hash_id=true)::Se
     while !eof(reader)
         read!(reader, record)
         id = hash_id ? hash(@view(record.data[record.identifier])) : FASTX.identifier(record)
-        s = LongDNASeq(@view(record.data[record.sequence]))
+        s = LongDNA(@view(record.data[record.sequence]))
         is_reverse_complement && reverse_complement!(s)
         i += 1
         current_range = last(current_range)+1:last(current_range)+length(record.sequence)
@@ -235,8 +235,8 @@ function read_reads(file1::String, file2::String; is_reverse_complement=false, h
         id1 === id2 || throw(
             AssertionError("tempnames of read1 and read2 do not match: $(String(record1.data[record1.identifier])) != $(String(record2.data[record2.identifier]))")
         )
-        s1 = LongDNASeq(@view record1.data[record1.sequence])
-        s2 = LongDNASeq(@view record2.data[record2.sequence])
+        s1 = LongDNA(@view record1.data[record1.sequence])
+        s2 = LongDNA(@view record2.data[record2.sequence])
         is_reverse_complement && ((s1,s2) = (s2,s1))
         reverse_complement!(s2)
         i += 1
@@ -267,7 +267,7 @@ function read_reads(file1::String, file2::String; is_reverse_complement=false, h
     return seqs
 end
 
-function translation_dict(from_sequence::LongDNASeq, to_sequence::LongDNASeq)
+function translation_dict(from_sequence::LongDNA, to_sequence::LongDNA)
     scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
     res = alignment(pairalign(GlobalAlignment(), from_sequence, to_sequence, scoremodel))
     trans_dict::Dict{Int, Union{Nothing, Int}} = Dict()
@@ -288,7 +288,7 @@ function translation_dict(from_sequence::LongDNASeq, to_sequence::LongDNASeq)
     return trans_dict
 end
 
-function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
+function cut!(read::LongDNA, pos::Int; keep=:left, from=:left)
     0 <= pos <= length(read) || resize!(read, 0)
     if (from == :left) && (keep == :left)
         resize!(read, pos)
@@ -301,26 +301,26 @@ function cut!(read::LongDNASeq, pos::Int; keep=:left, from=:left)
     end
 end
 
-function cut!(read::LongDNASeq, int::Tuple{Int, Int})
+function cut!(read::LongDNA, int::Tuple{Int, Int})
     (0 <= first(int) < last(int) <= length(read)) || resize!(read, 0)
     reverse!(resize!(reverse!(resize!(read, last(int))), length(read)-first(int)+1))
 end
 
-function approxoccursin(s1::LongDNASeq, s2::LongDNASeq; k=1)
+function approxoccursin(s1::LongDNA, s2::LongDNA; k=1)
     return approxsearch(s2, s1, k) != 0:-1
 end
 
-approxcount(test_sequence::LongDNASeq, genomes::Vector{Genome}; k=1) = sum(approxoccursin(test_sequence, genome.seq; k=k) for genome in genomes)
+approxcount(test_sequence::LongDNA, genomes::Vector{Genome}; k=1) = sum(approxoccursin(test_sequence, genome.seq; k=k) for genome in genomes)
 
 approxcount(test_sequences::Sequences, genome::Genome; k=1) = sum(approxoccursin(s, genome.seq; k=k) for s in test_sequences)
 
-similarcount(test_sequence::LongDNASeq, seqs::Sequences, min_score::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
+similarcount(test_sequence::LongDNA, seqs::Sequences, min_score::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
     sum(normalized_alignment_score(test_sequence, seq; score_model=score_model) >= min_score for seq in seqs)
 
-hassimilar(genome::Genome, test_sequence::LongDNASeq, min_score::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
+hassimilar(genome::Genome, test_sequence::LongDNA, min_score::Float64; score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1)) =
     normalized_alignment_score(test_sequence, genome.seq; score_model=score_model) >= min_score
 
-function normalized_alignment_score(read1::LongDNASeq, read2::LongDNASeq;
+function normalized_alignment_score(read1::LongDNA, read2::LongDNA;
     score_model=AffineGapScoreModel(match=1, mismatch=-4, gap_open=-5, gap_extend=-1), alignment_type=OverlapAlignment())
 
     (length(read1) > length(read2)) ? ((short_seq, long_seq) = (read2, read1)) : ((short_seq, long_seq) = (read1, read2))
@@ -348,7 +348,7 @@ function nucleotidecount(seqs::Sequences; normalize=true, align=:left)
     return count
 end
 
-information_content(m::Matrix{Float64}; n=Inf) = m .* (2 .- [-1 * sum(x > 0 ? x .* log2.(x) : 0 for x in r) for r in eachcol(m)] .- (3/(2*log(2)*n)))'
+information_content(m::Matrix{Float64}; n=Inf) = m .* (2 .- [-1 * sum(x > 0 ? x * log2(x) : 0 for x in r) for r in eachcol(m)] .- (3/(2*log(2)*n)))'
 
 function logo(seqs::Sequences)
     nc = nucleotidecount(seqs)

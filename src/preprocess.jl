@@ -26,7 +26,7 @@ end
 function download_fasterq()
 end
 
-function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String;
+function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,LongDNA}, output_path::String;
                         bc_len=8, check_range=1:bc_len, overwrite_existing=false)
 
     dplxr = Demultiplexer(collect(values(libname_to_barcode)), n_max_errors=1, distance=:hamming)
@@ -65,7 +65,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
         isnothing(infile2) || read!(reader2, record2)
         isnothing(prefixfile) || read!(readerp, recordp)
         c += 1
-        (library_id, nb_errors) = demultiplex(dplxr, isnothing(prefixfile) ? view(LongDNASeq(record1.data[record1.sequence]), check_range) : LongDNASeq(recordp.data[recordp.sequence]))
+        (library_id, nb_errors) = demultiplex(dplxr, isnothing(prefixfile) ? view(LongDNA(record1.data[record1.sequence]), check_range) : LongDNA(recordp.data[recordp.sequence]))
         nb_errors == -1 && (library_id = nb_stats)
         stats[library_id] += 1
         isnothing(infile2) ?
@@ -88,11 +88,11 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
     return isnothing(infile2) ? FastqgzFiles(output_files) : PairedSingleTypeFiles(output_files, ".fastq.gz", "_1", "_2")
 end
 
-function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
+function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,LongDNA}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
     split_libs(infile1, nothing, infile2, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range, overwrite_existing=overwrite_existing)
 end
 
-function split_libs(infile::String, libname_to_barcode::Dict{String,LongDNASeq}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
+function split_libs(infile::String, libname_to_barcode::Dict{String,LongDNA}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
     split_libs(infile, nothing, nothing, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range, overwrite_existing=overwrite_existing)
 end
 
@@ -218,13 +218,13 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
     writer = is_fastq ? FASTQ.Writer(out_f) : FASTA.Writer(out_f)
     out_record = is_fastq ? FASTQ.Record() : FASTA.Record()
 
-    in_seq = (to_dna || is_rna) ? LongRNASeq(0) : LongDNASeq(0)
-    out_seq = (is_rna && !to_dna) ? LongRNASeq(0) : LongDNASeq(0)
+    in_seq = (to_dna || is_rna) ? LongRNASeq(0) : LongDNA(0)
+    out_seq = (is_rna && !to_dna) ? LongRNASeq(0) : LongDNA(0)
 
     while !eof(reader)
         read!(reader, record)
-        in_seq = is_fastq ? FASTQ.sequence((to_dna || is_rna) ? LongRNASeq : LongDNASeq, record) : FASTA.sequence((to_dna || is_rna) ? LongRNASeq : LongDNASeq, record)
-        out_seq = to_dna ? LongDNASeq(in_seq) : in_seq
+        in_seq = is_fastq ? FASTQ.sequence((to_dna || is_rna) ? LongRNASeq : LongDNA, record) : FASTA.sequence((to_dna || is_rna) ? LongRNASeq : LongDNA, record)
+        out_seq = to_dna ? LongDNA(in_seq) : in_seq
         reverse && reverse!(out_seq)
         complement && complement!(out_seq)
         out_record = is_fastq ? FASTQ.Record(FASTQ.identifier(record), out_seq, FASTQ.quality(record)) : FASTA.Record(FASTA.identifier(record), out_seq)

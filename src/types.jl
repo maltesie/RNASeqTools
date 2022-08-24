@@ -12,11 +12,11 @@ abstract type InteractionContainer end
 
 abstract type CountContainer end
 
-LongDNASeqPair = Tuple{LongDNASeq, LongDNASeq}
+LongDNAPair = Tuple{LongDNA, LongDNA}
 CoverageValues = Dict{String, Vector{Float64}}
 
 struct Sequences{T<:Union{String, UInt}}
-    seq::LongDNASeq
+    seq::LongDNA
     seqnames::Vector{T}
     ranges::Vector{UnitRange{Int}}
 end
@@ -27,7 +27,7 @@ struct SequenceLogo
 end
 
 struct Genome
-    seq::LongDNASeq
+    seq::LongDNA
     chroms::Dict{String, UnitRange{Int}}
 end
 

@@ -1,5 +1,4 @@
 module RNASeqTools
-
 import XAM: BAM
 using FASTX, CodecZlib, GFF3, BigWig, DelimitedFiles, BGZFStreams
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics

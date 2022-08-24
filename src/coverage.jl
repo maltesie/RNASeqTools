@@ -20,7 +20,7 @@ function BaseCoverage(bam_file::String, genome::Genome; include_secondary_alignm
     rcount = Dict(chr=>zeros(Int, 7, length(genome.chroms[chr])) for chr in keys(genome.chroms))
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
-    seq = LongDNASeq(0)
+    seq = LongDNA(0)
     while !eof(reader)
         read!(reader, record)
         BAM.ismapped(record) || continue
@@ -169,7 +169,7 @@ all_perm(xs, n) = vec(map(collect, Iterators.product(ntuple(_ -> xs, n)...)))
 function mismatchcontexthist(base_coverage::BaseCoverage, from::Symbol, to::Symbol; pm=2, bins=20, ratio_cut=0.0)
     from in (:A, :T, :G, :C, :Gap, :N, :Ins) || raise(AssertionError("Value for from::Symbol not supported!"))
     to in (:A, :T, :G, :C, :Gap, :N, :Ins) || raise(AssertionError("Value for to::Symbol not supported!"))
-    kmer_histograms = Dict(LongDNASeq(c)=>zeros(Int, bins) for c in all_perm([DNA_A, DNA_T, DNA_G, DNA_C], 2*pm+1))
+    kmer_histograms = Dict(LongDNA(c)=>zeros(Int, bins) for c in all_perm([DNA_A, DNA_T, DNA_G, DNA_C], 2*pm+1))
     mpos = mismatchpositions(base_coverage, from, to; ratio_cut)
     for mismatch_interval in mpos
         p = leftposition(mismatch_interval)

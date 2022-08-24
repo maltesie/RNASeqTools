@@ -225,7 +225,7 @@ end
 
 typenamekey(feature::Interval{Annotation}) = type(feature) * ":" * name(feature)
 function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
-    seqs = Vector{LongDNASeq}()
+    seqs = Vector{LongDNA}()
     names = Vector{String}()
     for feature in features
         seq = genome[refname(feature)][leftposition(feature):rightposition(feature)]
