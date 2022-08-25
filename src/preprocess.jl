@@ -65,7 +65,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
         isnothing(infile2) || read!(reader2, record2)
         isnothing(prefixfile) || read!(readerp, recordp)
         c += 1
-        (library_id, nb_errors) = demultiplex(dplxr, isnothing(prefixfile) ? view(LongDNA(record1.data[record1.sequence]), check_range) : LongDNA(recordp.data[recordp.sequence]))
+        (library_id, nb_errors) = demultiplex(dplxr, isnothing(prefixfile) ? view(LongDNA{4}(record1.data[record1.sequence]), check_range) : LongDNA{4}(recordp.data[recordp.sequence]))
         nb_errors == -1 && (library_id = nb_stats)
         stats[library_id] += 1
         isnothing(infile2) ?
@@ -218,13 +218,13 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
     writer = is_fastq ? FASTQ.Writer(out_f) : FASTA.Writer(out_f)
     out_record = is_fastq ? FASTQ.Record() : FASTA.Record()
 
-    in_seq = (to_dna || is_rna) ? LongRNASeq(0) : LongDNA(0)
-    out_seq = (is_rna && !to_dna) ? LongRNASeq(0) : LongDNA(0)
+    in_seq = (to_dna || is_rna) ? LongRNASeq(0) : LongDNA{4}(0)
+    out_seq = (is_rna && !to_dna) ? LongRNASeq(0) : LongDNA{4}(0)
 
     while !eof(reader)
         read!(reader, record)
         in_seq = is_fastq ? FASTQ.sequence((to_dna || is_rna) ? LongRNASeq : LongDNA, record) : FASTA.sequence((to_dna || is_rna) ? LongRNASeq : LongDNA, record)
-        out_seq = to_dna ? LongDNA(in_seq) : in_seq
+        out_seq = to_dna ? LongDNA{4}(in_seq) : in_seq
         reverse && reverse!(out_seq)
         complement && complement!(out_seq)
         out_record = is_fastq ? FASTQ.Record(FASTQ.identifier(record), out_seq, FASTQ.quality(record)) : FASTA.Record(FASTA.identifier(record), out_seq)

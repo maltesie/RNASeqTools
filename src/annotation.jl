@@ -11,9 +11,9 @@ hasannotation(feature::Interval{T}) where T<:AnnotationStyle = !isempty(annotati
 ispositivestrand(feature::Interval{T}) where T<:AnnotationStyle = strand(feature) === STRAND_POS
 
 function summarize(feature::Interval{Annotation})
-    s = "Feature (Interval{Annotation}):\n\n[$(leftposition(feature)), $(rightposition(feature))]"
-    s *= "on $(refname(feature)) ($(strand(feature))) with annotation $(type(feature)):$(name(feature))\n"
-    s *= "parameters: $(paramstring(feature))"
+    s = "Feature: [$(leftposition(feature)), $(rightposition(feature))] on $(refname(feature)) ($(strand(feature))) - "
+    s *= hasannotation(feature) ? "annotation: $(type(feature)):$(name(feature))" : "not annotated"
+    s *= "\nparameters: $(paramstring(feature))\n"
 end
 function Base.show(feature::Interval{Annotation})
     println(summarize(feature))
@@ -92,7 +92,7 @@ function Features(gff_file::String, type::Vector{String}; name_keys=["Name"], sa
         end
         name in keys(names) ? (names[name]+=1) : (names[name]=1)
         (same_name_rule === :first && names[name] > 1) && continue
-        names[name] > 1 ? (n = name[2] * "$(names[name])") : (n = name[2])
+        n = names[name] > 1 ? name[2] * "$(names[name])" : name[2]
         annot = Annotation(GFF3.featuretype(feature), n, Dict(pair[1] => join(pair[2], ",") for pair in GFF3.attributes(feature)))
         push!(intervals, Interval(seqn, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annot))
     end
@@ -106,11 +106,6 @@ end
 
 function Features(gff_file::String; name_keys=["Name"], same_name_rule=:all)
     return Features(gff_file, String[], name_keys=name_keys, same_name_rule=same_name_rule)
-end
-
-function Features(coverage::Coverage; type="COV")
-    chroms = Dict(seq=>val for (seq,val) in coverage.chroms)
-    return Features([Interval(refname(i), leftposition(i), rightposition(i), strand(i), Annotation(type, "", Dict{String,String}("Coverage"=>"$(value(i))"))) for i in coverage], chroms)
 end
 
 function Features(gff_file::String, bam_file::String, genome::Genome)
@@ -162,45 +157,41 @@ function Base.getindex(features::T, i::Int) where T<:AnnotationContainer
     end
 end
 
-Base.convert(::Type{Interval{Float64}}, i::Interval{T}) where T<:AnnotationStyle = Interval(refname(i), leftposition(i), rightposition(i), strand(i), 0.0)
+Base.convert(::Type{Interval{Annotation}}, i::Interval{Nothing}) = Interval(refname(i), leftposition(i), rightposition(i), strand(i), Annotation())
 strand_filter(a::Interval, b::Interval)::Bool = strand(a) === strand(b)
-function GenomicFeatures.eachoverlap(features::I, feature::Interval{T}) where {I<:AnnotationContainer,T}
-    t = T
-    if I === Coverage && T === Annotation
-        feature = Interval{Float64}(feature)
-        t = Float64
-    end
+function GenomicFeatures.eachoverlap(feature::Interval{T}, features::Features{Annotation}) where T
+    T !== Annotation && (feature = Interval{Annotation}(feature))
     haskey(features.list.trees, refname(feature)) ?
-    (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), t}(strand_filter,
-                GenomicFeatures.ICTreeIntersection{t}(), features.list.trees[refname(feature)], feature)) :
-    (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), t}(strand_filter,
-                GenomicFeatures.ICTreeIntersection{t}(), GenomicFeatures.ICTree{t}(), feature))
+    (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter,
+                GenomicFeatures.ICTreeIntersection{Annotation}(), features.list.trees[refname(feature)], feature)) :
+    (return GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(strand_filter), Annotation}(strand_filter,
+                GenomicFeatures.ICTreeIntersection{Annotation}(), GenomicFeatures.ICTree{Annotation}(), feature))
 end
 
 function hasoverlap(features::Features, feature::Interval)
-    for _ in eachoverlap(features, feature)
+    for _ in eachoverlap(feature, features)
         return true
     end
     return false
 end
 function firstoverlap(features::Features, feature::Interval)
-    for int in eachoverlap(features, feature)
+    for int in eachoverlap(feature, features)
         return int
     end
     return nothing
 end
 function lastoverlap(features::Features, feature::Interval)
     olpinterval = copy(feature)
-    for int in eachoverlap(features, feature)
+    for int in eachoverlap(feature, features)
         olpinterval = int
     end
     return olpinterval
 end
 
-function paramstring(params::Dict{String,String};priority=("Name",))
+function paramstring(params::Dict{String,String}; priority=("Name",))
     ps = join(("$key=$(params[key])" for key in priority if key in keys(params)), ";")
     os = join(("$key=$(params[key])" for key in sort(collect(keys(params))) if !(key in priority)), ";")
-    return ps * ((isempty(ps) || isempty(os)) ? "" : ";") * os
+    return ps * ((isempty(ps) || isempty(os)) ? "none" : "; ") * os
 end
 paramstring(feature::Interval{Annotation}; priority=("Name",)) = paramstring(featureparams(feature); priority=priority)
 
