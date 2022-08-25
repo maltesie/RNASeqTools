@@ -153,7 +153,7 @@ end
 
 function read_reads(file::String; is_reverse_complement=false, hash_id=true)::Sequences
     seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
-    is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
+    is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
     is_zipped = endswith(file, ".gz")
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
     reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
@@ -184,18 +184,15 @@ function read_reads(file::String; is_reverse_complement=false, hash_id=true)::Se
 end
 
 function read_reads(file1::String, file2::String; is_reverse_complement=false, hash_id=true)::Sequences
-    any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]]) &&
-    any([endswith(file2, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]]) ||
-    throw(AssertionError("Accepted filetypes are: .fastq, .fastq.gz, .fasta and .fasta.gz"))
     seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
 
-    is_fastq1 = any([endswith(file1, ending) for ending in [".fastq", ".fastq.gz"]])
+    is_fastq1 = any([endswith(file1, ending) for ending in FASTQ_TYPES])
     is_zipped1 = endswith(file1, ".gz")
     f1 = is_zipped1 ? GzipDecompressorStream(open(file1, "r")) : open(file1, "r")
     reader1 = is_fastq1 ? FASTQ.Reader(f1) : FASTA.Reader(f1)
     record1 = is_fastq1 ? FASTQ.Record() : FASTA.Record()
 
-    is_fastq2 = any([endswith(file2, ending) for ending in [".fastq", ".fastq.gz"]])
+    is_fastq2 = any([endswith(file2, ending) for ending in FASTQ_TYPES])
     is_zipped2 = endswith(file2, ".gz")
     f2 = is_zipped2 ? GzipDecompressorStream(open(file2, "r")) : open(file2, "r")
     reader2 = is_fastq2 ? FASTQ.Reader(f2) : FASTA.Reader(f2)

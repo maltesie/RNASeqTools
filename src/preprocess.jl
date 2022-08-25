@@ -164,10 +164,8 @@ function trim_fastp(input_files::PairedSingleTypeFiles;
     return PairedSingleTypeFiles([(joinpath(dirname(file1),prefix*basename(file1)), joinpath(dirname(file2),prefix*basename(file2))) for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
 end
 
-function split_reads(file::String, split_at::Int; overwrite_existing=false)
-    @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
-
-    is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
+function split_paired_reads_file(file::String, split_at::Int; overwrite_existing=false)
+    is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
     is_zipped = endswith(file, ".gz")
 
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
@@ -203,9 +201,7 @@ function split_reads(file::String, split_at::Int; overwrite_existing=false)
 end
 
 function transform(file::String; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)
-    @assert any([endswith(file, ending) for ending in [".fastq", ".fastq.gz", ".fasta", ".fasta.gz"]])
-
-    is_fastq = any([endswith(file, ending) for ending in [".fastq", ".fastq.gz"]])
+    is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
     is_zipped = endswith(file, ".gz")
 
     f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
@@ -220,7 +216,6 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
 
     in_seq = (to_dna || is_rna) ? LongRNASeq(0) : LongDNA{4}(0)
     out_seq = (is_rna && !to_dna) ? LongRNASeq(0) : LongDNA{4}(0)
-
     while !eof(reader)
         read!(reader, record)
         in_seq = is_fastq ? FASTQ.sequence((to_dna || is_rna) ? LongRNASeq : LongDNA, record) : FASTA.sequence((to_dna || is_rna) ? LongRNASeq : LongDNA, record)
