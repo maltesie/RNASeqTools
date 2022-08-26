@@ -24,7 +24,7 @@ function Annotation()
 end
 
 function Annotation(type::String, name::String; args...)
-    Annotation(type, name, Dict{String, String}("$key"=>value for (key,value) in args))
+    Annotation(type, name, merge(Dict("Name"=>name), Dict{String, String}("$key"=>value for (key,value) in args)))
 end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
@@ -168,19 +168,19 @@ function GenomicFeatures.eachoverlap(feature::Interval{T}, features::Features{An
                 GenomicFeatures.ICTreeIntersection{Annotation}(), GenomicFeatures.ICTree{Annotation}(), feature))
 end
 
-function hasoverlap(features::Features, feature::Interval)
+function hasoverlap(feature::Interval, features::Features)
     for _ in eachoverlap(feature, features)
         return true
     end
     return false
 end
-function firstoverlap(features::Features, feature::Interval)
+function firstoverlap(feature::Interval, features::Features)
     for int in eachoverlap(feature, features)
         return int
     end
     return nothing
 end
-function lastoverlap(features::Features, feature::Interval)
+function lastoverlap(feature::Interval, features::Features)
     olpinterval = copy(feature)
     for int in eachoverlap(feature, features)
         olpinterval = int
@@ -189,9 +189,10 @@ function lastoverlap(features::Features, feature::Interval)
 end
 
 function paramstring(params::Dict{String,String}; priority=("Name",))
-    ps = join(("$key=$(params[key])" for key in priority if key in keys(params)), ";")
-    os = join(("$key=$(params[key])" for key in sort(collect(keys(params))) if !(key in priority)), ";")
-    return ps * ((isempty(ps) || isempty(os)) ? "none" : "; ") * os
+    ps = join(("$key=$(params[key])" for key in priority if key in keys(params)), "; ")
+    os = join(("$key=$(params[key])" for key in sort(collect(keys(params))) if !(key in priority)), "; ")
+    both = ps * ((isempty(ps) || isempty(os)) ? "" : "; ") * os
+    return isempty(both) ? "none" : both
 end
 paramstring(feature::Interval{Annotation}; priority=("Name",)) = paramstring(featureparams(feature); priority=priority)
 
@@ -332,4 +333,70 @@ function embl_to_gff(embl_file::String, gff_file::String, chrs::Vector{String})
 
     end
     close(writer)
+end
+
+utrright(f::Interval{Annotation}, features::Features, len::Int, utr_type::String, cds_type::String) =
+    Interval(refname(f), rightposition(f)+1,
+        hasoverlap(Interval(refname(f), rightposition(f)+1, rightposition(f)+2*len, strand(f)), features) ?
+            minimum(type(i) == cds_type ? floor(Int, (leftposition(i) + rightposition(f))/2) : min(rightposition(f)+len, leftposition(i)-1)
+                for i in eachoverlap(Interval(refname(f), rightposition(f)+1, rightposition(f)+2*len, strand(f)), features)) :
+            rightposition(f)+len,
+        strand(f), Annotation(utr_type, name(f)))
+
+utrleft(f::Interval{Annotation}, features::Features, len::Int, utr_type::String, cds_type::String) =
+    Interval(refname(f),
+        hasoverlap(Interval(refname(f), leftposition(f)-2*len, leftposition(f)-1, strand(f)), features) ?
+            maximum(type(i) == cds_type ? floor(Int, (leftposition(f) + rightposition(i))/2)+1 : max(leftposition(f)-len, rightposition(i)+1)
+                for i in eachoverlap(Interval(refname(f), leftposition(f)-2*len, leftposition(f)-1, strand(f)), features)) :
+            leftposition(f)-len,
+        leftposition(f)-1, strand(f), Annotation(utr_type, name(f)))
+
+function add5utrs!(features::Features; cds_type="CDS", utr_type="5UTR", utr_length=200, min_utr_length=20)
+    new_features = Vector{Interval{Annotation}}()
+    for feature in features
+        type(feature) != cds_type && continue
+        new_feature = ispositivestrand(feature) ?
+            utrleft(feature, features, utr_length, utr_type, cds_type) :
+            utrright(feature, features, utr_length, utr_type, cds_type)
+            ((length(new_feature) < min_utr_length) || (leftposition(new_feature) < 1)) && continue
+        push!(new_features, new_feature)
+    end
+    merge!(features, Features(new_features))
+end
+
+function add3utrs!(features::Features; cds_type="CDS", utr_type="3UTR", utr_length=200, min_utr_length=20)
+    new_features = Vector{Interval{Annotation}}()
+    for feature in features
+        type(feature) != cds_type && continue
+        new_feature = ispositivestrand(feature) ?
+            utrright(feature, features, utr_length, utr_type, cds_type) :
+            utrleft(feature, features, utr_length, utr_type, cds_type)
+        ((length(new_feature) < min_utr_length) || (leftposition(new_feature) < 1)) && continue
+        push!(new_features, new_feature)
+    end
+    merge!(features, Features(new_features))
+end
+
+function addutrs!(features::Features; cds_type="CDS", five_type="5UTR", three_type="3UTR", five_length=200, three_length=200, min_length=20)
+    add5utrs!(features; cds_type=cds_type, utr_type=five_type, utr_length=five_length, min_utr_length=min_length)
+    add3utrs!(features; cds_type=cds_type, utr_type=three_type, utr_length=three_length, min_utr_length=min_length)
+end
+
+function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
+    new_features = Vector{Interval{Annotation}}()
+    base_features_pos = [feature for feature in features if (feature.strand == STRAND_POS)]
+    base_features_neg = [feature for feature in features if (feature.strand == STRAND_NEG)]
+    for base_features in (base_features_pos, base_features_neg)
+        nb_features = base_features === base_features_pos ? length(base_features_pos) : length(base_features_neg)
+        for i in 1:nb_features-1
+            feature, next_feature = base_features[i], base_features[i+1]
+            refname(feature) == refname(next_feature) || continue
+            stop, start = leftposition(next_feature), rightposition(feature)
+            (stop-1) - (start + 1) > min_igr_length || continue
+            igr = Interval(refname(feature), start+1, stop-1, base_features === base_features_pos ? STRAND_POS : STRAND_NEG,
+                Annotation(igr_type, name(feature)*":"*name(next_feature)))
+            push!(new_features, igr)
+        end
+    end
+    merge!(features, Features(new_features))
 end
