@@ -186,12 +186,3 @@ end
 function correlation(counts::Counts)
     return cor(counts.values, dims=1)
 end
-
-function mincorrelation(counts::Counts)
-    corr = correlation(counts)
-    min_corr = 1.0
-    for i in first(size(corr)), j in 1:i
-        min_corr = min(matrix[i,j], min_corr)
-    end
-    return min_corr
-end

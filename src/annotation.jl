@@ -4,7 +4,7 @@ refname(feature::Interval{T}) where T<:AnnotationStyle = feature.seqname
 featureparams(feature::Interval{Annotation}) = feature.metadata.params
 featureparam(feature::Interval{Annotation}, key::String) = feature.metadata.params[key]
 featureparam(feature::Interval{Annotation}, key::String, ::Type{T}) where {T} = parse(T, feature.metadata.params[key])
-setfeatureparam(feature::Interval{Annotation}, key::String, value::String) = feature.metadata.params[key] = value
+setfeatureparam!(feature::Interval{Annotation}, key::String, value::String) = feature.metadata.params[key] = value
 hasannotationkey(feature::Interval{Annotation}, key::String) = key in keys(featureparams(feature))
 annotation(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata
 hasannotation(feature::Interval{T}) where T<:AnnotationStyle = !isempty(annotation(feature))
@@ -274,6 +274,13 @@ function asdataframe(features::Features; add_keys=:all)
         end
     end
     return df
+end
+
+function annotate!(features::Features, annotations::Features; key_gen=typenamekey)
+    for feature in features
+        overlap_string = join([key_gen(annotation) for annotation in eachoverlap(feature, annotations)], "; ")
+        setfeatureparam!(feature, "overlaps", isempty(overlap_string) ? "nothing" : overlap_string)
+    end
 end
 
 function Base.show(features::Features)

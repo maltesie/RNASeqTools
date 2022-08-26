@@ -358,19 +358,20 @@ function Base.values(coverage::Coverage; invert=false)
     return vals
 end
 
-function Base.merge(coverages::Vector{Coverage})
+function Base.merge(coverages::Vector{Coverage}; average=true)
     all(coverages[1].chroms == c.chroms for c in coverages[2:end]) || throw(Assertion("All Coverage objects have to be defined for the same reference seuqences."))
-    n = length(coverages)
     vals_f = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
     vals_r = Dict(chr=>zeros(Float64, len) for (chr,len) in coverages[1].chroms)
     for cv in coverages
         for interval in cv
             strand(interval) == STRAND_POS ?
-            vals_f[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata/n :
-            vals_r[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata/n
+            vals_f[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata :
+            vals_r[refname(interval)][leftposition(interval):rightposition(interval)] .+= interval.metadata
         end
     end
-    return Coverage(vals_f, vals_r, coverages[1].chroms)
+    merged = Coverage(vals_f, vals_r, coverages[1].chroms)
+    average && (merged *= 1/length(coverages))
+    return merged
 end
 
 function correlation(coverages::Coverage ...)
@@ -379,20 +380,7 @@ function correlation(coverages::Coverage ...)
 end
 correlation(coverages::Vector{Coverage}) = correlation(coverages...)
 
-function rolling_sum(a::Vector{Float64}, n::Int; circular=true)
-    (1<=n<=length(a)) || throw(Assertion("n has to be betwen 1 and $(length(a))."))
-    out = similar(a)
-    out[1] = sum(a[1:n])
-    for i in 2:length(a)-n+1
-        out[i] = out[i-1]-a[i-1]+a[i+n-1]
-    end
-    for (ii,i) in enumerate(length(a)-n+2:length(a))
-        out[i] = out[i-1]-a[i-1]+ (circular ? a[ii] : 0.0)
-    end
-    return circshift(out, Int((n-1)/2))
-end
-
-function maxdiffsignalpositions(coverage::Vector{Float64}; max_ppk=5, compute_max_within=5, circular=true)
+function maxdiffpositions(coverage::Vector{Float64}; max_ppk=5, compute_max_within=5, circular=true)
     all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
     is_negative_strand = all(coverage .<= 0)
     max_nb_peaks = length(coverage) / 1000 * max_ppk
@@ -410,42 +398,13 @@ function maxdiffsignalpositions(coverage::Vector{Float64}; max_ppk=5, compute_ma
     end
     return peak_index
 end
-function maxdiffsignalpositions(coverages::Vector{Coverage}; max_ppk=5, compute_max_within=3, circular=true, invert=false)
-    merged_coverage_values = values(merge(coverages); invert=invert)
+function maxdiffpositions(coverage::Coverage; max_ppk=5, compute_max_within=3, circular=true, invert=false)
+    coverage_values = values(coverage; invert=invert)
     Dict{String, Tuple{Vector{Int}, Vector{Int}}}(
         chr=>(
-            maxdiffsignalpositions(merged_coverage_values[chr][1]; max_ppk=max_ppk, compute_max_within=compute_max_within, circular=circular),
-            maxdiffsignalpositions(merged_coverage_values[chr][2]; max_ppk=max_ppk, compute_max_within=compute_max_within, circular=circular)
+            maxdiffpositions(coverage_values[chr][1]; max_ppk=max_ppk, compute_max_within=compute_max_within, circular=circular),
+            maxdiffpositions(coverage_values[chr][2]; max_ppk=max_ppk, compute_max_within=compute_max_within, circular=circular)
         )
-        for chr in sort(collect(keys(merged_coverage_values)))
-    )
-end
-
-function background_plateau_pairs(coverage::Vector{Float64}, peak_index::Vector{Int}; compute_step_within=3, circular=true)
-    all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
-    is_negative_strand = all(coverage .<= 0)
-    pairs = Matrix{Int}(undef, length(peak_index), 2)
-    mycoverage = circular ? vcat(coverage[end-compute_step_within+1:end], coverage, coverage[1:compute_step_within]) : coverage
-    top, bottom = is_negative_strand ? (minimum, maximum) : (maximum, minimum)
-    for (ii, index) in enumerate(peak_index)
-        circular && (index += compute_step_within)
-        pairs[ii, 1] = bottom(@view(mycoverage[(index-compute_step_within):(index+compute_step_within)]))
-        pairs[ii, 2] = top(@view(mycoverage[(index-compute_step_within):(index+compute_step_within)]))
-    end
-    is_negative_strand && (pairs .*= -1)
-    return pairs
-end
-function background_plateau_pairs(s_ls::Vector{Coverage}, s_is::Vector{Coverage}, peaks::Dict{String, Tuple{Vector{Int}, Vector{Int}}};
-                                    compute_step_within=1, circular=true)
-    valss = vcat([values(s_l) for s_l in s_ls], [values(s_i) for s_i in s_is])
-    hcat(
-        [vcat(
-            [vcat(
-                background_plateau_pairs(vals[chr][1], peaks[chr][1]; compute_step_within=compute_step_within, circular=circular),
-                background_plateau_pairs(vals[chr][2], peaks[chr][2]; compute_step_within=compute_step_within, circular=circular)
-            )
-            for chr in sort(collect(keys(peaks)))]...
-        )
-        for vals in valss]...
+        for chr in sort(collect(keys(coverage_values)))
     )
 end
