@@ -26,17 +26,40 @@ end
 function download_fasterq()
 end
 
-function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,LongDNA}, output_path::String;
-                        bc_len=8, check_range=1:bc_len, overwrite_existing=false)
+function demultiplex(testseq::T, barcode_queries::Vector{ApproximateSearchQuery{typeof(isequal), T}}; k=1) where T<:BioSequence
+    for i in 1:length(barcode_queries)
+        isnothing(findfirst(barcode_queries[i], k, testseq)) || (return i)
+    end
+    return -1
+end
+function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,K}, output_path::String;
+                        bc_len=length(first(values(libname_to_barcode))), check_range=1:bc_len, allowed_barcode_distance=1, overwrite_existing=false) where K<:BioSequence
 
-    dplxr = Demultiplexer(collect(values(libname_to_barcode)), n_max_errors=1, distance=:hamming)
+    barcode_queries = [ApproximateSearchQuery(v) for v in values(libname_to_barcode)]
+    for bc in values(libname_to_barcode)
+        sum(!isnothing(findfirst(barcode_queries[i], 2*allowed_barcode_distance, bc)) for i in 1:length(libname_to_barcode)) > length(libname_to_barcode) &&
+            throw(AssertionError("The supplied barcodes do not support the allowed_barcode_distance!"))
+    end
+
     output_files = isnothing(infile2) ?
     [joinpath(output_path, "$(name).fastq.gz") for name in keys(libname_to_barcode)] :
     [(joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")) for name in keys(libname_to_barcode)]
     for file in output_files
-        isnothing(infile2) ?
-        (isfile(file) && (return FastqgzFiles(output_files))) :
-        ((isfile(file[1]) || isfile(file[2])) && (return PairedSingleTypeFiles(output_files, ".fastq.gz", "_1", "_2")))
+        if isnothing(infile2)
+            if isfile(file)
+                overwrite_existing || throw(AssertionError("File $file already exists."))
+                rm(file)
+            end
+        else
+            if isfile(file[1])
+                overwrite_existing || throw(AssertionError("File $(file[1]) already exists."))
+                rm(file[1])
+            end
+            if isfile(file[2])
+                overwrite_existing || throw(AssertionError("File $(file[2]) already exists."))
+                rm(file[2])
+            end
+        end
     end
     nb_stats = length(libname_to_barcode)+1
     stats::Vector{Int} = zeros(Int, nb_stats)
@@ -65,8 +88,9 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
         isnothing(infile2) || read!(reader2, record2)
         isnothing(prefixfile) || read!(readerp, recordp)
         c += 1
-        (library_id, nb_errors) = demultiplex(dplxr, isnothing(prefixfile) ? view(LongDNA{4}(record1.data[record1.sequence]), check_range) : LongDNA{4}(recordp.data[recordp.sequence]))
-        nb_errors == -1 && (library_id = nb_stats)
+        checkseq = isnothing(prefixfile) ? LongDNA{4}(record1.data[record1.sequence])[check_range] : LongDNA{4}(recordp.data[recordp.sequence])
+        library_id = demultiplex(checkseq, barcode_queries; k=allowed_barcode_distance)
+        library_id == -1 && (library_id = nb_stats)
         stats[library_id] += 1
         isnothing(infile2) ?
         write(writers[library_id], record1) :
@@ -88,11 +112,11 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
     return isnothing(infile2) ? FastqgzFiles(output_files) : PairedSingleTypeFiles(output_files, ".fastq.gz", "_1", "_2")
 end
 
-function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,LongDNA}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
+function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,K}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false) where K<:BioSequence
     split_libs(infile1, nothing, infile2, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range, overwrite_existing=overwrite_existing)
 end
 
-function split_libs(infile::String, libname_to_barcode::Dict{String,LongDNA}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
+function split_libs(infile::String, libname_to_barcode::Dict{String,K}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false) where K<:BioSequence
     split_libs(infile, nothing, nothing, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range, overwrite_existing=overwrite_existing)
 end
 

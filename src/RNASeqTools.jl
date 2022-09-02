@@ -30,8 +30,6 @@ include("annotation.jl")
 include("counts.jl")
 include("alignment.jl")
 
-const ANNOTATION_VCH = "/home/abc/Data/vibrio/annotation/NC_002505_6.gff"
-const GENOME_VCH = "/home/abc/Data/vibrio/genome/NC_002505_6.fa"
 const FASTQ_TYPES = (".fastq", ".fastq.gz", ".fq", ".fq.gz")
 
 end

@@ -738,19 +738,6 @@ function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_
     end
 end
 
-function annotate!(features::Features, feature_alignments::Alignments; key_gen=typenamekey)
-    for feature in features
-        key = key_gen(feature)
-        push!(featureparams(feature), "Count"=>"0")
-        push!(featureparams(feature), "Key"=>key)
-        if key in keys(feature_alignments)
-            refs = Set(refname(aln) for aln in feature_alignments[key])
-            merge!(featureparams(feature), Dict(ref=>join(("$(readrange(aln))" for aln in feature_alignments[key] if refname(aln)==ref), ",") for ref in refs))
-            push!(featureparams(feature), "Count"=>"$(length(refs))")
-        end
-    end
-end
-
 Base.getindex(genome::Genome, ap::AlignedPart) = refsequence(ap, genome)
 Base.getindex(sequence::LongDNA, ap::AlignedPart) = sequence[readrange(ap)]
 

@@ -62,10 +62,10 @@ function read_genomic_fasta(fasta_file::String)
     return genome
 end
 
-function write_genomic_fasta(genome::Dict{String, String}, fasta_file::String)
+function write_genomic_fasta(genome::Dict{String, T}, fasta_file::String) where T <: BioSequence
     open(FASTA.Writer, fasta_file) do writer
-        for (chr, seq) in enumerate(genome)
-            write(writer, Record(chr, seq))
+        for (chr, seq) in genome
+            write(writer, FASTA.Record(chr, seq))
         end
     end
 end

@@ -21,7 +21,7 @@ function FeatureCounts(features::Features, samples::Vector{Coverage}; conditions
 end
 
 function FeatureCounts(features::Features, samples::PairedSingleTypeFiles; conditions=groupfiles(samples), aggregation=:max, normalization_method=:none)
-    samples.type === ".bw" || throw(AssertionError("File type has to be .bw"))
+    samples.type === ".bw" || throw(AssertionError("Only .bw files are supported."))
     coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in samples]
     FeatureCounts(features, coverages; conditions=conditions, aggregation=aggregation, normalization_method=normalization_method)
 end
@@ -29,7 +29,7 @@ end
 function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=groupfiles(samples),
         normalization_method=:none, include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
-    samples.type === ".bam" || throw(AssertionError("File type has to be .bam"))
+    samples.type === ".bam" || throw(AssertionError("Only .bam files are supported"))
     counts = zeros(Float64, length(features), sum(length(v) for v in values(conditions)))
     feature_trans = Dict{String, Int}(name(feature)*type(feature)=>i for (i, feature) in enumerate(features))
     for range in values(conditions)
@@ -170,7 +170,7 @@ function difference_glm(counts::T, control_condition::String, experiment_conditi
     return (exp.(bases), fcs, padj)
 end
 
-function difference_table(counts::T, control_condition::String, experiment_condition::String; method=:glm) where {T<:CountContainer}
+function difference_dataframe(counts::T, control_condition::String, experiment_condition::String; method=:glm) where {T<:CountContainer}
     method in (:glm, :ttest) || throw(AssertionError("Method must be eather :ttest or :glm"))
 
     difference_function = method === :glm ? difference_glm : difference_ttest
