@@ -8,7 +8,7 @@ using ElasticArrays, IterTools
 
 export align_mem, align_minimap, align_kraken2
 export preprocess_data, trim_fastp, split_libs, download_prefetch, download_fasterq, split_paired_reads_file, transform
-export Genome, Sequences, PairedSequences, Alignments, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage
+export Genome, Sequences, PairedSequences, Alignments, AlignedPart, AlignedRead, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage
 export Annotation, AlignmentAnnotation, BaseAnnotation, BaseCoverage, Counts, FeatureCounts, GenomeComparison
 export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles
 export PairedFastaFiles, PairedFastagzFiles, PaireFastqFiles, PairedFastqgzFiles
