@@ -303,7 +303,7 @@ end
 
 Generates string with information on the AlignedPart combined with the read sequence.
 """
-function summarize(part::AlignedPart, readseqpart::LongDNA)
+function summarize(part::AlignedPart, readseqpart::LongSequence)
     s = "[$(first(part.seq)), $(last(part.seq))] on $(part.read) - "
     s *= "[$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) "
     s *= "with edit distance $(part.nms) - "
@@ -332,7 +332,7 @@ end
 
 Function for structured printing of the content of AlignedPart
 """
-function Base.show(part::AlignedPart, readseqpart::LongDNA)
+function Base.show(part::AlignedPart, readseqpart::LongSequence)
     println(summarize(part, readseqpart))
 end
 
@@ -420,7 +420,7 @@ refrange(aln::AlignedPart) = leftposition(aln):rightposition(aln)
 
 Returns the part of the reference sequence that the aln::AlignedPart belongs to.
 """
-refsequence(aln::AlignedPart, genome::Genome)::LongDNA = genome[refname(aln)][refrange(aln)]
+refsequence(aln::AlignedPart, genome::Genome)::LongSequence = genome[refname(aln)][refrange(aln)]
 
 """
     leftposition(aln::AlignedPart)::Int
@@ -475,7 +475,7 @@ Returns the edit distance of the AlignedPart.
 """
 nms(aln::AlignedPart) = aln.nms
 
-function readsequence(aln::AlignedPart, seqs::Sequences)::LongDNA
+function readsequence(aln::AlignedPart, seqs::Sequences)::LongSequence
     r = searchsorted(seqs.seqnames, name(aln))
     if length(r) === 2
         s = aln.read === :read1 ? seqs.seq[seqs.ranges[first(r)]] : seqs.seq[seqs.ranges[last(r)]]
@@ -591,13 +591,13 @@ end
 summarize(alnread::AlignedRead) =   (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
                                     " Alignment with $(length(alnread)) part(s):\n   " *
                                     join([summarize(part) for part in alnread], "\n   ") * "\n"
-summarize(alnread::AlignedRead, readseq::LongDNA) =   (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
+summarize(alnread::AlignedRead, readseq::LongSequence) =   (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
                                     " Alignment with $(length(alnread)) part(s) on $(length(readseq)) nt read:\n   " *
                                     join([summarize(part, readseq[part]) for part in alnread], "\n   ") * "\n"
 function Base.show(alnread::AlignedRead)
     println(summarize(alnread))
 end
-function Base.show(alnread::AlignedRead, readseq::LongDNA)
+function Base.show(alnread::AlignedRead, readseq::LongSequence)
     println(summarize(alnread, readseq))
 end
 
@@ -689,7 +689,7 @@ end
 
 annotatedcount(alns::Alignments) = sum(isassigned(alns.annames, i) && isassigned(alns.antypes, i) for i in 1:length(alns))
 
-function occurences(test_sequence::LongDNA, bam_file::String, similarity_cut::Float64; score_model=nothing, ignore_mapped=true)
+function occurences(test_sequence::LongSequence, bam_file::String, similarity_cut::Float64; score_model=nothing, ignore_mapped=true)
     record = BAM.Record()
     reader = BAM.Reader(open(bam_file))
     c = 0
@@ -739,7 +739,7 @@ function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_
 end
 
 Base.getindex(genome::Genome, ap::AlignedPart) = refsequence(ap, genome)
-Base.getindex(sequence::LongDNA, ap::AlignedPart) = sequence[readrange(ap)]
+Base.getindex(sequence::LongSequence, ap::AlignedPart) = sequence[readrange(ap)]
 
 function GenomeComparison(refgenome_file::String, compgenome_file::String, bam_file::String)
     pairwise_alignments = PairwiseAlignment[]
