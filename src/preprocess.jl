@@ -132,6 +132,7 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
     @assert trim_loc in [:read1, :read2]
 
     params = []
+    !isnothing(trim) && push!(params, trim_loc === :read1 ? "--trim_front1=$trim" : "--trim_front2=$trim")
     skip_quality_filtering && push!(params, "--disable_quality_filtering")
     !skip_quality_filtering && !isnothing(average_window_quality) && push!(params, "--cut_mean_quality=$average_window_quality")
     !skip_quality_filtering && cut_tail && push!(params, "--cut_tail")
@@ -143,7 +144,6 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
     !isnothing(trim_poly_g) ? append!(params, ["-g", "--poly_g_min_len=$trim_poly_g"]) : push!(params,"-G")
     !isnothing(min_length) && push!(params, "--length_required=$min_length")
     !isnothing(max_length) && push!(params, "--max_len1=$max_length")
-    !isnothing(trim) && push!(params, trim_loc === :read1 ? "--trim_front1=$trim" : "--trim_front2=$trim")
     !isnothing(adapter) && push!(params, "--adapter_sequence=$adapter")
 
     for (in_file1, in_file2) in input_files
