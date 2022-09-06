@@ -123,7 +123,7 @@ end
 function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=nothing,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=nothing, filter_complexity=nothing,
-    average_window_quality=nothing, deduplicate=true, skip_quality_filtering=true, overwrite_existing=false)
+    average_window_quality=nothing, deduplicate=true, skip_quality_filtering=false, overwrite_existing=false)
 
     for (in_file1, in_file2) in input_files
         @assert endswith(in_file1, ".fasta") || endswith(in_file1, ".fasta.gz") || endswith(in_file1, ".fastq") || endswith(in_file1, ".fastq.gz")
@@ -163,7 +163,7 @@ end
 function trim_fastp(input_files::SingleTypeFiles;
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=nothing, min_length=20,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
-    average_window_quality=25, deduplicate=false, skip_quality_filtering=true, overwrite_existing=false)
+    average_window_quality=25, deduplicate=false, skip_quality_filtering=false, overwrite_existing=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}([(file, nothing) for file in input_files])
     trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, trim=trim, trim_loc=:read1,
@@ -177,7 +177,7 @@ end
 function trim_fastp(input_files::PairedSingleTypeFiles;
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
-    average_window_quality=25, deduplicate=true, skip_quality_filtering=true, overwrite_existing=false)
+    average_window_quality=25, deduplicate=true, skip_quality_filtering=false, overwrite_existing=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}(input_files.list)
     trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, trim=trim, trim_loc=trim_loc,
@@ -185,7 +185,8 @@ function trim_fastp(input_files::PairedSingleTypeFiles;
                 trim_poly_g=trim_poly_g, trim_poly_x=trim_poly_x, filter_complexity=filter_complexity,
                 average_window_quality=average_window_quality, deduplicate=deduplicate,
                 skip_quality_filtering=skip_quality_filtering, overwrite_existing=overwrite_existing)
-    return PairedSingleTypeFiles([(joinpath(dirname(file1),prefix*basename(file1)), joinpath(dirname(file2),prefix*basename(file2))) for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
+    return PairedSingleTypeFiles([(joinpath(dirname(file1),prefix*basename(file1)), joinpath(dirname(file2),prefix*basename(file2)))
+        for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
 end
 
 function split_paired_reads_file(file::String, split_at::Int; overwrite_existing=false)
