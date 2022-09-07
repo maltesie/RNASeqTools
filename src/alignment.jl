@@ -601,9 +601,6 @@ function Base.show(alnread::AlignedRead, readseq::LongSequence)
     println(summarize(alnread, readseq))
 end
 
-refname(i::Interval) = i.seqname
-Base.length(i::Interval{T}) where {T<:AnnotationStyle} = rightposition(i) - leftposition(i) + 1
-
 """
     overlapdistance(i1::Interval, i2::Interval)::Float64
 

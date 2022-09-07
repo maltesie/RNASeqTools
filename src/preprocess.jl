@@ -26,7 +26,7 @@ end
 function download_fasterq()
 end
 
-function demultiplex(testseq::T, barcode_queries::Vector{ApproximateSearchQuery{T}}; k=1) where T<:BioSequence
+function demultiplex(testseq::T, barcode_queries::Vector{ApproximateSearchQuery{typeof(isequal), T}}; k=1) where T<:BioSequence
     for i in 1:length(barcode_queries)
         isnothing(findfirst(barcode_queries[i], k, testseq)) || (return i)
     end

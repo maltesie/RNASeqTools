@@ -1,6 +1,7 @@
 type(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata.type
 name(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata.name
-refname(feature::Interval{T}) where T<:AnnotationStyle = feature.seqname
+refname(feature::Interval) = feature.seqname
+Base.length(feature::Interval{T}) where {T<:AnnotationStyle} = rightposition(feature) - leftposition(feature) + 1
 featureparams(feature::Interval{Annotation}) = feature.metadata.params
 featureparam(feature::Interval{Annotation}, key::String) = feature.metadata.params[key]
 featureparam(feature::Interval{Annotation}, key::String, ::Type{T}) where {T} = parse(T, feature.metadata.params[key])
