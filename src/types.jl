@@ -100,24 +100,6 @@ struct Coverage <: AnnotationContainer
     chroms::Vector{Tuple{String, Int}}
 end
 
-struct BaseCoverage
-    genome::Genome
-    fcount::Dict{String, Dict{Symbol, Vector{Int}}}
-    rcount::Dict{String, Dict{Symbol, Vector{Int}}}
-end
-
-struct BaseAnnotation <: AnnotationStyle
-    type::String
-    name::String
-    ref::Vector{Int}
-    a::Vector{Int}
-    t::Vector{Int}
-    g::Vector{Int}
-    c::Vector{Int}
-    gap::Vector{Int}
-    ins::Vector{Int}
-end
-
 mutable struct SingleTypeFiles <: FileCollection
     list::Vector{String}
     type::String

@@ -40,17 +40,6 @@ name(annot::T) where {T<:AnnotationStyle} = annot.name
 type(annot::T) where {T<:AnnotationStyle} = annot.type
 overlap(annot::AlignmentAnnotation) = annot.overlap
 
-function BaseAnnotation(feature::Interval{Annotation}, base_coverage::BaseCoverage)
-    left = leftposition(feature)
-    right = rightposition(feature)
-    seq = base_coverage.ref_seq[left:right]
-    ispositivestrand(feature) || reverse_complement!(seq)
-    count = ispositivestrand(feature) ? errorcov.fcount : errorcov.rcount
-    r = ispositivestrand(feature) ? (left:right) : (right:-1:left)
-    ref = Int[(seq[i] in (DNA_A, DNA_T, DNA_G, DNA_C)) ? count[seq[i]][ii] : 0 for (i, ii) in enumerate(r)]
-    BaseAnnotation(type(feature), name(feature), ref, count[ref][:A][r], count[:T][r], count[:G][r], count[:C][r], count[:Gap][r], count[:Ins][r])
-end
-
 Features() = Features(Annotation)
 
 function Features(::Type{T}) where T

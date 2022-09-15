@@ -1,5 +1,22 @@
 #!/usr/bin/env julia
 
+function bam_chromosome_lengths(reader::BAM.Reader)
+    chr_lengths = Int[]
+    for meta in findall(BAM.header(reader), "SQ")
+        push!(chr_lengths, parse(Int, meta["LN"]))
+    end
+    return chr_lengths
+end
+
+function bam_chromosome_names(reader::BAM.Reader)
+    chr_names = String[]
+    for meta in findall(BAM.header(reader), "SQ")
+        push!(chr_names, meta["SN"])
+    end
+    return chr_names
+end
+
+
 function samevalueintervals(d::Vector{T}) where T
     index::Int = 1
     rindex::Int = 1
