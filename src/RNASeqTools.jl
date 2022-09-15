@@ -13,7 +13,7 @@ export Genome, Sequences, PairedSequences, Alignments, AlignedPart, AlignedRead,
 export Annotation, AlignmentAnnotation, BaseAnnotation, BaseCoverage, Counts, FeatureCounts, GenomeComparison
 export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles
 export PairedFastaFiles, PairedFastagzFiles, PaireFastqFiles, PairedFastqgzFiles
-export cut!, nucleotidecount, annotate!, featureseqs, asdataframe, ispositivestrand, hasannotation, annotatedcount, editdistance
+export cut!, nucleotidecount, annotate!, featureseqs, asdataframe, ispositivestrand, hasannotation, annotatedcount, editdistance, eachapproxmatch
 export annotationcount, alignednucleotidescount, ischimeric, ismulti, refinterval, readrange, refrange, annotation, hasannotation, ispositivestrand, sameread
 export name, type, overlap, parts, refname, featureparams, featureparam, setfeatureparam!, hastype, hasname, typein, namein, distanceonread
 export hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, covratio, normalize!, hasannotationkey, readid, summarize

@@ -294,6 +294,13 @@ function Base.iterate(m::MatchIterator, state=1)
     current_match, last(current_match)
 end
 eachapproxmatch(test_sequence::LongSequence, seq::LongSequence; k=1) = MatchIterator(test_sequence, seq; k=k)
+function Base.collect(m::MatchIterator)
+    collected = Vector{Interval{Nothing}}()
+    for match in m
+        push!(collected, match)
+    end
+    return collected
+end
 
 struct GenomeMatchIterator
     mi_f::MatchIterator
@@ -310,7 +317,13 @@ function Base.iterate(gmi::GenomeMatchIterator, (state,rev)=(1,false))
     end
 end
 eachapproxmatch(test_sequence::LongSequence, genome::Genome; k=1) = GenomeMatchIterator(test_sequence, genome; k=k)
-
+function Base.collect(m::GenomeMatchIterator)
+    collected = Vector{Interval{Nothing}}()
+    for match in m
+        push!(collected, match)
+    end
+    return collected
+end
 
 function nucleotidecount(seqs::Sequences; normalize=true, align=:left)
     align in (:left, :right) || throw(AssertionError("align has to be :left or :right"))

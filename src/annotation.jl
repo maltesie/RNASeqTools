@@ -61,6 +61,11 @@ function Features(feature_list::Vector{Interval{Annotation}})
     return Features(IntervalCollection(feature_list, true), Dict{String, Int}())
 end
 
+function Features(feature_list::Vector{Interval{Nothing}})
+    features = [Interval(refname(f), leftposition(f), rightposition(f), strand(f), Annotation()) for f in feature_list]
+    return Features(IntervalCollection(features, true), Dict{String, Int}())
+end
+
 function Features(feature_list::Vector{Interval{Annotation}}, chroms::Dict{String, Int})
     return Features(IntervalCollection(feature_list, true), chroms)
 end
