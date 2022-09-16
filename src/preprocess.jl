@@ -162,7 +162,7 @@ end
 function trim_fastp(input_files::SingleTypeFiles;
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=nothing, min_length=20,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
-    average_window_quality=25, deduplicate=false, skip_quality_filtering=false, overwrite_existing=false)
+    average_window_quality=20, deduplicate=false, skip_quality_filtering=false, overwrite_existing=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}([(file, nothing) for file in input_files])
     trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, trim=trim, trim_loc=:read1,
@@ -176,7 +176,7 @@ end
 function trim_fastp(input_files::PairedSingleTypeFiles;
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
-    average_window_quality=25, deduplicate=true, skip_quality_filtering=false, overwrite_existing=false)
+    average_window_quality=20, deduplicate=true, skip_quality_filtering=false, overwrite_existing=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}(input_files.list)
     trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, trim=trim, trim_loc=trim_loc,
@@ -516,7 +516,7 @@ align_mem(reads::T, genome::Genome, out_file::String;
 function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, genome::Genome;
     fastp_bin="fastp", trimmed_prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20, max_length=nothing,
     cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
-    average_window_quality=25, deduplicate=false, skip_quality_filtering=false,
+    average_window_quality=20, deduplicate=false, skip_quality_filtering=false,
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
     min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools",
     norm=1000000, include_secondary_alignments=true, suffix_forward="_forward", suffix_reverse="_reverse",
