@@ -1,29 +1,28 @@
 function download_prefetch(input_file::String; output_path=dirname(input_file), fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
+    sra_ids = String[]
     open(input_file) do f
-        for accession_number in eachline(f)
-            sra_file = joinpath(output_path, "$accession_number.sra")
-            fastqgz_file = sra_file[1:end-3] * "fastq.gz"
-            isfile(sra_file) && overwrite_existing && rm(sra_file)
-            isfile(fastqgz_file) && overwrite_existing && rm(fastqgz_file)
-            if !isfile(sra_file)
-                run(`$prefetch_bin --output-directory $output_path $accession_number`)
-                if isdir(joinpath(output_path, accession_number))
-                    mv(joinpath(output_path, accession_number, "$accession_number.sra"), joinpath(output_path, "$accession_number.sra"))
-                    rm(joinpath(output_path, accession_number))
-                end
-            end
-            !isfile(fastqgz_file) && run(`$fastqdump_bin --gzip --outdir $output_path $sra_file`)
-            keep_sra || rm(sra_file)
+        for sra_id in eachline(f)
+            push!(sra_ids, sra_id)
         end
     end
+    download_prefetch(sra_ids, output_path; fastqdump_bin=fastqdump_bin, prefetch_bin=prefetch_bin, keep_sra=keep_sra, overwrite_existing=overwrite_existing)
 end
-function download_prefetch(sra_ids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
-    f = tempname()
-    write(f, join(sra_ids, "\n"))
-    download_sra(f; output_path=output_path, fastqdump_bin=fastqdump_bin, prefetch_bin=prefetch_bin, keep_sra=keep_sra, overwrite_existing=overwrite_existing)
-    rm(f)
-end
-function download_fasterq()
+function download_prefetch(sra_runids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
+    for accession_number in sra_runids
+        sra_file = joinpath(output_path, "$accession_number.sra")
+        fastqgz_file = sra_file[1:end-3] * "fastq.gz"
+        isfile(sra_file) && overwrite_existing && rm(sra_file)
+        isfile(fastqgz_file) && overwrite_existing && rm(fastqgz_file)
+        if !isfile(sra_file)
+            run(`$prefetch_bin --output-directory $output_path $accession_number`)
+            if isdir(joinpath(output_path, accession_number))
+                mv(joinpath(output_path, accession_number, "$accession_number.sra"), joinpath(output_path, "$accession_number.sra"))
+                rm(joinpath(output_path, accession_number))
+            end
+        end
+        !isfile(fastqgz_file) && run(`$fastqdump_bin --gzip --outdir $output_path $sra_file`)
+        keep_sra || rm(sra_file)
+    end
 end
 
 function demultiplex(testseq::T, barcode_queries::Vector{ApproximateSearchQuery{typeof(isequal), T}}; k=1) where T<:BioSequence
