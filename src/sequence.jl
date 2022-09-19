@@ -123,10 +123,10 @@ Sequences(genomes::Vector{Genome}) =
     Sequences([genome.seq for genome in genomes], UInt.(i for i in 1:length(genomes)), [i:i for i in 1:length(genomes)])
 
 Base.getindex(seqs::Sequences, index::Int) = seqs.seq[seqs.ranges[index]]
-Base.getindex(seqs::Sequences, range::Union{StepRange{Int, Int}, UnitRange{Int}}) = Sequences(seqs.seq, seqs.seqnames[range], seqs.ranges[range])
+Base.getindex(seqs::Sequences, range::Union{StepRange{Int, Int}, UnitRange{Int}}) = Sequences(seqs.seq, seqs.tempnames[range], seqs.ranges[range])
 
 function Base.getindex(seqs::Sequences, index::Union{UInt,String})
-    r = searchsorted(seqs.seqnames, index)
+    r = searchsorted(seqs.tempnames, index)
     if length(r) === 2
         return (seqs.seq[seqs.ranges[first(r)]], seqs.seq[seqs.ranges[last(r)]])
     elseif length(r) === 1
@@ -136,19 +136,19 @@ function Base.getindex(seqs::Sequences, index::Union{UInt,String})
     end
 end
 
-Base.length(seqs::Sequences) = length(seqs.seqnames)
+Base.length(seqs::Sequences) = length(seqs.tempnames)
 Base.iterate(seqs::Sequences) = (seqs.seq[seqs.ranges[1]], 2)
 Base.iterate(seqs::Sequences, state::Int) = state > length(seqs.ranges) ? nothing : (seqs.seq[seqs.ranges[state]], state+1)
 eachpair(seqs::Sequences) = partition(seqs, 2)
-Base.empty!(seqs::Sequences) = (empty!(seqs.seq); empty!(seqs.seqnames); empty!(seqs.ranges))
+Base.empty!(seqs::Sequences) = (empty!(seqs.seq); empty!(seqs.tempnames); empty!(seqs.ranges))
 
 function Base.filter!(seqs::Sequences{T}, ids::Set{T}) where {T<:Union{String, UInt}}
-    bitindex = (in).(seqs.seqnames, Ref(ids))
+    bitindex = (in).(seqs.tempnames, Ref(ids))
     n_seqs = sum(bitindex)
     seqs.ranges[1:n_seqs] = seqs.ranges[bitindex]
-    seqs.seqnames[1:n_seqs] = seqs.seqnames[bitindex]
+    seqs.tempnames[1:n_seqs] = seqs.tempnames[bitindex]
     resize!(seqs.ranges, n_seqs)
-    resize!(seqs.seqnames, n_seqs)
+    resize!(seqs.tempnames, n_seqs)
 end
 
 function read_reads(file::String; is_reverse_complement=false, hash_id=true)::Sequences
@@ -168,16 +168,16 @@ function read_reads(file::String; is_reverse_complement=false, hash_id=true)::Se
         i += 1
         current_range = last(current_range)+1:last(current_range)+length(record.sequence)
         length(seqs.seq) < last(current_range) && resize!(seqs.seq, length(seqs.seq)+max(1000000, last(current_range)-length(seqs.seq)))
-        length(seqs.seqnames) < i && (resize!(seqs.seqnames, length(seqs.seqnames)+10000);resize!(seqs.ranges, length(seqs.ranges)+10000))
-        seqs.seqnames[i] = id
+        length(seqs.tempnames) < i && (resize!(seqs.tempnames, length(seqs.tempnames)+10000);resize!(seqs.ranges, length(seqs.ranges)+10000))
+        seqs.tempnames[i] = id
         seqs.ranges[i] = current_range
         seqs.seq[current_range] = s
     end
     resize!(seqs.seq, last(current_range))
-    resize!(seqs.seqnames, i)
+    resize!(seqs.tempnames, i)
     resize!(seqs.ranges, i)
-    sort_index = sortperm(seqs.seqnames)
-    seqs.seqnames[1:end] = seqs.seqnames[sort_index]
+    sort_index = sortperm(seqs.tempnames)
+    seqs.tempnames[1:end] = seqs.tempnames[sort_index]
     seqs.ranges[1:end] = seqs.ranges[sort_index]
     close(reader)
     return seqs
@@ -216,24 +216,24 @@ function read_reads(file1::String, file2::String; is_reverse_complement=false, h
         current_range = last(current_range)+1:last(current_range)+length(s1)
         paired_end = last(current_range) + length(s2)
         length(seqs.seq) < paired_end && resize!(seqs.seq, length(seqs.seq)+max(1000000, paired_end-length(seqs.seq)))
-        length(seqs.seqnames) < i+1 && (resize!(seqs.seqnames, length(seqs.seqnames)+10000);resize!(seqs.ranges, length(seqs.ranges)+10000))
-        seqs.seqnames[i] = id1
+        length(seqs.tempnames) < i+1 && (resize!(seqs.tempnames, length(seqs.tempnames)+10000);resize!(seqs.ranges, length(seqs.ranges)+10000))
+        seqs.tempnames[i] = id1
         seqs.ranges[i] = current_range
         seqs.seq[current_range] = s1
         i += 1
         current_range = last(current_range)+1:last(current_range)+length(s2)
-        seqs.seqnames[i] = id2
+        seqs.tempnames[i] = id2
         seqs.ranges[i] = current_range
         seqs.seq[current_range] = s2
     end
     resize!(seqs.seq, last(current_range))
-    resize!(seqs.seqnames, i)
+    resize!(seqs.tempnames, i)
     resize!(seqs.ranges, i)
-    si = sortperm(seqs.seqnames[1:2:end])
+    si = sortperm(seqs.tempnames[1:2:end])
     sort_index = zeros(Int, 2*length(si))
     sort_index[1:2:end] = si .* 2 .- 1
     sort_index[2:2:end] = si .* 2
-    seqs.seqnames[1:end] = seqs.seqnames[sort_index]
+    seqs.tempnames[1:end] = seqs.tempnames[sort_index]
     seqs.ranges[1:end] = seqs.ranges[sort_index]
     close(reader1)
     close(reader2)

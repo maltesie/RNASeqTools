@@ -17,7 +17,7 @@ CoverageValues = Dict{String, Vector{Float64}}
 
 struct Sequences{T<:Union{String, UInt}}
     seq::LongSequence
-    seqnames::Vector{T}
+    tempnames::Vector{T}
     ranges::Vector{UnitRange{Int}}
 end
 
