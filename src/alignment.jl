@@ -247,7 +247,7 @@ function Base.iterate(alns::Alignments, state::Int)
     return state > length(alns.ranges) ? nothing : (AlignedRead(alns.ranges[state], alns), state+1)
 end
 
-function Base.filter!(alns::Alingments{T}, tempnames::Set{T}) where {T<:Union{String, UInt}}
+function Base.filter!(alns::Alignments{T}, tempnames::Set{T}) where {T<:Union{String, UInt}}
     index = [alns.tempnames[first(r)] in tempnames for r in alns.ranges]
     alns.ranges = alns.ranges[index]
 end

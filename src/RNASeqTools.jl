@@ -17,10 +17,9 @@ export cut!, nucleotidecount, annotate!, featureseqs, asdataframe, ispositivestr
 export annotationcount, alignednucleotidescount, ischimeric, ismulti, refinterval, readrange, refrange, annotation, hasannotation, ispositivestrand, sameread
 export name, type, overlap, parts, refname, featureparams, featureparam, setfeatureparam!, hastype, hasname, typein, namein, distanceonread
 export hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, covratio, normalize!, hasannotationkey, readid, summarize
-export add5utrs!, add3utrs!, addutrs!, addigrs!
-export mismatchcontexthist, eachpair, isfirstread
+export add5utrs!, add3utrs!, addutrs!, addigrs!, maxdiffpositions
+export eachpair, isfirstread
 export groupfiles, difference_table
-export ANNOTATION_VCH, GENOME_VCH
 
 include("types.jl")
 include("files.jl")

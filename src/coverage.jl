@@ -63,7 +63,7 @@ function Coverage(bigwig_file::String, direction::Symbol)
     chrlist = BigWig.chromlist(reader)
     intervals = Vector{Interval{Float64}}()
     for record in reader
-        push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), stran, BigWig.value(record)))
+        push!(intervals, Interval(BigWig.chrom(record), BigWig.chromstart(record), BigWig.chromend(record), stran, convert(Float64, BigWig.value(record))))
     end
     close(reader)
     return Coverage(IntervalCollection(intervals, true), chrlist)
@@ -193,31 +193,39 @@ function correlation(coverages::Coverage ...)
 end
 correlation(coverages::Vector{Coverage}) = correlation(coverages...)
 
-function maxdiffpositions(coverage::Vector{Float64}; max_ppk=5, compute_max_within=5, circular=true)
+function localmaxdiffindex(coverage::Vector{Float64}; rev=false, min_diff=2, min_ratio=1.1, compute_within=5, circular=true)
     all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
+    rev && (coverage = reverse(coverage))
+    circular && (coverage = vcat(coverage[end-compute_within+1:end], coverage, coverage[1:compute_within]))
     is_negative_strand = all(coverage .<= 0)
-    max_nb_peaks = length(coverage) / 1000 * max_ppk
-    d = zeros(Float64,length(coverage))
+    d = zeros(Float64, length(coverage))
     d[is_negative_strand ? (1:length(d)-1) : (2:length(d))] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
-    if circular
-        d[is_negative_strand ? length(d) : 1] = coverage[1]-coverage[end]
-        d = vcat(d[end-compute_max_within+1:end], d, d[1:compute_max_within])
+    peak_index = zeros(Bool, length(d))
+    for i in compute_within+1:length(d)-compute_within
+        d[i] === maximum(view(d, i-compute_within:i+compute_within)) || continue
+        mi, ma = (minimum(view(coverage, i-compute_within:i-1)), maximum(view(coverage, i+1:i+compute_within)))
+        peak_index[i] = is_negative_strand ? mi/ma >= min_ratio : ma/mi >= min_ratio
     end
-    peak_index = [i-compute_max_within for i in compute_max_within+1:length(d)-compute_max_within if all((d[i] .> d[i-compute_max_within:i-1]) .& (d[i] .> d[i+1:i+compute_max_within]))]
-    d = d[compute_max_within+1:end-compute_max_within]
-    for cut in 1:Int(floor(maximum(d)))
-        length(peak_index) < max_nb_peaks && break
-        peak_index = peak_index[d[peak_index] .>= cut]
-    end
+    peak_index[d .<= min_diff] .= false
+    rev && reverse!(peak_index)
+    circular && (peak_index = peak_index[compute_within+1:end-compute_within])
     return peak_index
 end
-function maxdiffpositions(coverage::Coverage; max_ppk=5, compute_max_within=3, circular=true, invert=false)
-    coverage_values = values(coverage; invert=invert)
-    Dict{String, Tuple{Vector{Int}, Vector{Int}}}(
-        chr=>(
-            maxdiffpositions(coverage_values[chr][1]; max_ppk=max_ppk, compute_max_within=compute_max_within, circular=circular),
-            maxdiffpositions(coverage_values[chr][2]; max_ppk=max_ppk, compute_max_within=compute_max_within, circular=circular)
-        )
-        for chr in sort(collect(keys(coverage_values)))
-    )
+
+function maxdiffpositions(coverage::Coverage; type="DIFF", rev=false, min_diff=2, min_ratio=1.1, compute_within=5, circular=true)
+    coverage_values = values(coverage)
+    features = Interval{Annotation}[]
+    for chr in keys(coverage_values)
+        findex = localmaxdiffindex(coverage_values[chr][1]; rev=rev, min_diff=min_diff, min_ratio=min_ratio, 
+                                                            compute_within=compute_within, circular=circular)
+        rindex = localmaxdiffindex(coverage_values[chr][2]; rev=rev, min_diff=min_diff, min_ratio=min_ratio, 
+                                                            compute_within=compute_within, circular=circular)
+        for (ii, i) in enumerate(findall(findex))
+            push!(features, Interval(chr, i, i, STRAND_POS, Annotation(type, "forward_$ii")))
+        end
+        for (ii, i) in enumerate(findall(rindex))
+            push!(features, Interval(chr, i, i, STRAND_NEG, Annotation(type, "reverse_$ii")))
+        end
+    end
+    return Features(features)
 end
