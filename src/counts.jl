@@ -93,10 +93,6 @@ end
 normalize!(counts::T, features::Features; normalization_method=:rpkm) where {T<:CountContainer} =
     normalize!(counts.values, features; normalization_method=normalization_method)
 
-function cqn_offsets(m::Matrix{Float64})
-
-end
-
 function normalize!(m::Matrix{Float64}, features::Features, genome::Genome; normalization_method=:cqn)
     normalization_method != :cqn && raise(AssertionError("No method implemented for $normalization_method"))
 end
