@@ -28,7 +28,7 @@ end
 
 function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=groupfiles(samples),
         normalization_method=:none, include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false)
-    normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
+    normalization_method in (:none, :tpm, :tpkm, :rle) || raise(AssertionError("No method implemented for $normalization_method"))
     samples.type === ".bam" || throw(AssertionError("Only .bam files are supported"))
     counts = zeros(Float64, length(features), sum(length(v) for v in values(conditions)))
     feature_trans = Dict{String, Int}(name(feature)*type(feature)=>i for (i, feature) in enumerate(features))
@@ -46,7 +46,7 @@ function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=
             end
         end
     end
-    normalization_method in (:tmm, :tpm) && normalize!(counts; normalization_method=normalization_method)
+    normalization_method in (:rle, :tpm) && normalize!(counts; normalization_method=normalization_method)
     normalization_method === :tpkm && normalize!(counts, features)
     FeatureCounts(conditions, counts, features)
 end
