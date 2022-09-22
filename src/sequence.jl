@@ -279,28 +279,19 @@ function cut!(read::LongSequence, int::Tuple{Int, Int})
     reverse!(resize!(reverse!(resize!(read, last(int))), length(read)-first(int)+1))
 end
 
-Base.occursin(test_sequence::LongSequence, genomes::Vector{Genome}; k=1) = sum(occursin(ApproximateSearchQuery(test_sequence), k, genome.seq) for genome in genomes)
-Base.occursin(test_sequences::Sequences, genome::Genome; k=1) = sum(occursin(ApproximateSearchQuery(s), k, genome.seq) for s in test_sequences)
-
 struct MatchIterator
-    sq::ApproximateSearchQuery
+    sq::Union{ExactSearchQuery,ApproximateSearchQuery}
     seq::LongSequence
     max_dist::Int
 end
-MatchIterator(test_sequence::LongSequence, seq::LongSequence; k=1) = MatchIterator(ApproximateSearchQuery(test_sequence), seq, k)
+MatchIterator(test_sequence::LongSequence, seq::LongSequence; k=1) =
+    MatchIterator(k>0 ? ApproximateSearchQuery(test_sequence) : ExactSearchQuery(test_sequence), seq, k)
 function Base.iterate(m::MatchIterator, state=1)
-    current_match = findnext(m.sq, m.max_dist, m.seq, state)
+    current_match = m.max_dist > 0 ? findnext(m.sq, m.max_dist, m.seq, state) : findnext(m.sq, m.seq, state)
     isnothing(current_match) && return nothing
     current_match, last(current_match)
 end
-eachapproxmatch(test_sequence::LongSequence, seq::LongSequence; k=1) = MatchIterator(test_sequence, seq; k=k)
-function Base.collect(m::MatchIterator)
-    collected = Vector{Interval{Nothing}}()
-    for match in m
-        push!(collected, match)
-    end
-    return collected
-end
+Base.eachmatch(test_sequence::LongSequence, seq::LongSequence; k=1) = MatchIterator(test_sequence, seq; k=k)
 
 struct GenomeMatchIterator
     mi_f::MatchIterator
@@ -316,13 +307,14 @@ function Base.iterate(gmi::GenomeMatchIterator, (state,rev)=(1,false))
         (first(r) <= first(first(i)) <= last(r)) && return Interval(chr, first(i) .- first(r), rev ? STRAND_NEG : STRAND_POS), (last(i), rev)
     end
 end
-eachapproxmatch(test_sequence::LongSequence, genome::Genome; k=1) = GenomeMatchIterator(test_sequence, genome; k=k)
-function Base.collect(m::GenomeMatchIterator)
-    collected = Vector{Interval{Nothing}}()
+Base.eachmatch(test_sequence::LongSequence, genome::Genome; k=1) = GenomeMatchIterator(test_sequence, genome; k=k)
+
+function Base.collect(m::T) where T<:Union{MatchIterator,GenomeMatchIterator}
+    re = Interval{Nothing}[]
     for match in m
-        push!(collected, match)
+        push!(re, match)
     end
-    return collected
+    return re
 end
 
 function nucleotidecount(seqs::Sequences; normalize=true, align=:left)
