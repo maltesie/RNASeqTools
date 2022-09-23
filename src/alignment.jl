@@ -16,19 +16,18 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-function samevalueintervals(d::Vector{T}) where T
-    index::Int = 1
+function samevalueintervals(d::Vector{T}, index::Vector{Int}) where T <: Union{UInt, String}
     rindex::Int = 1
-    lindex::Int = 0
-    n_unique = length(unique(d))
+    lindex::Int = 1
+    n_unique = length(Set(d))
     ranges = Vector{UnitRange{Int}}(undef, n_unique)
-    while index < length(d)
-        if d[index] != d[index+1]
-            ranges[rindex] = lindex+1:index
-            lindex = index
+    subd = view(d, index)
+    for i::Int in 1:(length(d)-1)
+        if subd[i] != subd[i+1]
+            ranges[rindex] = lindex:i
+            lindex = i+1
             rindex += 1
         end
-        index += 1
     end
     length(d) == 1 && (ranges[1] = 1:1)
     n_unique>1 && (ranges[end] = last(ranges[end-1])+1:length(d))
@@ -198,10 +197,9 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
     rds = Vector{Symbol}(undef, 10000)
     index::Int = 0
     while !eof(reader)
+        empty!(record)
         read!(reader, record)
-        BAM.ismapped(record) || continue
-        !isprimary(record) && !include_secondary_alignments && continue
-        hasxatag(record) && !include_alternative_alignments && continue
+        (!BAM.ismapped(record) || (!isprimary(record) && !include_secondary_alignments) || (hasxatag(record) && !include_alternative_alignments)) && continue
         current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
         index += 1
         xastrings = hasxatag(record) ? string.(split(xatag(record), ";")[1:end-1]) : String[]
@@ -229,12 +227,11 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
     end
     close(reader)
     nindex = sortperm(ns)
-    ns = ns[nindex]
-    ranges = samevalueintervals(ns)
+    ranges = samevalueintervals(ns, nindex)
     pindex = partsindex(ranges, nindex, rls, rds)
-    return Alignments(chromosome_list, ns, ls[pindex], rs[pindex], rls[pindex], rrs[pindex], rds[pindex], nms[pindex], is[pindex], ss[pindex],
+    return Alignments(chromosome_list, ns, ls, rs, rls, rrs, rds, nms, is, ss,
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)),
-                        fill(0xff,length(ns)), fill(0xff,length(ns)), ranges)
+                        fill(0xff,length(ns)), fill(0xff,length(ns)), pindex, ranges)
 end
 
 Base.length(alns::Alignments) = length(alns.tempnames)
@@ -270,19 +267,21 @@ function Base.show(alns::Alignments; n=-1, only_chimeric=false, filter_name=noth
     end
 end
 
-AlignedPart(alns::Alignments, i::Int) =
-AlignedPart(
-    Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i],
-        AlignmentAnnotation(
-            isassigned(alns.antypes, i) ? alns.antypes[i] : "",
-            isassigned(alns.annames, i) ? alns.annames[i] : "",
-            alns.anols[i]
-        )
-    ),
-    alns.read_leftpos[i]:alns.read_rightpos[i],
-    alns.nms[i],
-    alns.reads[i]
-)
+function AlignedPart(alns::Alignments, i::Int)
+    i_p = alns.pindex[i]
+    AlignedPart(
+        Interval(alns.refnames[i_p], alns.leftpos[i_p], alns.rightpos[i_p], alns.strands[i_p],
+            AlignmentAnnotation(
+                isassigned(alns.antypes, i_p) ? alns.antypes[i_p] : "",
+                isassigned(alns.annames, i_p) ? alns.annames[i_p] : "",
+                alns.anols[i_p]
+            )
+        ),
+        alns.read_leftpos[i_p]:alns.read_rightpos[i_p],
+        alns.nms[i_p],
+        alns.reads[i_p]
+    )
+end
 
 AlignedPart(alnpart::AlignedPart; new_name::Union{Nothing, String}=nothing, new_type::Union{Nothing, String}=nothing) =
 AlignedPart(
@@ -301,7 +300,7 @@ AlignedPart(
 Base.getindex(alns::Alignments, i::Int) = AlignedRead(alns.ranges[i], alns)
 Base.getindex(alns::Alignments, r::UnitRange{Int}) = Alignments(alns.chroms, alns.tempnames, alns.leftpos, alns.rightpos, alns.read_leftpos, alns.read_rightpos,
                                                                 alns.reads, alns.nms, alns.refnames, alns.strands, alns.annames, alns.antypes,
-                                                                alns.anols, alns.anleftrel, alns.anrightrel, alns.ranges[r])
+                                                                alns.anols, alns.anleftrel, alns.anrightrel, alns.pindex, alns.ranges[r])
 
 """
     Constructor for the AlignedPart struct. Builds AlignedPart from a XA string, which is created by bwa-mem2

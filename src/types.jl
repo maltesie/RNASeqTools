@@ -59,6 +59,7 @@ struct Alignments{T<:Union{String, UInt}}
     anols::Vector{UInt8}
     anleftrel::Vector{UInt8}
     anrightrel::Vector{UInt8}
+    pindex::Vector{Int}
     ranges::Vector{UnitRange{Int}}
 end
 
