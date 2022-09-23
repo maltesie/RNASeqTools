@@ -245,14 +245,18 @@ function Base.iterate(alns::Alignments, state::Int)
 end
 
 function Base.filter!(alns::Alignments{T}, tempnames::Set{T}) where {T<:Union{String, UInt}}
-    index = [alns.tempnames[first(r)] in tempnames for r in alns.ranges]
-    alns.ranges = alns.ranges[index]
+    bitindex = [alns.tempnames[alns.pindex[first(r)]] in tempnames for r in alns.ranges]
+    n_seqs = sum(bitindex)
+    alns.ranges[1:n_seqs] = alns.ranges[bitindex]
+    resize!(alns.ranges, n_seqs)
 end
 
 function sync!(seqs::Sequences{T}, alns::Alignments{T}) where {T<:Union{String, UInt}}
     filter!(seqs, Set(alns.tempnames))
-    filter!(alns, Set(seqs.seqnames))
+    filter!(alns, Set(seqs.tempnames))
 end
+sync!(alns::Alignments{T}, seqs::Sequences{T}) where {T<:Union{String, UInt}} =
+    sync!(seqs, alns)
 
 function Base.show(alns::Alignments; n=-1, only_chimeric=false, filter_name=nothing, filter_type=nothing)
     c = 0
@@ -555,6 +559,7 @@ function Base.iterate(alnread::AlignedRead, state::Int)
     return state > last(alnread.range) ? nothing : (AlignedPart(alnread.alns, state), state+1)
 end
 
+Base.lastindex(alnread::AlignedRead) = length(alnread.range)
 Base.getindex(alnread::AlignedRead, i::Int) = AlignedPart(alnread.alns, alnread.range[i])
 Base.getindex(alnread::AlignedRead, r::UnitRange{Int}) = AlignedRead(alnread.range[r], alnread.alns)
 Base.getindex(alnread::AlignedRead, b::Vector{Bool}) = [alnread.alns[index] for (i::Int,index::Int) in enumerate(alnread.range) if b[i]]
@@ -640,7 +645,7 @@ end
 function countchimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true)
     length(alnread) > 1 || (return 0)
     c = 0
-    for (i1, i2) in combinations(alnread.range, 2)
+    for (i1, i2) in combinations(alnread.alns.pindex[alnread.range], 2)
         (check_annotation && isassigned(alnread.alns.annames, i1) &&  isassigned(alnread.alns.annames, i2) &&
             (alnread.alns.annames[i1] === alnread.alns.annames[i2])) && continue
         ((alnread.alns.refnames[i1] === alnread.alns.refnames[i2]) && (alnread.alns.strands[i1] === alnread.alns.strands[i2]) &&
@@ -652,7 +657,7 @@ end
 
 function ischimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true)
     length(alnread) > 1 || (return false)
-    for (i1, i2) in combinations(alnread.range, 2)
+    for (i1, i2) in combinations(alnread.alns.pindex[alnread.range], 2)
         (check_annotation && isassigned(alnread.alns.annames, i1) &&  isassigned(alnread.alns.annames, i2) &&
             (alnread.alns.annames[i1] === alnread.alns.annames[i2])) && continue
         ((alnread.alns.refnames[i1] === alnread.alns.refnames[i2]) && (alnread.alns.strands[i1] === alnread.alns.strands[i2]) &&

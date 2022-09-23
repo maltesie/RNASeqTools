@@ -142,8 +142,8 @@ Base.iterate(seqs::Sequences, state::Int) = state > length(seqs.ranges) ? nothin
 eachpair(seqs::Sequences) = partition(seqs, 2)
 Base.empty!(seqs::Sequences) = (empty!(seqs.seq); empty!(seqs.tempnames); empty!(seqs.ranges))
 
-function Base.filter!(seqs::Sequences{T}, ids::Set{T}) where {T<:Union{String, UInt}}
-    bitindex = (in).(seqs.tempnames, Ref(ids))
+function Base.filter!(seqs::Sequences{T}, tempnames::Set{T}) where {T<:Union{String, UInt}}
+    bitindex = (in).(seqs.tempnames, Ref(tempnames))
     n_seqs = sum(bitindex)
     seqs.ranges[1:n_seqs] = seqs.ranges[bitindex]
     seqs.tempnames[1:n_seqs] = seqs.tempnames[bitindex]

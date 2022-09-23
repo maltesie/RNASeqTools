@@ -18,7 +18,7 @@ export annotationcount, alignednucleotidescount, ischimeric, ismulti, refinterva
 export name, type, overlap, parts, refname, featureparams, featureparam, setfeatureparam!, hastype, hasname, typein, namein, distanceonread
 export hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, covratio, normalize!, hasannotationkey, readid, summarize
 export add5utrs!, add3utrs!, addutrs!, addigrs!, maxdiffpositions
-export eachpair, isfirstread
+export eachpair, isfirstread, sync!
 export groupfiles, difference_table
 
 include("types.jl")
