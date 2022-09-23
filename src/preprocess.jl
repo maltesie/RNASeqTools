@@ -188,7 +188,7 @@ function trim_fastp(input_files::PairedSingleTypeFiles;
         for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
 end
 
-function split_paired_reads_file(file::String, split_at::Int; overwrite_existing=false)
+function split_each_read(file::String, split_at::Int; overwrite_existing=false)
     is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
     is_zipped = endswith(file, ".gz")
 
