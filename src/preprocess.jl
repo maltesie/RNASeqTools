@@ -272,13 +272,13 @@ end
     *.report.txt is in kraken2's modified report format (--report-minimizer-data).
     Report file is used for KronaTools plot.
 """
-function align_kraken2(sequence_file::String, db_location::String;
+function align_kraken2(sequence_file::String, db_path::String;
     kraken_bin = "kraken2", threads = 6, report = true, results = false, quick = false, min_hit_groups = false, )
 
     output_file = split(sequence_file, ".")[1] * ".kraken2_results.txt"
     report_file = split(sequence_file, ".")[1] * ".report.txt"
 
-    params = ["--db", db_location,
+    params = ["--db", db_path,
               "--threads", threads,
               sequence_file,
              ]
@@ -307,7 +307,7 @@ end
     - ´min_seed_len::Int´: Minimum seed length. Matches shorter than INT will be missed.
     - ´reseeding_factor::Float64´: Trigger re-seeding for a MEM longer than minSeedLenFLOAT. Larger value yields fewer seeds, which leads to faster alignment speed but lower accuracy.
 """
-function align_minimap(in_file::String, out_file::String, genome_file::String;
+function align_minimap(in_file::String, genome_file::String, out_file::String;
     preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1, minimizer_len=15,
     threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false)
 
@@ -340,7 +340,7 @@ end
 align_minimap(in_file::String, genome_file::String;
     preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1, minimizer_len=15,
     threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false) =
-    align_minimap(in_file, joinpath(in_file[1:findlast('.', in_file)] * "bam"), genome_file;
+    align_minimap(in_file, genome_file, joinpath(in_file[1:findlast('.', in_file)] * "bam");
         preset=preset, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2,
         gap_extend1=gap_extend1, gap_extend2=gap_extend2, minimizer_len=minimizer_len, threads=threads, all_secondary=all_secondary,
         skip_stats=skip_stats, minimap_bin=minimap_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
@@ -385,7 +385,7 @@ end
     - ´min_seed_len::Int´: Minimum seed length. Matches shorter than INT will be missed.
     - ´reseeding_factor::Float64´: Trigger re-seeding for a MEM longer than minSeedLenFLOAT. Larger value yields fewer seeds, which leads to faster alignment speed but lower accuracy.
 """
-function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::String, genome_file::String;
+function align_mem(in_file1::String, in_file2::Union{String,Nothing}, genome_file::String, out_file::String;
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
     min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools")
 
@@ -408,10 +408,10 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, out_file::
         `$sam_bin stats $out_file`,
         stats_file))
 end
-align_mem(in_file::String, out_file::String, genome_file::String;
+align_mem(in_file::String, genome_file::String, out_file::String;
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=18,
     reseeding_factor=1.4, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools") =
-    align_mem(in_file, nothing, out_file::String, genome_file::String;
+    align_mem(in_file, nothing, genome_file, out_file;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, min_seed_len=min_seed_len,
         reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
@@ -428,15 +428,16 @@ function align_mem(read_files::T, genome::Genome; min_score=20, match=1, mismatc
     write(tmp_genome, genome)
     outfiles = Vector{String}()
     for file in read_files
-        out_file = isa(read_files, SingleTypeFiles) ? file[1:end-length(read_files.type)] * ".bam" : first(file)[1:end-length(read_files.type)-length(read_files.suffix1)] * ".bam"
+        out_file = isa(read_files, SingleTypeFiles) ? file[1:end-length(read_files.type)] * ".bam" :
+                    first(file)[1:end-length(read_files.type)-length(read_files.suffix1)] * ".bam"
         push!(outfiles, out_file)
         (isfile(out_file) && !overwrite_existing) && continue
         isa(read_files, SingleTypeFiles) ?
-        align_mem(file, out_file, tmp_genome;
+        align_mem(file, tmp_genome, out_file;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open,
                 gap_extend=gap_extend, clipping_penalty=clipping_penalty,  min_seed_len=min_seed_len,
                 reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, bwa_bin=bwa_bin, sam_bin=sam_bin) :
-        align_mem(first(file), last(file), out_file, tmp_genome;
+        align_mem(first(file), last(file), tmp_genome, out_file;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
                 clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
                 min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
@@ -474,11 +475,11 @@ function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String; 
         length(genomes) > 1 && (this_out_file = joinpath(dirname(out_file), "$(i)_" * basename(out_file)))
 
         !ispaired ?
-        align_mem(tmp_reads, this_out_file, tmp_genome;
+        align_mem(tmp_reads, tmp_genome, this_out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
             is_ont=is_ont, threads=threads, bwa_bin=bwa_bin, sam_bin=sam_bin) :
-        align_mem(tmp_reads, tmp_reads2, this_out_file, tmp_genome;
+        align_mem(tmp_reads, tmp_reads2, tmp_genome, this_out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
             min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
