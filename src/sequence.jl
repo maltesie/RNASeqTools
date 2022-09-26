@@ -18,7 +18,7 @@ Base.length(genome::Genome) = length(genome.seq)
 Base.getindex(genome::Genome, key::String) = genome.seq[genome.chroms[key]]
 Base.getindex(genome::Genome, key::Pair{String, UnitRange}) = genome[first(key)][last(key)]
 
-function chomosomecount(genome::Genome)
+function nchromosome(genome::Genome)
     return length(genome.chroms)
 end
 
@@ -29,7 +29,7 @@ end
 
 function Base.iterate(genome::Genome, state::Int)
     state += 1
-    state > genome.chroms.count && (return nothing)
+    state > length(genome.chroms) && (return nothing)
     for (i, (chr, slice)) in enumerate(genome.chroms)
         (i == state) && (return ((chr, genome.seq[slice]), state))
     end
@@ -137,6 +137,7 @@ function Base.getindex(seqs::Sequences, index::Union{UInt,String})
 end
 
 Base.length(seqs::Sequences) = length(seqs.tempnames)
+nread(seqs::Sequences) = length(unique(seqs.tempnames))
 Base.iterate(seqs::Sequences) = (seqs.seq[seqs.ranges[1]], 2)
 Base.iterate(seqs::Sequences, state::Int) = state > length(seqs.ranges) ? nothing : (seqs.seq[seqs.ranges[state]], state+1)
 eachpair(seqs::Sequences) = partition(seqs, 2)
@@ -317,7 +318,7 @@ function Base.collect(m::T) where T<:Union{MatchIterator,GenomeMatchIterator}
     return re
 end
 
-function nucleotidecount(seqs::Sequences; normalize=true, align=:left)
+function nucleotidedistribution(seqs::Sequences; normalize=true, align=:left)
     align in (:left, :right) || throw(AssertionError("align has to be :left or :right"))
     max_length = maximum([length(read) for read in seqs])
     count = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
@@ -340,7 +341,7 @@ end
 information_content(m::Matrix{Float64}; n=Inf) = m .* (2 .- [-1 * sum(x > 0 ? x * log2(x) : 0 for x in r) for r in eachcol(m)] .- (3/(2*log(2)*n)))'
 
 function logo(seqs::Sequences)
-    nc = nucleotidecount(seqs)
+    nc = nucleotidedistribution(seqs)
     m = hcat(nc[DNA_A], nc[DNA_T], nc[DNA_G], nc[DNA_C])
     information_content(m; n=length(seqs))
 end
