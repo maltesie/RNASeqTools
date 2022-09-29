@@ -1,4 +1,4 @@
-function Genome(sequence_dict::Dict{String, LongSequence})
+function Genome(sequence_dict::Dict{String, LongDNA{4}})
     seq = LongDNA{4}(undef, sum(length(s) for s in values(sequence_dict)))
     chrs = Dict{String, UnitRange}()
     si = 1
@@ -10,8 +10,8 @@ function Genome(sequence_dict::Dict{String, LongSequence})
     end
     return Genome(seq, chrs)
 end
-Genome(sequences::Vector{LongSequence}, names::Vector{String}) = Genome(Dict(n=>s for (n,s) in zip(sequences, names)))
-Genome(sequence::LongSequence, name::String) = Genome([sequence], [name])
+Genome(sequences::Vector{LongDNA{4}}, names::Vector{String}) = Genome(Dict(n=>s for (n,s) in zip(sequences, names)))
+Genome(sequence::LongDNA{4}, name::String) = Genome([sequence], [name])
 Genome(genome_file::String) = Genome(read_genomic_fasta(genome_file))
 
 Base.length(genome::Genome) = length(genome.seq)
@@ -53,10 +53,10 @@ function Base.write(file::String, genome::Genome)
 end
 
 function read_genomic_fasta(fasta_file::String)
-    genome::Dict{String, LongSequence} = Dict()
+    genome::Dict{String, LongDNA{4}} = Dict()
     open(FASTA.Reader, fasta_file) do reader
         for record in reader
-            genome[identifier(record)] = FASTA.sequence(record)
+            genome[FASTA.identifier(record)] = FASTA.sequence(LongDNA{4}, record)
         end
     end
     return genome
@@ -78,7 +78,7 @@ function Sequences(::Type{T}) where {T<:Union{String, UInt}}
     Sequences(LongDNA{4}(""), T[], UnitRange{Int}[])
 end
 
-function Sequences(seqs::Vector{LongSequence}, seqnames::Vector{UInt})
+function Sequences(seqs::Vector{LongDNA{4}}, seqnames::Vector{UInt})
     (length(seqnames) == length(seqs)) || throw(AssertionError("number of names must match the number of sequences!"))
     (length(seqnames) == length(unique(seqnames))) || throw(AssertionError("names must be unique!"))
     ranges = Vector{UnitRange{Int}}(undef, length(seqs))
@@ -93,9 +93,9 @@ function Sequences(seqs::Vector{LongSequence}, seqnames::Vector{UInt})
     sortindex = sortperm(seqnames)
     return Sequences(seq, seqnames[sortindex], ranges[sortindex])
 end
-Sequences(seqs::Vector{LongSequence}) = Sequences(seqs, Vector{UInt}(1:length(seqs)))
+Sequences(seqs::Vector{LongDNA{4}}) = Sequences(seqs, Vector{UInt}(1:length(seqs)))
 
-function Sequences(seqs::Vector{LongSequence}, seqnames::Vector{String})
+function Sequences(seqs::Vector{LongDNA{4}}, seqnames::Vector{String})
     (length(seqnames) == length(seqs)) || throw(AssertionError("number of names must match the number of sequences!"))
     (length(seqnames) == length(unique(seqnames))) || throw(AssertionError("names must be unique!"))
     ranges = Vector{UnitRange{Int}}(undef, length(seqs))
@@ -241,7 +241,7 @@ function read_reads(file1::String, file2::String; is_reverse_complement=false, h
     return seqs
 end
 
-function translation_dict(from_sequence::LongSequence, to_sequence::LongSequence)
+function translation_dict(from_sequence::LongDNA{4}, to_sequence::LongDNA{4})
     scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
     res = alignment(pairalign(GlobalAlignment(), from_sequence, to_sequence, scoremodel))
     trans_dict::Dict{Int, Union{Nothing, Int}} = Dict()
@@ -262,7 +262,7 @@ function translation_dict(from_sequence::LongSequence, to_sequence::LongSequence
     return trans_dict
 end
 
-function cut!(read::LongSequence, pos::Int; keep=:left, from=:left)
+function cut!(read::LongDNA{4}, pos::Int; keep=:left, from=:left)
     0 <= pos <= length(read) || resize!(read, 0)
     if (from == :left) && (keep == :left)
         resize!(read, pos)
@@ -275,31 +275,31 @@ function cut!(read::LongSequence, pos::Int; keep=:left, from=:left)
     end
 end
 
-function cut!(read::LongSequence, int::Tuple{Int, Int})
+function cut!(read::LongDNA{4}, int::Tuple{Int, Int})
     (0 <= first(int) < last(int) <= length(read)) || resize!(read, 0)
     reverse!(resize!(reverse!(resize!(read, last(int))), length(read)-first(int)+1))
 end
 
 struct MatchIterator
     sq::Union{ExactSearchQuery,ApproximateSearchQuery}
-    seq::LongSequence
+    seq::LongDNA{4}
     max_dist::Int
 end
-MatchIterator(test_sequence::LongSequence, seq::LongSequence; k=1) =
+MatchIterator(test_sequence::LongDNA{4}, seq::LongDNA{4}; k=1) =
     MatchIterator(k>0 ? ApproximateSearchQuery(test_sequence) : ExactSearchQuery(test_sequence), seq, k)
 function Base.iterate(m::MatchIterator, state=1)
     current_match = m.max_dist > 0 ? findnext(m.sq, m.max_dist, m.seq, state) : findnext(m.sq, m.seq, state)
     isnothing(current_match) && return nothing
     current_match, last(current_match)
 end
-Base.eachmatch(test_sequence::LongSequence, seq::LongSequence; k=1) = MatchIterator(test_sequence, seq; k=k)
+Base.eachmatch(test_sequence::LongDNA{4}, seq::LongDNA{4}; k=1) = MatchIterator(test_sequence, seq; k=k)
 
 struct GenomeMatchIterator
     mi_f::MatchIterator
     mi_r::MatchIterator
     chroms::Dict{String, UnitRange}
 end
-GenomeMatchIterator(test_sequence::LongSequence, genome::Genome; k=1) =
+GenomeMatchIterator(test_sequence::LongDNA{4}, genome::Genome; k=1) =
     GenomeMatchIterator(MatchIterator(test_sequence, genome.seq; k=k), MatchIterator(reverse_complement(test_sequence), genome.seq; k=k), genome.chroms)
 function Base.iterate(gmi::GenomeMatchIterator, (state,rev)=(1,false))
     i = iterate(rev ? gmi.mi_r : gmi.mi_f, state)
@@ -308,7 +308,7 @@ function Base.iterate(gmi::GenomeMatchIterator, (state,rev)=(1,false))
         (first(r) <= first(first(i)) <= last(r)) && return Interval(chr, first(i) .- first(r), rev ? STRAND_NEG : STRAND_POS), (last(i), rev)
     end
 end
-Base.eachmatch(test_sequence::LongSequence, genome::Genome; k=1) = GenomeMatchIterator(test_sequence, genome; k=k)
+Base.eachmatch(test_sequence::LongDNA{4}, genome::Genome; k=1) = GenomeMatchIterator(test_sequence, genome; k=k)
 
 function Base.collect(m::T) where T<:Union{MatchIterator,GenomeMatchIterator}
     re = Interval{Nothing}[]
