@@ -725,7 +725,7 @@ function occurences(test_sequence::LongSequence, bam_file::String, similarity_cu
 end
 
 annotate_filter(a::Interval{Annotation}, b::Interval{Nothing}) = strand(a) === strand(b)
-function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_type=nothing, overwrite_type=nothing)
+function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_type=nothing, min_prioritize_overlap=80, overwrite_type=nothing)
     myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(annotate_filter), Annotation}(
                                     annotate_filter,
                                     GenomicFeatures.ICTreeIntersection{Annotation}(),
@@ -738,11 +738,10 @@ function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_
         myiterator = myiterators[alns.refnames[i]]
         myiterator.query = Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i])
         for feature_interval in myiterator
-            olp = round(UInt8, (min(min(feature_interval.last - feature_interval.first + 1, alns.rightpos[i] - alns.leftpos[i] + 1),
-                                    min(feature_interval.last - alns.leftpos[i] + 1, alns.rightpos[i] - feature_interval.first + 1)) /
-                                (alns.rightpos[i] - alns.leftpos[i] + 1)) * 100)
+            olp = round(UInt8, (min(feature_interval.last, alns.rightpos[i]) - max(feature_interval.first, alns.leftpos[i])) /
+                                (alns.rightpos[i] - alns.leftpos[i] + 1) * 100)
 
-            priority = !isnothing(prioritize_type) && (type(feature_interval) === prioritize_type) && (olp > 80)
+            priority = !isnothing(prioritize_type) && (type(feature_interval) === prioritize_type) && (olp > min_prioritize_overlap)
             overwrite = !isnothing(overwrite_type) && isassigned(alns.antypes, i) && (alns.antypes[i] === overwrite_type)
 
             if  priority || overwrite || alns.anols[i]<olp
