@@ -590,8 +590,8 @@ end
 function GenomicFeatures.strand(alnread::AlignedRead)
     length(alnread) > 0 || (return STRAND_NA)
     #println(view(alnread.alns.strands, alnread.range), "\n",alnread.alns.strands[first(alnread.range)])
-    check_strand = alnread.alns.strands[first(alnread.range)]
-    return all(s === check_strand for s in view(alnread.alns.strands, alnread.range)) ? check_strand : STRAND_BOTH
+    check_strand = alnread.alns.strands[alnread.alns.pindex[first(alnread.range)]]
+    return all(s === check_strand for s in view(alnread.alns.strands, alnread.alns.pindex[alnread.range])) ? check_strand : STRAND_BOTH
 end
 
 function ispositivestrand(alnread::AlignedRead)
