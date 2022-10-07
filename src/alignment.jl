@@ -655,32 +655,24 @@ function distance(l1::Int, r1::Int, l2::Int, r2::Int)::Int
 end
 
 function nchimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true)
-    length(alnread) > 1 || (return 0)
+    length(alnread) > 1 || return 0
     c = 0
-    for (i1, i2) in combinations(alnread.alns.pindex[alnread.range], 2)
-        (check_annotation && isassigned(alnread.alns.annames, i1) &&  isassigned(alnread.alns.annames, i2) &&
-            (alnread.alns.annames[i1] === alnread.alns.annames[i2])) && continue
-        ((alnread.alns.refnames[i1] === alnread.alns.refnames[i2]) && (alnread.alns.strands[i1] === alnread.alns.strands[i2]) &&
-            distance(alnread.alns.leftpos[i1], alnread.alns.rightpos[i1], alnread.alns.leftpos[i2], alnread.alns.rightpos[i2]) < min_distance) && continue
-        c += 1
+    for (p1, p2) in combinations(parts(alnread), 2)
+        c += ischimeric(p1, p2; min_distance=min_distance, check_annotation=check_annotation)
     end
     return c
 end
 
 function ischimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true)
-    length(alnread) > 1 || (return false)
-    for (i1, i2) in combinations(alnread.alns.pindex[alnread.range], 2)
-        (check_annotation && isassigned(alnread.alns.annames, i1) &&  isassigned(alnread.alns.annames, i2) &&
-            (alnread.alns.annames[i1] === alnread.alns.annames[i2])) && continue
-        ((alnread.alns.refnames[i1] === alnread.alns.refnames[i2]) && (alnread.alns.strands[i1] === alnread.alns.strands[i2]) &&
-            distance(alnread.alns.leftpos[i1], alnread.alns.rightpos[i1], alnread.alns.leftpos[i2], alnread.alns.rightpos[i2]) < min_distance) && continue
-        return true
+    length(alnread) > 1 || return false
+    for (p1, p2) in combinations(parts(alnread), 2)
+        ischimeric(p1, p2; min_distance=min_distance, check_annotation=check_annotation) && return true
     end
     return false
 end
 
 function ischimeric(part1::AlignedPart, part2::AlignedPart; min_distance=1000, check_annotation=true)
-    check_annotation && hasannotation(part1) && hasannotation(part2) && (name(part1) == name(part2)) && (return false)
+    check_annotation && hasannotation(part1) && hasannotation(part2) && (name(part1) == name(part2)) && return false
     return distance(refinterval(part1), refinterval(part2)) > min_distance
 end
 
