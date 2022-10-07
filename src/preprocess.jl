@@ -522,7 +522,7 @@ function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, g
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
     min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools",
     norm=1000000, include_secondary_alignments=true, suffix_forward="_forward", suffix_reverse="_reverse",
-    overwrite_existing=false)
+    is_reverse_complement=false, overwrite_existing=false)
 
     println("Preprocessing files:")
     show(files)
@@ -534,7 +534,7 @@ function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, g
                         clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
                         is_ont=is_ont, threads=threads, bwa_bin=bwa_bin, sam_bin=sam_bin)
     println("Computing coverage...")
-    compute_coverage(bams; overwrite_existing=overwrite_existing, norm=norm, include_secondary_alignments=include_secondary_alignments,
+    compute_coverage(bams; overwrite_existing=overwrite_existing, norm=norm, is_reverse_complement=is_reverse_complement, include_secondary_alignments=include_secondary_alignments,
                         suffix_forward=suffix_forward, suffix_reverse=suffix_reverse);
     println("Done.")
 end
