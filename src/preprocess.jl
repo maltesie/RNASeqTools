@@ -31,18 +31,19 @@ function demultiplex(testseq::T, barcode_queries::Vector{ApproximateSearchQuery{
     end
     return -1
 end
-function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,K}, output_path::String;
-                        bc_len=length(first(values(libname_to_barcode))), check_range=1:bc_len, allowed_barcode_distance=1, overwrite_existing=false) where K<:BioSequence
+function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,String}, output_path::String;
+                        bc_len=length(first(values(libname_to_barcode))), check_range=1:bc_len, allowed_barcode_distance=1, overwrite_existing=false)
 
-    barcode_queries = [ApproximateSearchQuery(v) for v in values(libname_to_barcode)]
-    for bc in values(libname_to_barcode)
-        sum(!isnothing(findfirst(barcode_queries[i], 2*allowed_barcode_distance, bc)) for i in 1:length(libname_to_barcode)) > length(libname_to_barcode) &&
+    lib_to_barcode = Dict(k=>LongDNA{4}(v) for (k,v) in libname_to_barcode)
+    barcode_queries = [ApproximateSearchQuery(v) for v in values(lib_to_barcode)]
+    for bc in values(lib_to_barcode)
+        sum(!isnothing(findfirst(barcode_queries[i], 2*allowed_barcode_distance, bc)) for i in 1:length(lib_to_barcode)) > length(lib_to_barcode) &&
             throw(AssertionError("The supplied barcodes do not support the allowed_barcode_distance!"))
     end
 
     output_files = isnothing(infile2) ?
-    [joinpath(output_path, "$(name).fastq.gz") for name in keys(libname_to_barcode)] :
-    [(joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")) for name in keys(libname_to_barcode)]
+    [joinpath(output_path, "$(name).fastq.gz") for name in keys(lib_to_barcode)] :
+    [(joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")) for name in keys(lib_to_barcode)]
     for file in output_files
         if isnothing(infile2)
             if isfile(file)
@@ -60,7 +61,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
             end
         end
     end
-    nb_stats = length(libname_to_barcode)+1
+    nb_stats = length(lib_to_barcode)+1
     stats::Vector{Int} = zeros(Int, nb_stats)
     record1::FASTQ.Record = FASTQ.Record()
     isnothing(infile2) || (record2::FASTQ.Record = FASTQ.Record())
@@ -102,7 +103,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
         close(w) :
         (close(w[1]);close(w[2]))
     end
-    libnames = String.(keys(libname_to_barcode))
+    libnames = String.(keys(lib_to_barcode))
     sorted_index = sortperm(libnames)
     count_string = join(["$(name) - $(stat)\n" for (name, stat) in zip(libnames[sorted_index], stats[sorted_index])])
     count_string *= "\nnot identifyable - $(stats[end])\n"
@@ -111,11 +112,11 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
     return isnothing(infile2) ? FastqgzFiles(output_files) : PairedSingleTypeFiles(output_files, ".fastq.gz", "_1", "_2")
 end
 
-function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,K}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false) where K<:BioSequence
+function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,String}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
     split_libs(infile1, nothing, infile2, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range, overwrite_existing=overwrite_existing)
 end
 
-function split_libs(infile::String, libname_to_barcode::Dict{String,K}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false) where K<:BioSequence
+function split_libs(infile::String, libname_to_barcode::Dict{String,String}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
     split_libs(infile, nothing, nothing, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range, overwrite_existing=overwrite_existing)
 end
 
