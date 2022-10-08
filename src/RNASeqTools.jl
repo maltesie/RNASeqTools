@@ -5,7 +5,7 @@ using FASTX, CodecZlib, GFF3, BigWig, DelimitedFiles, BGZFStreams
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 import DataFrames: DataFrame, sort, nrow, names, innerjoin
 using Statistics, HypothesisTests, MultipleTesting, Combinatorics, Random, Distributions, GLM, StatsBase
-using ElasticArrays, IterTools
+using IterTools
 
 export align_mem, align_minimap, align_kraken2
 export preprocess_data, trim_fastp, split_libs, download_prefetch, download_fasterq, split_paired_reads_file, transform
