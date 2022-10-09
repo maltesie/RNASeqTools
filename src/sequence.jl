@@ -1,4 +1,4 @@
-function Genome(sequence_dict::Dict{String, BioSequence})
+function Genome(sequence_dict::Dict{String, LongDNA{4}})
     seq = LongDNA{4}(undef, sum(length(s) for s in values(sequence_dict)))
     chrs = Dict{String, UnitRange}()
     si = 1
@@ -10,8 +10,8 @@ function Genome(sequence_dict::Dict{String, BioSequence})
     end
     return Genome(seq, chrs)
 end
-Genome(sequences::Vector{BioSequence}, names::Vector{String}) = Genome(Dict(n=>s for (n,s) in zip(sequences, names)))
-Genome(sequence::BioSequence, name::String) = Genome([sequence], [name])
+Genome(sequences::Vector{LongDNA{4}}, names::Vector{String}) = Genome(Dict(n=>s for (n,s) in zip(sequences, names)))
+Genome(sequence::LongDNA{4}, name::String) = Genome([sequence], [name])
 Genome(genome_file::String) = Genome(read_genomic_fasta(genome_file))
 
 Base.length(genome::Genome) = length(genome.seq)
@@ -62,7 +62,7 @@ function read_genomic_fasta(fasta_file::String)
     return genome
 end
 
-function write_genomic_fasta(genome::Dict{String, T}, fasta_file::String) where T <: BioSequence
+function write_genomic_fasta(genome::Dict{String, T}, fasta_file::String) where T <: LongDNA{4}
     open(FASTA.Writer, fasta_file) do writer
         for (chr, seq) in genome
             write(writer, FASTA.Record(chr, seq))
