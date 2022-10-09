@@ -11,7 +11,7 @@ function Genome(sequence_dict::Dict{String, LongDNA{4}})
     return Genome(seq, chrs)
 end
 Genome(sequences::Vector{LongDNA{4}}, names::Vector{String}) = Genome(Dict(n=>s for (n,s) in zip(sequences, names)))
-Genome(sequence::LongDNA{4}, name::String) = Genome([sequence], [name])
+Genome(sequence::DNASeq{4}, name::String) = Genome([sequence], [name])
 Genome(genome_file::String) = Genome(read_genomic_fasta(genome_file))
 
 Base.length(genome::Genome) = length(genome.seq)
