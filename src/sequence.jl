@@ -1,4 +1,4 @@
-function Genome(sequence_dict::Dict{String, DNASeq{4}})
+function Genome(sequence_dict::Dict{String, BioSequence})
     seq = LongDNA{4}(undef, sum(length(s) for s in values(sequence_dict)))
     chrs = Dict{String, UnitRange}()
     si = 1
@@ -10,8 +10,8 @@ function Genome(sequence_dict::Dict{String, DNASeq{4}})
     end
     return Genome(seq, chrs)
 end
-Genome(sequences::Vector{LongDNA{4}}, names::Vector{String}) = Genome(Dict(n=>s for (n,s) in zip(sequences, names)))
-Genome(sequence::DNASeq{4}, name::String) = Genome([sequence], [name])
+Genome(sequences::Vector{BioSequence}, names::Vector{String}) = Genome(Dict(n=>s for (n,s) in zip(sequences, names)))
+Genome(sequence::BioSequence, name::String) = Genome([sequence], [name])
 Genome(genome_file::String) = Genome(read_genomic_fasta(genome_file))
 
 Base.length(genome::Genome) = length(genome.seq)
