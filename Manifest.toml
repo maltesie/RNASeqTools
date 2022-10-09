@@ -663,7 +663,7 @@ version = "1.4.2"
 
 [[deps.XAM]]
 deps = ["Automa", "BGZFStreams", "BioAlignments", "BioGenerics", "BioSequences", "GenomicFeatures", "Indexes", "Printf", "TranscodingStreams"]
-git-tree-sha1 = "8424757cc21cf46e2cec58d9aa501b17931125f7"
+repo-rev = "8424757cc21cf46e2cec58d9aa501b17931125f7"
 uuid = "d759349c-bcba-11e9-07c2-5b90f8f05f7c"
 version = "0.2.8"
 
