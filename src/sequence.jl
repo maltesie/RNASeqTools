@@ -1,4 +1,4 @@
-function Genome(sequence_dict::Dict{String, LongDNA{4}})
+function Genome(sequence_dict::Dict{String, DNASeq{4}})
     seq = LongDNA{4}(undef, sum(length(s) for s in values(sequence_dict)))
     chrs = Dict{String, UnitRange}()
     si = 1
