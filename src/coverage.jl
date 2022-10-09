@@ -201,24 +201,29 @@ function localmaxdiffindex(coverage::Vector{Float64}; rev=false, min_diff=2, min
     d = zeros(Float64, length(coverage))
     d[is_negative_strand ? (1:length(d)-1) : (2:length(d))] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
     peak_index = zeros(Bool, length(d))
+    mima = zeros(Float64, length(d), 2)
     for i in compute_within+1:length(d)-compute_within
-        d[i] === maximum(view(d, i-compute_within:i+compute_within)) || continue
+        ((d[i] >= min_diff) && (d[i] === maximum(view(d, i-compute_within:i+compute_within)))) || continue
         mi, ma = (minimum(view(coverage, i-compute_within:i-1)), maximum(view(coverage, i+1:i+compute_within)))
         peak_index[i] = is_negative_strand ? mi/ma >= min_ratio : ma/mi >= min_ratio
+        mima[i, 1] = is_negative_strand ? -ma : mi
+        mima[i, 2] = is_negative_strand ? -mi : ma
     end
-    peak_index[d .<= min_diff] .= false
-    rev && reverse!(peak_index)
     circular && (peak_index = peak_index[compute_within+1:end-compute_within])
-    return peak_index
+    circular && (mima = mima[compute_within+1:end-compute_within, :])
+    mima = mima[peak_index, :]
+    rev && reverse!(peak_index)
+    rev && reverse!(mima; dims=1)
+    return peak_index, mima
 end
 
 function maxdiffpositions(coverage::Coverage; type="DIFF", rev=false, min_diff=2, min_ratio=1.1, compute_within=5, circular=true)
     coverage_values = values(coverage)
     features = Interval{Annotation}[]
     for chr in keys(coverage_values)
-        findex = localmaxdiffindex(coverage_values[chr][1]; rev=rev, min_diff=min_diff, min_ratio=min_ratio, 
+        findex, _ = localmaxdiffindex(coverage_values[chr][1]; rev=rev, min_diff=min_diff, min_ratio=min_ratio, 
                                                             compute_within=compute_within, circular=circular)
-        rindex = localmaxdiffindex(coverage_values[chr][2]; rev=rev, min_diff=min_diff, min_ratio=min_ratio, 
+        rindex, _ = localmaxdiffindex(coverage_values[chr][2]; rev=rev, min_diff=min_diff, min_ratio=min_ratio, 
                                                             compute_within=compute_within, circular=circular)
         for (ii, i) in enumerate(findall(findex))
             push!(features, Interval(chr, i, i, STRAND_POS, Annotation(type, "forward_$ii")))
