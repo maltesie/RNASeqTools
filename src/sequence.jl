@@ -280,6 +280,31 @@ function cut!(read::LongDNA{4}, int::Tuple{Int, Int})
     reverse!(resize!(reverse!(resize!(read, last(int))), length(read)-first(int)+1))
 end
 
+function Base.write(fname::String, seqs::Sequences{T}) where T
+    rec = FASTA.Record()
+    FASTA.Writer(GzipCompressorStream(open(fname, "w"); level=2)) do writer
+        for (i,s) in enumerate(seqs)
+            rec = FASTA.Record(T isa UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s)
+            write(writer, rec)
+        end
+    end
+end
+function Base.write(fname1::String, fname2::String, seqs::Sequences{T}) where T
+    rec = FASTA.Record()
+    FASTA.Writer(GzipCompressorStream(open(fname1, "w"); level=2)) do writer
+        for (i,(s1,_)) in enumerate(eachpair(seqs))
+            rec = FASTA.Record(T isa UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s1)
+            write(writer, rec)
+        end
+    end
+    FASTA.Writer(GzipCompressorStream(open(fname2, "w"); level=2)) do writer
+        for (i,(_,s2)) in enumerate(eachpair(seqs))
+            rec = FASTA.Record(T isa UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s2)
+            write(writer, rec)
+        end
+    end
+end
+
 struct MatchIterator
     sq::Union{ExactSearchQuery,ApproximateSearchQuery}
     seq::LongDNA{4}
