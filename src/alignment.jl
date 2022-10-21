@@ -187,14 +187,14 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
         bam_chromosome_names(reader), bam_chromosome_lengths(reader)
     )]
     ns = Vector{hash_id ? UInt : String}(undef, 10000)
-    ls = Vector{Int}(undef, 10000)
-    rs = Vector{Int}(undef, 10000)
-    is = Vector{String}(undef, 10000)
-    ss = Vector{Strand}(undef, 10000)
-    nms = Vector{UInt32}(undef, 10000)
-    rls = Vector{Int}(undef, 10000)
-    rrs = Vector{Int}(undef, 10000)
-    rds = Vector{Symbol}(undef, 10000)
+    ls = Vector{Int}(undef, 1000000)
+    rs = Vector{Int}(undef, 1000000)
+    is = Vector{String}(undef, 1000000)
+    ss = Vector{Strand}(undef, 1000000)
+    nms = Vector{UInt32}(undef, 1000000)
+    rls = Vector{Int}(undef, 1000000)
+    rrs = Vector{Int}(undef, 1000000)
+    rds = Vector{Symbol}(undef, 1000000)
     index::Int = 0
     while !eof(reader)
         empty!(record)
@@ -205,7 +205,7 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
         xastrings = hasxatag(record) ? string.(split(xatag(record), ";")[1:end-1]) : String[]
         if index + length(xastrings) > length(ns)
             for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
-                resize!(z, length(z)+10000)
+                resize!(z, length(z)+1000000)
             end
         end
         n::(hash_id ? UInt : String) = hash_id ? hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)])) : BAM.tempname(record)
