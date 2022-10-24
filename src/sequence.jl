@@ -152,7 +152,7 @@ function Base.filter!(seqs::Sequences{T}, tempnames::Set{T}) where {T<:Union{Str
     resize!(seqs.tempnames, n_seqs)
 end
 
-function read_reads(file::String; is_reverse_complement=false, hash_id=true)::Sequences
+function read_reads(file::String; is_reverse_complement=false, hash_id=true, sort_by_name=true)::Sequences
     seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
     is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
     is_zipped = endswith(file, ".gz")
@@ -177,14 +177,16 @@ function read_reads(file::String; is_reverse_complement=false, hash_id=true)::Se
     resize!(seqs.seq, last(current_range))
     resize!(seqs.tempnames, i)
     resize!(seqs.ranges, i)
-    sort_index = sortperm(seqs.tempnames)
-    seqs.tempnames[1:end] = seqs.tempnames[sort_index]
-    seqs.ranges[1:end] = seqs.ranges[sort_index]
+    if sort_by_name
+        sort_index = sortperm(seqs.tempnames)
+        seqs.tempnames[1:end] = seqs.tempnames[sort_index]
+        seqs.ranges[1:end] = seqs.ranges[sort_index]
+    end
     close(reader)
     return seqs
 end
 
-function read_reads(file1::String, file2::String; is_reverse_complement=false, hash_id=true)::Sequences
+function read_reads(file1::String, file2::String; is_reverse_complement=false, hash_id=true, sort_by_name=true)::Sequences
     seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
 
     is_fastq1 = any([endswith(file1, ending) for ending in FASTQ_TYPES])
@@ -230,12 +232,14 @@ function read_reads(file1::String, file2::String; is_reverse_complement=false, h
     resize!(seqs.seq, last(current_range))
     resize!(seqs.tempnames, i)
     resize!(seqs.ranges, i)
-    si = sortperm(seqs.tempnames[1:2:end])
-    sort_index = zeros(Int, 2*length(si))
-    sort_index[1:2:end] = si .* 2 .- 1
-    sort_index[2:2:end] = si .* 2
-    seqs.tempnames[1:end] = seqs.tempnames[sort_index]
-    seqs.ranges[1:end] = seqs.ranges[sort_index]
+    if sort_by_name
+        si = sortperm(seqs.tempnames[1:2:end])
+        sort_index = zeros(Int, 2*length(si))
+        sort_index[1:2:end] = si .* 2 .- 1
+        sort_index[2:2:end] = si .* 2
+        seqs.tempnames[1:end] = seqs.tempnames[sort_index]
+        seqs.ranges[1:end] = seqs.ranges[sort_index]
+    end
     close(reader1)
     close(reader2)
     return seqs

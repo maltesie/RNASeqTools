@@ -43,7 +43,7 @@ struct AlignmentAnnotation <: AnnotationStyle
     overlap::UInt8
 end
 
-struct Alignments{T<:Union{String, UInt}}
+struct Alignments{T<:Union{String,UInt}}
     chroms::Vector{Tuple{String,Int}}
     tempnames::Vector{T}
     leftpos::Vector{Int}
@@ -60,6 +60,7 @@ struct Alignments{T<:Union{String, UInt}}
     anleftrel::Vector{UInt8}
     anrightrel::Vector{UInt8}
     pindex::Vector{Int}
+    annotated::Vector{Bool}
     ranges::Vector{UnitRange{Int}}
 end
 
