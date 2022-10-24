@@ -171,22 +171,29 @@ function astag(record::BAM.Record)
     end
 end
 
-function nmtag(record::BAM.Record)
-    record.data[BAM.auxdata_position(record)] == UInt8('N') && record.data[BAM.auxdata_position(record)+1] == UInt8('M') || throw("auxdata does not start with NM tag.")
-    t = record.data[BAM.auxdata_position(record)+2] == UInt8('C') ? UInt8 :
-        record.data[BAM.auxdata_position(record)+2] == UInt8('S') ? UInt16 :
-        record.data[BAM.auxdata_position(record)+2] == UInt8('I') ? UInt32 :
+function nmtag(record::BAM.Record, nmbuffer::Vector{UInt8})
+    ((record.data[BAM.auxdata_position(record)] == UInt8('N')) && (record.data[BAM.auxdata_position(record)+1] == UInt8('M'))) || throw("auxdata does not start with NM tag.")
+    nmbuffer .= 0x00
+    if record.data[BAM.auxdata_position(record)+2] == UInt8('C')
+        nmbuffer[4] = record.data[BAM.auxdata_position(record)+3]
+    elseif record.data[BAM.auxdata_position(record)+2] == UInt8('S')
+        nmbuffer[3] = record.data[BAM.auxdata_position(record)+4]
+        nmbuffer[4] = record.data[BAM.auxdata_position(record)+4]
+    elseif record.data[BAM.auxdata_position(record)+2] == UInt8('I')
+        nmbuffer[1] = record.data[BAM.auxdata_position(record)+3]
+        nmbuffer[2] = record.data[BAM.auxdata_position(record)+4]
+        nmbuffer[3] = record.data[BAM.auxdata_position(record)+5]
+        nmbuffer[4] = record.data[BAM.auxdata_position(record)+6]
+    else
         throw("NM tag type not supported: $(Char(record.data[BAM.auxdata_position(record)+2]))")
-    return unsafe_load(Ptr{t}(pointer(record.data, BAM.auxdata_position(record)+3)))
+    end
+    return reinterpret(UInt32, nmbuffer)[1]
 end
 
 function Alignments(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
-    reader = BAM.Reader(open(bam_file))
-    chromosome_list = [n for n in zip(
-        bam_chromosome_names(reader), bam_chromosome_lengths(reader)
-    )]
-    ns = Vector{hash_id ? UInt : String}(undef, 1000000)
+    T::Type = hash_id ? UInt : String
+    ns = Vector{T}(undef, 1000000)
     ls = Vector{Int}(undef, 1000000)
     rs = Vector{Int}(undef, 1000000)
     is = Vector{String}(undef, 1000000)
@@ -195,37 +202,40 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
     rls = Vector{Int}(undef, 1000000)
     rrs = Vector{Int}(undef, 1000000)
     rds = Vector{Symbol}(undef, 1000000)
-    index::Int = 0
-    while !eof(reader)
-        empty!(record)
-        read!(reader, record)
-        (!BAM.ismapped(record) || (!isprimary(record) && !include_secondary_alignments) || (hasxatag(record) && !include_alternative_alignments)) && continue
-        current_read = (isread2(record) != is_reverse_complement) ? :read2 : :read1
-        index += 1
-        xastrings = hasxatag(record) ? string.(split(xatag(record), ";")[1:end-1]) : String[]
-        if index + length(xastrings) > length(ns)
-            for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
-                resize!(z, length(z)+10000)
-            end
-        end
-        n::(hash_id ? UInt : String) = hash_id ? hash(@view(record.data[1:max(BAM.seqname_length(record) - 1, 0)])) : BAM.tempname(record)
-        (l,r) = (BAM.leftposition(record), BAM.rightposition(record))
-        (ref,s) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
-        nm = nmtag(record)
-        for xastring in xastrings
-            ap = AlignedPart(xastring; read=current_read)
-            (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) =
-            (n, leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, editdistance(ap))
+    chromosome_list = Vector{Tuple{String,Int}}()
+    nmbuffer = zeros(UInt8, 4)
+    BAM.Reader(open(bam_file)) do reader
+        append!(chromosome_list, [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))])
+        index::Int = 0
+        while !eof(reader)
+            read!(reader, record)
+            (!BAM.ismapped(record) || (!isprimary(record) && !include_secondary_alignments) || (hasxatag(record) && !include_alternative_alignments)) && continue
+            current_read::Symbol = (isread2(record) != is_reverse_complement) ? :read2 : :read1
             index += 1
+            xastrings = hasxatag(record) ? string.(split(xatag(record), ";")[1:end-1]) : String[]
+            if index + length(xastrings) > length(ns)
+                for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
+                    resize!(z, length(z)+1000000)
+                end
+            end
+            n::T = hash_id ? hash(view(record.data, 1:(BAM.seqname_length(record) - 1))) : string(name_view)
+            (l::Int,r::Int) = (BAM.leftposition(record), BAM.rightposition(record))
+            (ref::String, s::Strand) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
+            nm::UInt32 = nmtag(record, nmbuffer)
+            for xastring in xastrings
+                ap = AlignedPart(xastring; read=current_read)
+                (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) =
+                (n, leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, editdistance(ap))
+                index += 1
+            end
+            readstart, readstop, _, readlen = readpositions(record)
+            (rl, rr) = (BAM.ispositivestrand(record) != (current_read === :read2)) ? (readstart,readstop) : (readlen-readstop+1,readlen-readstart+1)
+            ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index] = n, l, r, ref, s, rl, rr, current_read, nm
         end
-        readstart, readstop, _, readlen = readpositions(record)
-        (rl, rr) = (BAM.ispositivestrand(record) != (current_read === :read2)) ? (readstart,readstop) : (readlen-readstop+1,readlen-readstart+1)
-        (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) = (n, l, r, ref, s, rl, rr, current_read, nm)
+        for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
+            resize!(z, index)
+        end
     end
-    for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
-        resize!(z, index)
-    end
-    close(reader)
     nindex = sortperm(ns)
     ranges = samevalueintervals(ns, nindex)
     pindex = partsindex(ranges, nindex, rls, rds)
@@ -549,14 +559,17 @@ isoverlapping(aln1::AlignedPart, aln2::AlignedPart) = strand(aln1) === strand(al
 isfirstread(part::AlignedPart) = part.read === :read1
 
 @inline function Base.iterate(alnread::AlignedRead)
-    return isnothing(alnread.range) ? nothing : (AlignedPart(alnread.alns, first(alnread.range)), first(alnread.range)+1)
+    return isnothing(alnread.range) ? nothing : (alnread[1], 2)
 end
 @inline function Base.iterate(alnread::AlignedRead, state::Int)
-    return state > last(alnread.range) ? nothing : (AlignedPart(alnread.alns, state), state+1)
+    return state > length(alnread.range) ? nothing : (alnread[state], state+1)
 end
 
 Base.lastindex(alnread::AlignedRead) = length(alnread.range)
-Base.getindex(alnread::AlignedRead, i::Int) = AlignedPart(alnread.alns, alnread.range[i])
+function Base.getindex(alnread::AlignedRead, i::Int)
+    f::Int = i+first(alnread.range)-1
+    return f in alnread.range ? AlignedPart(alnread.alns,  f) : throw(BoundsError(alnread, i))
+end
 Base.getindex(alnread::AlignedRead, r::UnitRange{Int}) = AlignedRead(alnread.range[r], alnread.alns)
 Base.getindex(alnread::AlignedRead, b::Vector{Bool}) = [alnread.alns[alnread.prindex[index]] for (i::Int,index::Int) in enumerate(alnread.range) if b[i]]
 Base.isempty(alnread::AlignedRead) = isempty(alnread.range)
