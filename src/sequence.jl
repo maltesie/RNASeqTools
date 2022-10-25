@@ -111,12 +111,12 @@ function Sequences(seqs::Vector{LongDNA{4}}, seqnames::Vector{String})
     return Sequences(seq, seqnames[sortindex], ranges[sortindex])
 end
 
-function Sequences(file::String; is_reverse_complement=false, hash_id=true)
-    read_reads(file; is_reverse_complement=is_reverse_complement, hash_id=hash_id)
+function Sequences(file::String; is_reverse_complement=false, hash_id=true, sort_by_name=true)
+    read_reads(file; is_reverse_complement=is_reverse_complement, hash_id=hash_id, sort_by_name=sort_by_name)
 end
 
-function Sequences(file1::String, file2::String; is_reverse_complement=false, hash_id=true)
-    read_reads(file1, file2; is_reverse_complement=is_reverse_complement, hash_id=hash_id)
+function Sequences(file1::String, file2::String; is_reverse_complement=false, hash_id=true, sort_by_name=true)
+    read_reads(file1, file2; is_reverse_complement=is_reverse_complement, hash_id=hash_id, sort_by_name=sort_by_name)
 end
 
 Sequences(genomes::Vector{Genome}) =
@@ -288,7 +288,7 @@ function Base.write(fname::String, seqs::Sequences{T}) where T
     rec = FASTA.Record()
     FASTA.Writer(GzipCompressorStream(open(fname, "w"); level=2)) do writer
         for (i,s) in enumerate(seqs)
-            rec = FASTA.Record(T isa UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s)
+            rec = FASTA.Record(T <: UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s)
             write(writer, rec)
         end
     end
@@ -297,13 +297,13 @@ function Base.write(fname1::String, fname2::String, seqs::Sequences{T}) where T
     rec = FASTA.Record()
     FASTA.Writer(GzipCompressorStream(open(fname1, "w"); level=2)) do writer
         for (i,(s1,_)) in enumerate(eachpair(seqs))
-            rec = FASTA.Record(T isa UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s1)
+            rec = FASTA.Record(T <: UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s1)
             write(writer, rec)
         end
     end
     FASTA.Writer(GzipCompressorStream(open(fname2, "w"); level=2)) do writer
         for (i,(_,s2)) in enumerate(eachpair(seqs))
-            rec = FASTA.Record(T isa UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s2)
+            rec = FASTA.Record(T <: UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s2)
             write(writer, rec)
         end
     end
