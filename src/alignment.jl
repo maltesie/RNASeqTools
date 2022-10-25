@@ -171,23 +171,13 @@ function astag(record::BAM.Record)
     end
 end
 
-function nmtag(record::BAM.Record, nmbuffer::Vector{UInt8})
+function nmtag(record::BAM.Record)
     ((record.data[BAM.auxdata_position(record)] == UInt8('N')) && (record.data[BAM.auxdata_position(record)+1] == UInt8('M'))) || throw("auxdata does not start with NM tag.")
-    nmbuffer .= 0x00
-    if record.data[BAM.auxdata_position(record)+2] == UInt8('C')
-        nmbuffer[4] = record.data[BAM.auxdata_position(record)+3]
-    elseif record.data[BAM.auxdata_position(record)+2] == UInt8('S')
-        nmbuffer[3] = record.data[BAM.auxdata_position(record)+4]
-        nmbuffer[4] = record.data[BAM.auxdata_position(record)+4]
-    elseif record.data[BAM.auxdata_position(record)+2] == UInt8('I')
-        nmbuffer[1] = record.data[BAM.auxdata_position(record)+3]
-        nmbuffer[2] = record.data[BAM.auxdata_position(record)+4]
-        nmbuffer[3] = record.data[BAM.auxdata_position(record)+5]
-        nmbuffer[4] = record.data[BAM.auxdata_position(record)+6]
-    else
+    t = record.data[BAM.auxdata_position(record)+2] == UInt8('C') ? UInt8 :
+        record.data[BAM.auxdata_position(record)+2] == UInt8('S') ? UInt16 :
+        record.data[BAM.auxdata_position(record)+2] == UInt8('I') ? UInt32 :
         throw("NM tag type not supported: $(Char(record.data[BAM.auxdata_position(record)+2]))")
-    end
-    return reinterpret(UInt32, nmbuffer)[1]
+    return unsafe_load(Ptr{t}(pointer(record.data, BAM.auxdata_position(record)+3)))
 end
 
 function Alignments(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
@@ -203,7 +193,6 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
     rrs = Vector{Int}(undef, 1000000)
     rds = Vector{Symbol}(undef, 1000000)
     chromosome_list = Vector{Tuple{String,Int}}()
-    nmbuffer = zeros(UInt8, 4)
     BAM.Reader(open(bam_file)) do reader
         append!(chromosome_list, [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))])
         index::Int = 0
@@ -221,7 +210,7 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
             n::T = hash_id ? hash(view(record.data, 1:(BAM.seqname_length(record) - 1))) : string(name_view)
             (l::Int,r::Int) = (BAM.leftposition(record), BAM.rightposition(record))
             (ref::String, s::Strand) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
-            nm::UInt32 = nmtag(record, nmbuffer)
+            nm::UInt32 = nmtag(record)
             for xastring in xastrings
                 ap = AlignedPart(xastring; read=current_read)
                 (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) =
