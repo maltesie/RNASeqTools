@@ -1,13 +1,16 @@
-function download_prefetch(input_file::String; output_path=dirname(input_file), fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
+function download_prefetch(input_file::String; output_path=dirname(input_file), fastqdump_bin="fastq-dump", prefetch_bin="prefetch",
+                            keep_sra=false, split_files=true, split_spot=false, overwrite_existing=false)
     sra_ids = String[]
     open(input_file) do f
         for sra_id in eachline(f)
             push!(sra_ids, sra_id)
         end
     end
-    download_prefetch(sra_ids, output_path; fastqdump_bin=fastqdump_bin, prefetch_bin=prefetch_bin, keep_sra=keep_sra, overwrite_existing=overwrite_existing)
+    download_prefetch(sra_ids, output_path; fastqdump_bin=fastqdump_bin, prefetch_bin=prefetch_bin, keep_sra=keep_sra,
+        split_files=split_files, split_spot=split_spot, overwrite_existing=overwrite_existing)
 end
-function download_prefetch(sra_runids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch", keep_sra=false, overwrite_existing=false)
+function download_prefetch(sra_runids::Vector{String}, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch",
+                            keep_sra=false, split_files=true, split_spot=false, overwrite_existing=false)
     for accession_number in sra_runids
         sra_file = joinpath(output_path, "$accession_number.sra")
         fastqgz_file = sra_file[1:end-3] * "fastq.gz"
@@ -20,7 +23,10 @@ function download_prefetch(sra_runids::Vector{String}, output_path::String; fast
                 rm(joinpath(output_path, accession_number))
             end
         end
-        !isfile(fastqgz_file) && run(`$fastqdump_bin --gzip --outdir $output_path $sra_file`)
+        params = String["--gzip"]
+        split_files && push!(params, "--split-files")
+        split_spot && push!(params, "--split-spot")
+        !isfile(fastqgz_file) && run(`$fastqdump_bin $params --outdir $output_path $sra_file`)
         keep_sra || rm(sra_file)
     end
 end
@@ -189,7 +195,7 @@ function trim_fastp(input_files::PairedSingleTypeFiles;
         for (file1, file2) in input_files if !startswith(basename(file1), prefix) | !startswith(basename(file2), prefix)], input_files.type, input_files.suffix1, input_files.suffix2)
 end
 
-function split_each_read(file::String, split_at::Int; overwrite_existing=false)
+function split_each_read(file::String, split_after::Int; suffix1="_1", suffix2="_2", overwrite_existing=false)
     is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
     is_zipped = endswith(file, ".gz")
 
@@ -198,8 +204,8 @@ function split_each_read(file::String, split_at::Int; overwrite_existing=false)
     record = is_fastq ? FASTQ.Record() : FASTA.Record()
 
     out_file_base = file[1:end-(is_zipped ? 9 : 6)]
-    out_file1 = out_file_base * "_1" * (is_fastq ? ".fastq" : ".fasta") * (is_zipped ? ".gz" : "")
-    out_file2 = out_file_base * "_2" * (is_fastq ? ".fastq" : ".fasta") * (is_zipped ? ".gz" : "")
+    out_file1 = out_file_base * suffix1 * (is_fastq ? ".fastq" : ".fasta") * (is_zipped ? ".gz" : "")
+    out_file2 = out_file_base * suffix2 * (is_fastq ? ".fastq" : ".fasta") * (is_zipped ? ".gz" : "")
     (isfile(out_file1) && isfile(out_file2) && !overwrite_existing) && (return out_file1, out_file2)
     out_f1 = is_zipped ? GzipCompressorStream(open(out_file1, "w"); level=2) : open(out_file1, "w")
     out_f2 = is_zipped ? GzipCompressorStream(open(out_file2, "w"); level=2) : open(out_file2, "w")
@@ -213,8 +219,8 @@ function split_each_read(file::String, split_at::Int; overwrite_existing=false)
         out_seq = is_fastq ? FASTQ.sequence(record) : FASTA.sequence(record)
         id = is_fastq ? FASTQ.identifier(record) : FASTA.identifier(record)
         q = is_fastq ? FASTQ.quality(record) : nothing
-        out_record1 = is_fastq ? FASTQ.Record(id, out_seq[1:split_at], q[1:split_at]) : FASTA.Record(id, out_seq[1:split_at-1])
-        out_record2 = is_fastq ? FASTQ.Record(id, out_seq[split_at+1:end], q[split_at+1:end]) : FASTA.Record(id, out_seq[split_at:end])
+        out_record1 = is_fastq ? FASTQ.Record(id, out_seq[1:split_after], q[1:split_after]) : FASTA.Record(id, out_seq[1:split_after-1])
+        out_record2 = is_fastq ? FASTQ.Record(id, out_seq[split_after+1:end], q[split_after+1:end]) : FASTA.Record(id, out_seq[split_after:end])
         write(writer1, out_record1)
         write(writer2, out_record2)
     end
@@ -223,6 +229,52 @@ function split_each_read(file::String, split_at::Int; overwrite_existing=false)
     close(writer1)
     close(writer2)
     return out_file1, out_file2
+end
+function split_each_read(files::SingleTypeFiles, split_after::Int; suffix1="_1", suffix2="_2", overwrite_existing=false)
+    processed_files = Vector{Tuple{String,Sting}}()
+    for file in files
+        push!(processed_files, split_each_read(file, split_after; suffix1=suffix1, suffix2=suffix2, overwrite_existing=overwrite_existing))
+    end
+    return PairedSingleTypeFiles(processed_files)
+end
+
+function split_interleaved(file::String; suffix1="_1", suffix2="_2", force_same_name=true, overwrite_existing=false)
+    is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
+    is_zipped = endswith(file, ".gz")
+
+    f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
+    reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
+    record = is_fastq ? FASTQ.Record() : FASTA.Record()
+
+    out_file_base = file[1:end-(is_zipped ? 9 : 6)]
+    out_file1 = out_file_base * suffix1 * (is_fastq ? ".fastq" : ".fasta") * (is_zipped ? ".gz" : "")
+    out_file2 = out_file_base * suffix2 * (is_fastq ? ".fastq" : ".fasta") * (is_zipped ? ".gz" : "")
+    (isfile(out_file1) && isfile(out_file2) && !overwrite_existing) && (return out_file1, out_file2)
+    out_f1 = is_zipped ? GzipCompressorStream(open(out_file1, "w"); level=2) : open(out_file1, "w")
+    out_f2 = is_zipped ? GzipCompressorStream(open(out_file2, "w"); level=2) : open(out_file2, "w")
+    writer1 = is_fastq ? FASTQ.Writer(out_f1) : FASTA.Writer(out_f1)
+    writer2 = is_fastq ? FASTQ.Writer(out_f2) : FASTA.Writer(out_f2)
+    namebuffer = UInt8[]
+    while !eof(reader)
+        read!(reader, record)
+        write(writer1, record)
+        force_same_name && copy!(namebuffer, view(record.data, record.identifier))
+        read!(reader, record)
+        force_same_name && copy!(view(record.data, record.identifier), namebuffer)
+        write(writer2, record)
+    end
+    sleep(0.5)
+    close(reader)
+    close(writer1)
+    close(writer2)
+    return out_file1, out_file2
+end
+function split_interleaved(files::SingleTypeFiles; suffix1="_1", suffix2="_2", force_same_name=true, overwrite_existing=false)
+    processed_files = Vector{Tuple{String,String}}()
+    for file in files
+        push!(processed_files, split_interleaved(file; suffix1=suffix1, suffix2=suffix2, force_same_name=force_same_name, overwrite_existing=overwrite_existing))
+    end
+    return PairedSingleTypeFiles(processed_files)
 end
 
 function transform(file::String; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)

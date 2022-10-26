@@ -8,7 +8,7 @@ using Statistics, HypothesisTests, MultipleTesting, Combinatorics, Random, Distr
 using IterTools
 
 export align_mem, align_minimap, align_kraken2
-export preprocess_data, trim_fastp, split_libs, download_prefetch, download_fasterq, split_paired_reads_file, transform
+export preprocess_data, trim_fastp, split_libs, download_prefetch, download_fasterq, transform, split_interleaved, split_each_read
 export Genome, Sequences, PairedSequences, Alignments, AlignedPart, AlignedRead, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage
 export Annotation, AlignmentAnnotation, BaseAnnotation, BaseCoverage, Counts, FeatureCounts, GenomeComparison
 export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles
