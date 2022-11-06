@@ -122,15 +122,15 @@ end
 Sequences(genomes::Vector{Genome}) =
     Sequences([genome.seq for genome in genomes], UInt.(i for i in 1:length(genomes)), [i:i for i in 1:length(genomes)])
 
-Base.getindex(seqs::Sequences, index::Int) = seqs.seq[seqs.ranges[index]]
+Base.getindex(seqs::Sequences, index::Int) = view(seqs.seq, seqs.ranges[index])
 Base.getindex(seqs::Sequences, range::Union{StepRange{Int, Int}, UnitRange{Int}}) = Sequences(seqs.seq, seqs.tempnames[range], seqs.ranges[range])
 
 function Base.getindex(seqs::Sequences, index::Union{UInt,String})
     r = searchsorted(seqs.tempnames, index)
     if length(r) === 2
-        return (seqs.seq[seqs.ranges[first(r)]], seqs.seq[seqs.ranges[last(r)]])
+        return (view(seqs.seq, seqs.ranges[first(r)]), view(seqs.seq, seqs.ranges[last(r)]))
     elseif length(r) === 1
-        return seqs.seq[seqs.ranges[first(r)]]
+        return view(seqs.seq, seqs.ranges[first(r)])
     else
         throw(KeyError)
     end
@@ -138,8 +138,8 @@ end
 
 Base.length(seqs::Sequences) = length(seqs.tempnames)
 nread(seqs::Sequences) = length(unique(seqs.tempnames))
-Base.iterate(seqs::Sequences) = (seqs.seq[seqs.ranges[1]], 2)
-Base.iterate(seqs::Sequences, state::Int) = state > length(seqs.ranges) ? nothing : (seqs.seq[seqs.ranges[state]], state+1)
+@inline Base.iterate(seqs::Sequences) = (view(seqs.seq, seqs.ranges[1]), 2)
+@inline Base.iterate(seqs::Sequences, state::Int) = state > length(seqs.ranges) ? nothing : (view(seqs.seq, seqs.ranges[state]), state+1)
 eachpair(seqs::Sequences) = partition(seqs, 2)
 Base.empty!(seqs::Sequences) = (empty!(seqs.seq); empty!(seqs.tempnames); empty!(seqs.ranges))
 

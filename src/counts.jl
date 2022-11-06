@@ -31,7 +31,7 @@ function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=
     normalization_method in (:none, :tpm, :tpkm, :rle) || raise(AssertionError("No method implemented for $normalization_method"))
     samples.type === ".bam" || throw(AssertionError("Only .bam files are supported"))
     counts = zeros(Float64, length(features), sum(length(v) for v in values(conditions)))
-    feature_trans = Dict{String, Int}(name(feature)*type(feature)=>i for (i, feature) in enumerate(features))
+    feature_trans = Dict{UInt, Int}(hash(name(feature), hash(type(feature)))=>i for (i, feature) in enumerate(features))
     for range in values(conditions)
         mybams = samples[range]
         for (i, bam_file) in enumerate(mybams)
@@ -41,7 +41,7 @@ function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=
             for alignment in alignments
                 for part in alignment
                     hasannotation(part) || continue
-                    counts[feature_trans[name(part)*type(part)], range[i]] += 1.0
+                    counts[feature_trans[hash(name(feature), hash(type(feature)))], range[i]] += 1.0
                 end
             end
         end
@@ -73,7 +73,7 @@ function normalize!(m::Matrix{Float64}; normalization_method=:rle, q=0.5)
         logdiffs = [log2.(m[:, i]) .- log2.(avg_sample) for i in 1:last(size(m))]
         norm_factors = 2 .^ [quantile(logdiff[(!).(isnan.(logdiff))], q) for logdiff in logdiffs]
         m ./= norm_factors'
-    elseif normalization_method === :tpm
+    elseif normalization_method === :rpm
         m ./= (sum(m; dims=1) ./ 1000000)
     else
         raise(AssertionError("No method implemented for $normalization_method"))
@@ -83,9 +83,9 @@ end
 normalize!(counts::T; normalization_method=:rle) where {T<:CountContainer} =
     normalize!(counts.values; normalization_method=normalization_method)
 
-function normalize!(m::Matrix{Float64}, features::Features; normalization_method=:tpkm)
+function normalize!(m::Matrix{Float64}, features::Features; normalization_method=:rpkm)
     normalization_method != :tpkm && raise(AssertionError("No method implemented for $normalization_method"))
-    normalize!(m; normalization_method=:tpm)
+    normalize!(m; normalization_method=:rpm)
     for feature in features
         m[i, !] ./= (length(feature) / 1000)
     end
