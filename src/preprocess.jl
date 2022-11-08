@@ -131,10 +131,6 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=nothing, filter_complexity=nothing,
     average_window_quality=nothing, deduplicate=true, skip_quality_filtering=false, overwrite_existing=false)
 
-    for (in_file1, in_file2) in input_files
-        @assert endswith(in_file1, ".fasta") || endswith(in_file1, ".fasta.gz") || endswith(in_file1, ".fastq") || endswith(in_file1, ".fastq.gz")
-        isnothing(in_file2) || (@assert endswith(in_file1, ".fasta") || endswith(in_file1, ".fasta.gz") || endswith(in_file1, ".fastq") || endswith(in_file1, ".fastq.gz"))
-    end
     @assert trim_loc in [:read1, :read2]
 
     params = []
@@ -277,7 +273,7 @@ function split_interleaved(files::SingleTypeFiles; suffix1="_1", suffix2="_2", f
     return PairedSingleTypeFiles(processed_files)
 end
 
-function transform(file::String; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)
+function transform(file::String; prefix="trafo_", to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)
     is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
     is_zipped = endswith(file, ".gz")
 
@@ -285,7 +281,7 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
     reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
     record = is_fastq ? FASTQ.Record() : FASTA.Record()
 
-    out_file = joinpath(dirname(file), "transformed_"*basename(file))
+    out_file = joinpath(dirname(file), prefix*basename(file))
     (isfile(out_file) && !overwrite_existing) && (return out_file)
     out_f = is_zipped ? GzipCompressorStream(open(out_file, "w")) : open(out_file, "w")
     writer = is_fastq ? FASTQ.Writer(out_f) : FASTA.Writer(out_f)
@@ -308,10 +304,10 @@ function transform(file::String; to_dna=false, reverse=false, complement=false, 
     return out_file
 end
 
-function transform(input_files::SingleTypeFiles; to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)
+function transform(input_files::SingleTypeFiles; prefix="trafo_", to_dna=false, reverse=false, complement=false, overwrite_existing=false, is_rna=false)
     transformed_files = String[]
     for file in input_files
-        startswith(file, "trafo_") && continue
+        startswith(file, prefix) && continue
         push!(transformed_files, transform(file; to_dna=to_dna, reverse=reverse, complement=complement, overwrite_existing=overwrite_existing, is_rna=is_rna))
     end
     return SingleTypeFiles(transformed_files, input_files.type)
@@ -346,6 +342,25 @@ function align_kraken2(sequence_file::String, db_path::String;
     run(pipeline(`$kraken_bin $params`, stdout=output_file))
 end
 
+function fnamefromseqfile(seqfilename::String, newtype::String=".bam")
+    for ending in Iterators.flatten((FASTA_TYPES, FASTQ_TYPES))
+        endswith(seqfilename, ending) && return seqfilename[1:end-length(ending)] * newtype
+    end
+    return seqfilename * newtype
+end
+function fnamefromseqfile(seqfilename1::String, seqfilename2::Union{Nothing,String}, newtype::String=".bam")
+    isnothing(seqfilename2) && return fnamefromseqfile(seqfilename1, newtype)
+    for ending in Iterators.flatten((FASTA_TYPES, FASTQ_TYPES))
+        if endswith(seqfilename1, ending) && endswith(seqfilename2, ending)
+            for (ii, (i,j)) in enumerate(zip(basename(seqfilename1), basename(seqfilename2)))
+                ii == 1 && return seqfilename1[1:end-length(ending)] * newtype
+                i != j && return joinpath(dirname(seqfilename1), basename(seqfilename1)[1:ii-1] * newtype)
+            end
+        end
+    end
+    return seqfilename1 * newtype
+end
+
 """
     Core dispatch of align_minimap, which is a wrapper for minimap2. Takes ´in_file´ and ´genome_file´ and builds a shell
     command that runs minimap2 with the specified additional parameters and writes the resulting alignments in bam format into ´out_file´
@@ -360,9 +375,9 @@ end
     - ´min_seed_len::Int´: Minimum seed length. Matches shorter than INT will be missed.
     - ´reseeding_factor::Float64´: Trigger re-seeding for a MEM longer than minSeedLenFLOAT. Larger value yields fewer seeds, which leads to faster alignment speed but lower accuracy.
 """
-function align_minimap(in_file::String, genome_file::String, out_file::String;
+function align_minimap(in_file::String, genome_file::String, out_file::String=fnamefromseqfile(in_file);
     preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1, minimizer_len=15,
-    threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false)
+    threads=6, all_secondary=false, skip_stats=false, sort_bam=true, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false)
 
     !overwrite_existing && isfile(out_file) && throw(AssertinError("File $out_file already exists!"))
     !isnothing(preset) && !(preset in ("map-ont", "asm5", "asm10", "asm20", "sr")) &&
@@ -381,8 +396,7 @@ function align_minimap(in_file::String, genome_file::String, out_file::String;
         `$minimap_bin $params $fileparams`,
         stdout = pipeline(
             `$sam_bin view -u`,
-            stdout = pipeline(
-                `$sam_bin sort -o $out_file`))))
+            stdout = sort_bam ? pipeline(`$sam_bin sort -o $out_file`) : out_file)))
     skip_stats ?
     run(`$sam_bin index $out_file`) :
     run(pipeline(
@@ -390,13 +404,6 @@ function align_minimap(in_file::String, genome_file::String, out_file::String;
         `$sam_bin stats $out_file`,
         stats_file))
 end
-align_minimap(in_file::String, genome_file::String;
-    preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1, minimizer_len=15,
-    threads=6, all_secondary=false, skip_stats=false, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false) =
-    align_minimap(in_file, genome_file, joinpath(in_file[1:findlast('.', in_file)] * "bam");
-        preset=preset, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2,
-        gap_extend1=gap_extend1, gap_extend2=gap_extend2, minimizer_len=minimizer_len, threads=threads, all_secondary=all_secondary,
-        skip_stats=skip_stats, minimap_bin=minimap_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
 """
     Helper dispatch of align_minimap. Runs align_minimap on `read_files::SingleTypeFiles` against `genome::Genome`.
@@ -404,21 +411,19 @@ align_minimap(in_file::String, genome_file::String;
 """
 function align_minimap(sequence_files::SingleTypeFiles, genome::Genome;
     preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1,
-    minimizer_len=15, threads=6, all_secondary=false, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false)
-    sequence_files.type in (".fastq.gz", ".fastq", ".fasta.gz", ".fasta", ".fa", ".fna") || throw(AssertionError("Unknown file type."))
+    minimizer_len=15, threads=6, all_secondary=false, sort_bam=true, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false)
+    sequence_files.type in Iterators.flatten((FASTA_TYPES, FASTQ_TYPES)) || throw(AssertionError("Unknown file type."))
     tmp_genome = tempname()
     write(tmp_genome, genome)
     outfiles = Vector{String}()
     for file in sequence_files
-        out_file = isa(sequence_files, SingleTypeFiles) ?
-            file[1:end-length(sequence_files.type)] * ".bam" :
-            first(file)[1:end-length(sequence_files.type)-length(sequence_files.suffix1)] * ".bam"
+        out_file = isempty(sequence_files.type) ? fnamefromseqfile(file) : file[1:end-length(sequence_files.type)] * ".bam"
         push!(outfiles, out_file)
         (isfile(out_file) && !overwrite_existing) && continue
         align_minimap(file, out_file, tmp_genome;
             preset=preset, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2,
             gap_extend1=gap_extend1, gap_extend2=gap_extend2, minimizer_len=minimizer_len, threads=threads, all_secondary=all_secondary,
-            minimap_bin=minimap_bin, sam_bin=sam_bin)
+            sort_bam=sort_bam, minimap_bin=minimap_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
     return SingleTypeFiles(outfiles)
@@ -438,9 +443,9 @@ end
     - ´min_seed_len::Int´: Minimum seed length. Matches shorter than INT will be missed.
     - ´reseeding_factor::Float64´: Trigger re-seeding for a MEM longer than minSeedLenFLOAT. Larger value yields fewer seeds, which leads to faster alignment speed but lower accuracy.
 """
-function align_mem(in_file1::String, in_file2::Union{String,Nothing}, genome_file::String, out_file::String;
+function align_mem(in_file1::String, in_file2::Union{String,Nothing}, genome_file::String, out_file::String=fnamefromseqfile(in_file1, in_file2);
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
-    min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools")
+    min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools")
 
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
@@ -454,19 +459,18 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, genome_fil
         `$bwa_bin mem -v 1 $params $fileparams`,
         stdout = pipeline(
             `$sam_bin view -u`,
-            stdout = pipeline(
-                `$sam_bin sort -o $out_file`))))
+            stdout = sort_bam ? pipeline(`$sam_bin sort -o $out_file`) : out_file)))
     run(pipeline(
         `$sam_bin index $out_file`,
         `$sam_bin stats $out_file`,
         stats_file))
 end
-align_mem(in_file::String, genome_file::String, out_file::String;
+align_mem(in_file::String, genome_file::String, out_file::String=fnamefromseqfile(in_file);
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=18,
-    reseeding_factor=1.4, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools") =
+    reseeding_factor=1.4, is_ont=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools") =
     align_mem(in_file, nothing, genome_file, out_file;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, min_seed_len=min_seed_len,
-        reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, bwa_bin=bwa_bin, sam_bin=sam_bin)
+        reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
 """
     Helper dispatch of align_mem, which is a wrapper for bwa-mem2. Runs align_mem on `read_files::T`
@@ -475,7 +479,7 @@ align_mem(in_file::String, genome_file::String, out_file::String;
 """
 function align_mem(read_files::T, genome::Genome; min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1,
     clipping_penalty=5, unpair_penalty=9, reseeding_factor=1.4, min_seed_len=18, unpair_rescue=false, is_ont=false,
-    threads=6, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
+    threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
 
     tmp_genome = tempname()
     write(tmp_genome, genome)
@@ -489,12 +493,12 @@ function align_mem(read_files::T, genome::Genome; min_score=20, match=1, mismatc
         align_mem(file, tmp_genome, out_file;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open,
                 gap_extend=gap_extend, clipping_penalty=clipping_penalty,  min_seed_len=min_seed_len,
-                reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+                reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin) :
         align_mem(first(file), last(file), tmp_genome, out_file;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
                 clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
                 min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
-                bwa_bin=bwa_bin, sam_bin=sam_bin)
+                sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
@@ -508,9 +512,9 @@ end
     is a SequenceContainer and aligns it against `genomes::Vector{Genome}`. This enables easy handling
     of Sequences and their alignment against multiple genomes.
 """
-function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String; min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1,
+function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String="alignments.bam"; min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1,
     clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6,
-    bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
+    sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
 
     (isfile(out_file) && !overwrite_existing) && return
     tmp_reads = tempname()
@@ -531,12 +535,12 @@ function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String; 
         align_mem(tmp_reads, tmp_genome, this_out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
-            is_ont=is_ont, threads=threads, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+            is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin) :
         align_mem(tmp_reads, tmp_reads2, tmp_genome, this_out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
             min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
-            bwa_bin=bwa_bin, sam_bin=sam_bin)
+            sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
         rm(tmp_genome)
     end
@@ -561,18 +565,18 @@ function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String; 
 end
 align_mem(reads::T, genome::Genome, out_file::String;
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, unpair_penalty=9, min_seed_len=18, reseeding_factor=1.4,
-    unpair_rescue=false, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:Sequences} =
+    unpair_rescue=false, is_ont=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:Sequences} =
     align_mem(reads, [genome], out_file;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty,
         unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
-        bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
+        sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
 function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, genome::Genome;
     fastp_bin="fastp", trimmed_prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20, max_length=nothing,
     cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=20, deduplicate=false, skip_quality_filtering=false,
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
-    min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, bwa_bin="bwa-mem2", sam_bin="samtools",
+    min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools",
     norm=1000000, include_secondary_alignments=true, suffix_forward="_forward", suffix_reverse="_reverse",
     is_reverse_complement=false, overwrite_existing=false)
 
@@ -584,7 +588,7 @@ function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, g
     println("Aligning files...")
     bams = align_mem(trimmed, genome; overwrite_existing=overwrite_existing, min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
                         clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
-                        is_ont=is_ont, threads=threads, bwa_bin=bwa_bin, sam_bin=sam_bin)
+                        is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
     println("Computing coverage...")
     compute_coverage(bams; overwrite_existing=overwrite_existing, norm=norm, is_reverse_complement=is_reverse_complement, include_secondary_alignments=include_secondary_alignments,
                         suffix_forward=suffix_forward, suffix_reverse=suffix_reverse);

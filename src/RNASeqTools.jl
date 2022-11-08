@@ -31,5 +31,6 @@ include("counts.jl")
 include("alignment.jl")
 
 const FASTQ_TYPES = (".fastq", ".fastq.gz", ".fq", ".fq.gz")
+const FASTA_TYPES = (".fasta", ".fasta.gz", ".fa", ".fa.gz", ".fna", ".fna.gz")
 
 end

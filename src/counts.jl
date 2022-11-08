@@ -118,19 +118,6 @@ function asdataframe(counts::T, names=nothing) where {T<:CountContainer}
     return df
 end
 
-function difference_ttest(counts::T, control_condition::String, experiment_condition::String; within_sample=false, tail=:both) where {T<:CountContainer}
-    avg_control = vec(mean(counts[control_condition], dims=2))
-    avg_experiment = vec(mean(counts[experiment_condition], dims=2))
-    m_control = counts[control_condition]
-    m_experiment = counts[experiment_condition]
-    m_control = within_sample ? [log.(m_control[i,:]) for i in 1:length(counts)] : [m_control[i,:] for i in 1:length(counts)]
-    m_experiment = within_sample ? [log.(m_experiment[i,:]) for i in 1:length(counts)] : [m_experiment[i,:] for i in 1:length(counts)]
-    ps = pvalue.(within_sample ? OneSampleTTest.(m_control, m_experiment) : UnequalVarianceTTest.(m_control, m_experiment) ; tail=tail)
-    fc = log2.(avg_experiment) .- log2.(avg_control)
-    padj = adjust(PValues(ps), BenjaminiHochberg())
-    return (avg_control, fc, padj)
-end
-
 function difference_glm(counts::T, control_condition::String, experiment_condition::String; d=NegativeBinomial(), tail=:both) where {T<:CountContainer}
     control_range = counts.conditions[control_condition]
     exp_range = counts.conditions[experiment_condition]

@@ -171,13 +171,11 @@ function astag(record::BAM.Record)
     end
 end
 
+const nmdict = Dict{UInt8,Int}(UInt8('C') => 24, UInt8('S') => 16, UInt8('I') => 0)
 function nmtag(record::BAM.Record)
     ((record.data[BAM.auxdata_position(record)] == UInt8('N')) && (record.data[BAM.auxdata_position(record)+1] == UInt8('M'))) || throw("auxdata does not start with NM tag.")
-    t = record.data[BAM.auxdata_position(record)+2] == UInt8('C') ? UInt8 :
-        record.data[BAM.auxdata_position(record)+2] == UInt8('S') ? UInt16 :
-        record.data[BAM.auxdata_position(record)+2] == UInt8('I') ? UInt32 :
-        throw("NM tag type not supported: $(Char(record.data[BAM.auxdata_position(record)+2]))")
-    return unsafe_load(Ptr{t}(pointer(record.data, BAM.auxdata_position(record)+3)))
+    t = nmdict[record.data[BAM.auxdata_position(record)+2]]
+    return unsafe_load(Ptr{UInt32}(pointer(record.data, BAM.auxdata_position(record)+3))) << t >> t
 end
 
 function Alignments(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
