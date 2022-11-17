@@ -666,10 +666,8 @@ end
 
 function ischimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true, check_order=false)
     length(alnread) > 1 || return false
-    for (i, p1) in enumerate(alnread)
-        for p2 in alnread[i+1:end]
-            ischimeric(p1, p2; min_distance=min_distance, check_annotation=check_annotation, check_order=check_order) && return true
-        end
+    for i in alnread.range, j in i+1:last(alnread.range)
+        ischimeric(AlignedPart(alnread.alns, i), AlignedPart(alnread.alns, j); min_distance=min_distance, check_annotation=check_annotation, check_order=check_order) && return true
     end
     return false
 end

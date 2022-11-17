@@ -380,8 +380,8 @@ function align_minimap(in_file::String, genome_file::String, out_file::String=fn
     threads=6, all_secondary=false, skip_stats=false, sort_bam=true, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false)
 
     !overwrite_existing && isfile(out_file) && throw(AssertinError("File $out_file already exists!"))
-    !isnothing(preset) && !(preset in ("map-ont", "asm5", "asm10", "asm20", "sr")) &&
-        throw(AssertionError("Allowed preset values are: map-ont, asm5, asm10, asm20"))
+    !isnothing(preset) && !(preset in (:mapont, :asm5, :asm10, :asm20, :sr)) &&
+        throw(AssertionError("Allowed preset values are: :map-ont, :asm5, :asm10, :asm20 and :sr"))
 
     params = isnothing(preset) ?
         Any["-a", "-A", match, "-B", mismatch, "-O", "$gap_open1,$gap_open2", "-E", "$gap_extend1,$gap_extend2", "-k", minimizer_len] :
