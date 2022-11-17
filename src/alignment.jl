@@ -658,8 +658,8 @@ end
 function nchimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true, check_order=false)
     length(alnread) > 1 || return 0
     c = 0
-    for (p1, p2) in combinations(iterate(alnread), 2)
-        c += ischimeric(p1, p2; min_distance=min_distance, check_annotation=check_annotation, check_order=check_order)
+    for i in alnread.range, j in i+1:last(alnread.range)
+        c += ischimeric(AlignedPart(alnread.alns, i), AlignedPart(alnread.alns, j); min_distance=min_distance, check_annotation=check_annotation, check_order=check_order)
     end
     return c
 end
