@@ -31,7 +31,7 @@ function download_prefetch(sra_runids::Vector{String}, output_path::String; fast
     end
 end
 
-function demultiplex(testseq::LongDNA{4}, barcode_queries::Vector{ApproximateSearchQuery{Function, LongDNA{4}}}; k=1)
+function demultiplex(testseq::LongDNA{4}, barcode_queries::Vector{ApproximateSearchQuery{typeof(isequal), LongDNA{4}}}; k=1)
     for i in 1:length(barcode_queries)
         isnothing(findfirst(barcode_queries[i], k, testseq)) || (return i)
     end
@@ -89,12 +89,12 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
         push!(writers, [FASTQ.Writer(GzipCompressorStream(open(joinpath(output_path, "unidentified_1.fastq.gz"), "w"), level=2)),
                         FASTQ.Writer(GzipCompressorStream(open(joinpath(output_path, "unidentified_2.fastq.gz"), "w"), level=2))])
     c = 0
-    while !eof(reader1)
+    while !eof(reader1) && !eof(reader2)
         read!(reader1, record1)
         isnothing(infile2) || read!(reader2, record2)
         isnothing(prefixfile) || read!(readerp, recordp)
         c += 1
-        checkseq = isnothing(prefixfile) ? LongDNA{4}(record1.data[record1.sequence])[check_range] : LongDNA{4}(recordp.data[recordp.sequence])
+        checkseq = isnothing(prefixfile) ? LongDNA{4}(view(record1.data,record1.sequence))[check_range] : LongDNA{4}(view(recordp.data,recordp.sequence))
         library_id = demultiplex(checkseq, barcode_queries; k=allowed_barcode_distance)
         library_id == -1 && (library_id = nb_stats)
         stats[library_id] += 1
