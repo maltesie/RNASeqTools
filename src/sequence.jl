@@ -10,13 +10,14 @@ function Genome(sequence_dict::Dict{String, LongDNA{4}})
     end
     return Genome(seq, chrs)
 end
-Genome(sequences::Vector{LongDNA{4}}, names::Vector{String}) = Genome(Dict(n=>s for (n,s) in zip(sequences, names)))
+Genome(sequences::Vector{LongDNA{4}}, names::Vector{String}) = Genome(Dict(n=>s for (n,s) in zip(names, sequences)))
 Genome(sequence::LongDNA{4}, name::String) = Genome([sequence], [name])
 Genome(genome_file::String) = Genome(read_genomic_fasta(genome_file))
 
 Base.length(genome::Genome) = length(genome.seq)
 Base.getindex(genome::Genome, key::String) = genome.seq[genome.chroms[key]]
 Base.getindex(genome::Genome, key::Pair{String, UnitRange}) = genome[first(key)][last(key)]
+Base.getindex(genome::Genome, key::Interval{Nothing}) = genome[refname(key)][leftposition(key):rightposition(key)]
 
 function nchromosome(genome::Genome)
     return length(genome.chroms)
@@ -245,45 +246,6 @@ function read_reads(file1::String, file2::String; is_reverse_complement=false, h
     return seqs
 end
 
-function translation_dict(from_sequence::LongDNA{4}, to_sequence::LongDNA{4})
-    scoremodel = AffineGapScoreModel(EDNAFULL, gap_open=-5, gap_extend=-1);
-    res = alignment(pairalign(GlobalAlignment(), from_sequence, to_sequence, scoremodel))
-    trans_dict::Dict{Int, Union{Nothing, Int}} = Dict()
-    from_pos = 1
-    to_pos = 1
-    for (b1, b2) in collect(res)
-        if (b1 == '-')
-            to_pos += 1
-        elseif (b2 == '-')
-            transdict[from_pos] = nothing
-            from_pos += 1
-        else
-            trans_dict[from_pos] = to_pos
-            to_pos += 1
-            from_pos += 1
-        end
-    end
-    return trans_dict
-end
-
-function cut!(read::LongDNA{4}, pos::Int; keep=:left, from=:left)
-    0 <= pos <= length(read) || resize!(read, 0)
-    if (from == :left) && (keep == :left)
-        resize!(read, pos)
-    elseif (from == :left) && (keep == :right)
-        reverse!(resize!(reverse!(read), length(read)-pos))
-    elseif (from == :right) && (keep == :left)
-        resize!(read, length(read)-pos)
-    elseif (from == :right) && (keep == :right)
-        reverse!(resize!(reverse!(read), pos))
-    end
-end
-
-function cut!(read::LongDNA{4}, int::Tuple{Int, Int})
-    (0 <= first(int) < last(int) <= length(read)) || resize!(read, 0)
-    reverse!(resize!(reverse!(resize!(read, last(int))), length(read)-first(int)+1))
-end
-
 function Base.write(fname::String, seqs::Sequences{T}) where T
     rec = FASTA.Record()
     FASTA.Writer(GzipCompressorStream(open(fname, "w"); level=2)) do writer
@@ -314,21 +276,21 @@ struct MatchIterator
     seq::LongDNA{4}
     max_dist::Int
 end
-MatchIterator(test_sequence::LongDNA{4}, seq::LongDNA{4}; k=1) =
+MatchIterator(test_sequence::LongDNA{4}, seq::LongDNA{4}; k=0) =
     MatchIterator(k>0 ? ApproximateSearchQuery(test_sequence) : ExactSearchQuery(test_sequence), seq, k)
 function Base.iterate(m::MatchIterator, state=1)
     current_match = m.max_dist > 0 ? findnext(m.sq, m.max_dist, m.seq, state) : findnext(m.sq, m.seq, state)
     isnothing(current_match) && return nothing
     current_match, last(current_match)
 end
-Base.eachmatch(test_sequence::LongDNA{4}, seq::LongDNA{4}; k=1) = MatchIterator(test_sequence, seq; k=k)
+Base.eachmatch(test_sequence::LongDNA{4}, seq::LongDNA{4}; k=0) = MatchIterator(test_sequence, seq; k=k)
 
 struct GenomeMatchIterator
     mi_f::MatchIterator
     mi_r::MatchIterator
     chroms::Dict{String, UnitRange}
 end
-GenomeMatchIterator(test_sequence::LongDNA{4}, genome::Genome; k=1) =
+GenomeMatchIterator(test_sequence::LongDNA{4}, genome::Genome; k=0) =
     GenomeMatchIterator(MatchIterator(test_sequence, genome.seq; k=k), MatchIterator(reverse_complement(test_sequence), genome.seq; k=k), genome.chroms)
 function Base.iterate(gmi::GenomeMatchIterator, (state,rev)=(1,false))
     i = iterate(rev ? gmi.mi_r : gmi.mi_f, state)
@@ -337,7 +299,7 @@ function Base.iterate(gmi::GenomeMatchIterator, (state,rev)=(1,false))
         (first(r) <= first(first(i)) <= last(r)) && return Interval(chr, first(i) .- first(r), rev ? STRAND_NEG : STRAND_POS), (last(i), rev)
     end
 end
-Base.eachmatch(test_sequence::LongDNA{4}, genome::Genome; k=1) = GenomeMatchIterator(test_sequence, genome; k=k)
+Base.eachmatch(test_sequence::LongDNA{4}, genome::Genome; k=0) = GenomeMatchIterator(test_sequence, genome; k=k)
 
 function Base.collect(m::T) where T<:Union{MatchIterator,GenomeMatchIterator}
     re = Interval{Nothing}[]

@@ -46,7 +46,7 @@ function groups(files::Vector{String}; delimiter_prefix='_', delimiter_suffix='_
         for (i, c) in enumerate(stripped_str)
             check_index = [((i <= length(check_str)) && (c === check_str[i])) for check_str in check_strs]
             if sum(check_index) == 1
-                push!(stretches, stripped_str[1:i-1])
+                push!(stretches, stripped_str[1:i-(stripped_str[i-1] == delimiter_suffix ? 2 : 1)])
                 break
             end
             check_strs = check_strs[check_index]
@@ -105,7 +105,12 @@ function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffi
 end
 
 groupfiles(files::SingleTypeFiles) = groups([basename(f) for f in files.list])
-groupfiles(files::PairedSingleTypeFiles) = groups([basename(f[1]) for f in files.list])
+function groupfiles(files::PairedSingleTypeFiles) 
+    g1 = groups([basename(f[1]) for f in files.list])
+    g2 = groups([basename(f[2]) for f in files.list])
+    g1 == g2 || throw(AssertionError("Groups made from first and second file in pairs do not match!"))
+    return g1
+end
 
 type(files::T) where {T<:FileCollection} = files.type
 Base.length(files::T) where {T<:FileCollection} = length(files.list)
