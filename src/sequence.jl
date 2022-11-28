@@ -327,17 +327,18 @@ function nucleotidedistribution(seqs::Sequences; normalize=true, align=:left)
     return count
 end
 
+struct Logo
+    m::Matrix{Float64}
+    a::Vector{DNA}
+end
+
 information_content(m::Matrix{Float64}; n=Inf) = m .* (2 .- ([-1 * sum(x > 0 ? x * log2(x) : 0 for x in r) for r in eachrow(m)] .+ (3/(2*log(2)*n))))
 
-function logo(seqs::Sequences; align=:left)
+function Logo(seqs::Sequences; align=:left)
     nc = nucleotidedistribution(seqs; align=align)
     m = hcat(nc[DNA_A], nc[DNA_T], nc[DNA_G], nc[DNA_C])
-    information_content(m; n=length(seqs))
+    Logo(information_content(m; n=length(seqs)), [DNA_A, DNA_T, DNA_G, DNA_C])
 end
 
-consensusbits(m::Matrix{Float64}) = round.(maximum.(eachrow(m)); digits=2)
-
-function consensusseq(m::Matrix{Float64})
-    letters = ["A", "T", "G", "C"]
-    return LongDNA{4}(join(letters[argmax.(eachrow(m))]))
-end
+consensusbits(logo::Logo) = round.(maximum.(eachrow(logo.m)); digits=2)
+consensusseq(logo::Logo) = LongDNA{4}(logo.a[argmax.(eachrow(logo.m))])
