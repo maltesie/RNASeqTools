@@ -349,13 +349,11 @@ end
 
 function nucleotidedistribution(seqs::Sequences; normalize=true, align=:left)
     align in (:left, :right) || throw(AssertionError("align has to be :left or :right"))
-    max_length = maximum([length(read) for read in seqs])
-    count = Dict(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
+    max_length = maximum(length(read) for read in seqs)
+    count = Dict{DNA, Vector{Float64}}(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
     for read in seqs
-        (align==:left) ?
-        (index = 1:length(read)) :
-        (index = (max_length - length(read) + 1):max_length)
-        for (i, n) in zip(index, read)
+        for (i::Int, n::DNA) in enumerate(read)
+            align === :right && (i += max_length - length(read))
             count[n][i] += 1
         end
     end
@@ -367,10 +365,17 @@ function nucleotidedistribution(seqs::Sequences; normalize=true, align=:left)
     return count
 end
 
-information_content(m::Matrix{Float64}; n=Inf) = m .* (2 .- [-1 * sum(x > 0 ? x * log2(x) : 0 for x in r) for r in eachcol(m)] .- (3/(2*log(2)*n)))'
+information_content(m::Matrix{Float64}; n=Inf) = m .* (2 .- ([-1 * sum(x > 0 ? x * log2(x) : 0 for x in r) for r in eachrow(m)] .+ (3/(2*log(2)*n))))
 
-function logo(seqs::Sequences)
-    nc = nucleotidedistribution(seqs)
+function logo(seqs::Sequences; align=:left)
+    nc = nucleotidedistribution(seqs; align=align)
     m = hcat(nc[DNA_A], nc[DNA_T], nc[DNA_G], nc[DNA_C])
     information_content(m; n=length(seqs))
+end
+
+consensusbits(m::Matrix{Float64}) = round.(maximum.(eachrow(m)); digits=2)
+
+function consensusseq(m::Matrix{Float64})
+    letters = ["A", "T", "G", "C"]
+    return LongDNA{4}(join(letters[argmax.(eachrow(m))]))
 end
