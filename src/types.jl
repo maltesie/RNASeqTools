@@ -21,9 +21,9 @@ struct Sequences{T<:Union{String, UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
-struct SequenceLogo
-    alphabet::Alphabet
-    bits::Matrix{Float64}
+struct Logo
+    m::Matrix{Float64}
+    a::Vector{DNA}
 end
 
 struct Genome

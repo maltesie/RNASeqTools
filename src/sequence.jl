@@ -327,11 +327,6 @@ function nucleotidedistribution(seqs::Sequences; normalize=true, align=:left)
     return count
 end
 
-struct Logo
-    m::Matrix{Float64}
-    a::Vector{DNA}
-end
-
 information_content(m::Matrix{Float64}; n=Inf) = m .* (2 .- ([-1 * sum(x > 0 ? x * log2(x) : 0 for x in r) for r in eachrow(m)] .+ (3/(2*log(2)*n))))
 
 function Logo(seqs::Sequences; align=:left)

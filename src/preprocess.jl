@@ -37,7 +37,7 @@ function demultiplex(testseq::LongDNA{4}, barcode_queries::Vector{ApproximateSea
     end
     return -1
 end
-function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,String}, output_path::String;
+function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,String}, output_path::String=dirname(infile1);
                         bc_len=length(first(values(libname_to_barcode))), check_range=1:bc_len, allowed_barcode_distance=1, overwrite_existing=false)
 
     lib_to_barcode = Dict(k=>LongDNA{4}(v) for (k,v) in libname_to_barcode)
@@ -118,11 +118,11 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
     return isnothing(infile2) ? FastqgzFiles(output_files) : PairedSingleTypeFiles(output_files, ".fastq.gz", "_1", "_2")
 end
 
-function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,String}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
+function split_libs(infile1::String, infile2::String, libname_to_barcode::Dict{String,String}, output_path::String=dirname(infile1); bc_len=8, check_range=1:bc_len, overwrite_existing=false)
     split_libs(infile1, nothing, infile2, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range, overwrite_existing=overwrite_existing)
 end
 
-function split_libs(infile::String, libname_to_barcode::Dict{String,String}, output_path::String; bc_len=8, check_range=1:bc_len, overwrite_existing=false)
+function split_libs(infile::String, libname_to_barcode::Dict{String,String}, output_path::String=dirname(infile); bc_len=8, check_range=1:bc_len, overwrite_existing=false)
     split_libs(infile, nothing, nothing, libname_to_barcode, output_path; bc_len=bc_len, check_range=check_range, overwrite_existing=overwrite_existing)
 end
 
