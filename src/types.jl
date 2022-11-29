@@ -22,8 +22,9 @@ struct Sequences{T<:Union{String, UInt}}
 end
 
 struct Logo
-    m::Matrix{Float64}
-    a::Vector{DNA}
+    nseqs::Int
+    weights::Matrix{Float64}
+    alphabet::Vector{DNA}
 end
 
 struct Genome

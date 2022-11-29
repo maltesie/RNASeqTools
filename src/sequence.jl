@@ -332,8 +332,13 @@ information_content(m::Matrix{Float64}; n=Inf) = m .* (2 .- ([-1 * sum(x > 0 ? x
 function Logo(seqs::Sequences; align=:left)
     nc = nucleotidedistribution(seqs; align=align)
     m = hcat(nc[DNA_A], nc[DNA_T], nc[DNA_G], nc[DNA_C])
-    Logo(information_content(m; n=length(seqs)), [DNA_A, DNA_T, DNA_G, DNA_C])
+    Logo(length(seqs), information_content(m; n=length(seqs)), [DNA_A, DNA_T, DNA_G, DNA_C])
 end
 
-consensusbits(logo::Logo) = round.(maximum.(eachrow(logo.m)); digits=2)
-consensusseq(logo::Logo) = LongDNA{4}(logo.a[argmax.(eachrow(logo.m))])
+consensusbits(logo::Logo) = round.(maximum.(eachrow(logo.weights)); digits=2)
+consensusseq(logo::Logo) = LongDNA{4}(logo.alphabet[argmax.(eachrow(logo.weights))])
+
+summarize(logo::Logo) = "Consensus sequence of logo of $(logo.nseqs) sequences of length $(size(logo.weights, 1)):\n\n" *
+    "sequence: " * string(consensusseq(logo)) * "\nbits    : " * join(round.(Int, consensusbits(logo)))
+
+Base.show(logo::Logo) = println(summarize(logo))
