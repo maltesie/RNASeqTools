@@ -44,7 +44,7 @@ struct AlignmentAnnotation <: AnnotationStyle
     overlap::UInt8
 end
 
-struct Alignments{T<:Union{String,UInt}}
+struct AlignedReads{T<:Union{String,UInt}}
     chroms::Vector{Tuple{String,Int}}
     tempnames::Vector{T}
     leftpos::Vector{Int}
@@ -65,16 +65,16 @@ struct Alignments{T<:Union{String,UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
-struct AlignedPart
+struct ReadIntervals
+    range::UnitRange{Int}
+    alns::AlignedReads
+end
+
+struct AlignedInterval
     ref::Interval{AlignmentAnnotation}
     seq::UnitRange{Int}
     nms::UInt32
     read::Symbol
-end
-
-struct AlignedRead
-    range::UnitRange{Int}
-    alns::Alignments
 end
 
 struct GenomeComparison

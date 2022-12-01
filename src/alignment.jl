@@ -178,7 +178,7 @@ function nmtag(record::BAM.Record)
     return unsafe_load(Ptr{UInt32}(pointer(record.data, BAM.auxdata_position(record)+3))) << t >> t
 end
 
-function Alignments(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
+function AlignedReads(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
     T::Type = hash_id ? UInt : String
     ns = Vector{T}(undef, 1000000)
@@ -210,7 +210,7 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
             (ref::String, s::Strand) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
             nm::UInt32 = nmtag(record)
             for xastring in xastrings
-                ap = AlignedPart(xastring; read=current_read)
+                ap = AlignedInterval(xastring; read=current_read)
                 (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) =
                 (n, leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, editdistance(ap))
                 index += 1
@@ -226,36 +226,36 @@ function Alignments(bam_file::String; include_secondary_alignments=true, include
     nindex = sortperm(ns)
     ranges = samevalueintervals(ns, nindex)
     pindex = partsindex(ranges, nindex, rls, rds)
-    return Alignments(chromosome_list, ns, ls, rs, rls, rrs, rds, nms, is, ss,
+    return AlignedReads(chromosome_list, ns, ls, rs, rls, rrs, rds, nms, is, ss,
                         Vector{String}(undef,length(ns)), Vector{String}(undef,length(ns)), zeros(UInt8,length(ns)),
                         fill(0xff,length(ns)), fill(0xff,length(ns)), pindex, zeros(Bool, length(ns)), ranges)
 end
 
-Base.length(alns::Alignments) = length(alns.tempnames)
-nreads(alns::Alignments) = length(alns.ranges)
+Base.length(alns::AlignedReads) = length(alns.ranges)
+nintervals(alns::AlignedReads) = length(alns.tempnames)
 
-@inline function Base.iterate(alns::Alignments)
+@inline function Base.iterate(alns::AlignedReads)
     return isempty(alns.ranges) ? nothing : (alns[1], 2)
 end
-@inline function Base.iterate(alns::Alignments, state::Int)
+@inline function Base.iterate(alns::AlignedReads, state::Int)
     return state > length(alns.ranges) ? nothing : (alns[state], state+1)
 end
 
-function Base.filter!(alns::Alignments{T}, tempnames::Set{T}) where {T<:Union{String, UInt}}
+function Base.filter!(alns::AlignedReads{T}, tempnames::Set{T}) where {T<:Union{String, UInt}}
     bitindex = [alns.tempnames[alns.pindex[first(r)]] in tempnames for r in alns.ranges]
     n_seqs = sum(bitindex)
     alns.ranges[1:n_seqs] = alns.ranges[bitindex]
     resize!(alns.ranges, n_seqs)
 end
 
-function sync!(seqs::Sequences{T}, alns::Alignments{T}) where {T<:Union{String, UInt}}
+function sync!(seqs::Sequences{T}, alns::AlignedReads{T}) where {T<:Union{String, UInt}}
     filter!(seqs, Set(alns.tempnames))
     filter!(alns, Set(seqs.tempnames))
 end
-sync!(alns::Alignments{T}, seqs::Sequences{T}) where {T<:Union{String, UInt}} =
+sync!(alns::AlignedReads{T}, seqs::Sequences{T}) where {T<:Union{String, UInt}} =
     sync!(seqs, alns)
 
-function Base.show(alns::Alignments; n=-1, only_chimeric=false, filter_name=nothing, filter_type=nothing)
+function Base.show(alns::AlignedReads; n=-1, only_chimeric=false, filter_name=nothing, filter_type=nothing)
     c = 0
     for aln in alns
         c == n && break
@@ -268,9 +268,9 @@ function Base.show(alns::Alignments; n=-1, only_chimeric=false, filter_name=noth
     end
 end
 
-function AlignedPart(alns::Alignments, i::Int)
+function AlignedInterval(alns::AlignedReads, i::Int)
     i_p = alns.pindex[i]
-    AlignedPart(
+    AlignedInterval(
         Interval(alns.refnames[i_p], alns.leftpos[i_p], alns.rightpos[i_p], alns.strands[i_p],
             alns.annotated[i_p] ? AlignmentAnnotation(alns.antypes[i_p], alns.annames[i_p], alns.anols[i_p]) : AlignmentAnnotation()
         ),
@@ -280,8 +280,8 @@ function AlignedPart(alns::Alignments, i::Int)
     )
 end
 
-AlignedPart(alnpart::AlignedPart; new_name::Union{Nothing, String}=nothing, new_type::Union{Nothing, String}=nothing) =
-AlignedPart(
+AlignedInterval(alnpart::AlignedInterval; new_name::Union{Nothing, String}=nothing, new_type::Union{Nothing, String}=nothing) =
+AlignedInterval(
     Interval(refname(alnpart), leftposition(alnpart), rightposition(alnpart), strand(alnpart),
         AlignmentAnnotation(
             isnothing(new_type) ? type(alnpart) : new_type,
@@ -294,16 +294,16 @@ AlignedPart(
     alnpart.read
 )
 
-Base.getindex(alns::Alignments, i::Int) = AlignedRead(alns.ranges[i], alns)
-Base.getindex(alns::Alignments, r::UnitRange{Int}) = Alignments(alns.chroms, alns.tempnames, alns.leftpos, alns.rightpos, alns.read_leftpos, alns.read_rightpos,
+Base.getindex(alns::AlignedReads, i::Int) = ReadIntervals(alns.ranges[i], alns)
+Base.getindex(alns::AlignedReads, r::UnitRange{Int}) = AlignedReads(alns.chroms, alns.tempnames, alns.leftpos, alns.rightpos, alns.read_leftpos, alns.read_rightpos,
                                                                 alns.reads, alns.nms, alns.refnames, alns.strands, alns.annames, alns.antypes,
                                                                 alns.anols, alns.anleftrel, alns.anrightrel, alns.pindex, alns.annotated, alns.ranges[r])
 
 """
-    Constructor for the AlignedPart struct. Builds AlignedPart from a XA string, which is created by bwa-mem2
+    Constructor for the AlignedInterval struct. Builds AlignedInterval from a XA string, which is created by bwa-mem2
     for alternative mappings. Inverts strand, if `check_invert::Bool` is true.
 """
-function AlignedPart(xapart::String; read=:read1)
+function AlignedInterval(xapart::String; read=:read1)
     chr, pos, cigar, nm = split(xapart, ",")
     refstart = parse(Int, pos)
     strand = ((refstart > 0) != read===:read2) ? STRAND_POS : STRAND_NEG
@@ -311,15 +311,15 @@ function AlignedPart(xapart::String; read=:read1)
     seq_interval = ((refstart > 0)  != (read === :read2)) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
     refstart *= sign(refstart)
     ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, AlignmentAnnotation())
-    return AlignedPart(ref_interval, seq_interval, parse(UInt32, nm), read)
+    return AlignedInterval(ref_interval, seq_interval, parse(UInt32, nm), read)
 end
 
 """
-    Base.summarize(part::AlignedPart, readseq::LongDNA)::IO
+    Base.summarize(part::AlignedInterval, readseq::LongDNA)::IO
 
-Generates string with information on the AlignedPart combined with the read sequence.
+Generates string with information on the AlignedInterval combined with the read sequence.
 """
-function summarize(part::AlignedPart, readseqpart::LongSequence)
+function summarize(part::AlignedInterval, readseqpart::LongSequence)
     s = "[$(first(part.seq)), $(last(part.seq))] on $(part.read) - "
     s *= "[$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) "
     s *= "with edit distance $(part.nms) - "
@@ -331,11 +331,11 @@ function summarize(part::AlignedPart, readseqpart::LongSequence)
 end
 
 """
-    Base.summarize(part::AlignedPart)::IO
+    Base.summarize(part::AlignedInterval)::IO
 
-Generates string with information on the AlignedPart.
+Generates string with information on the AlignedInterval.
 """
-function summarize(part::AlignedPart)
+function summarize(part::AlignedInterval)
     s = "[$(first(part.seq)), $(last(part.seq))] on $(part.read) - "
     s *= "[$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) "
     s *= "with edit distance $(part.nms) - "
@@ -344,152 +344,152 @@ function summarize(part::AlignedPart)
 end
 
 """
-    Base.show(part::AlignedPart)::IO
+    Base.show(part::AlignedInterval)::IO
 
-Function for structured printing of the content of AlignedPart
+Function for structured printing of the content of AlignedInterval
 """
-function Base.show(part::AlignedPart, readseqpart::LongSequence)
+function Base.show(part::AlignedInterval, readseqpart::LongSequence)
     println(summarize(part, readseqpart))
 end
 
 """
-    Base.show(part::AlignedPart)::IO
+    Base.show(part::AlignedInterval)::IO
 
-Function for structured printing of the content of AlignedPart
+Function for structured printing of the content of AlignedInterval
 """
-function Base.show(part::AlignedPart)
+function Base.show(part::AlignedInterval)
     println(summarize(part))
 end
 
 """
-    read(aln::AlignedPart)::Symbol
+    read(aln::AlignedInterval)::Symbol
 
 Returns the read from which the alignment comes. If is_reverse_complement is true, the reads will be
 inverted (:read1 will be :read2 and vice versa)....
 """
-sameread(aln1::AlignedPart, aln2::AlignedPart) = aln1.read === aln2.read
+sameread(aln1::AlignedInterval, aln2::AlignedInterval) = aln1.read === aln2.read
 
 """
-    annotation(aln::AlignedPart)::AlignmentAnnotation
+    annotation(aln::AlignedInterval)::AlignmentAnnotation
 
 Returns the AlignmentAnnotation struct that is used as the metadata of the Interval{AlignmentAnnotation} and contains
 information on the reference sequence part of the alignment.
 """
-annotation(aln::AlignedPart) = aln.ref.metadata
+annotation(aln::AlignedInterval) = aln.ref.metadata
 
 """
-    name(aln::AlignedPart)::String
+    name(aln::AlignedInterval)::String
 
 Returns the annotation's name as found in the .gff annotation file by the name_key argument of the Features constructor.
-Availble only after using annotate! on Alignments.
+Availble only after using annotate! on AlignedReads.
 """
-name(aln::AlignedPart) = name(annotation(aln))
+name(aln::AlignedInterval) = name(annotation(aln))
 
 """
-    type(aln::AlignedPart)::String
+    type(aln::AlignedInterval)::String
 
 Returns the annotation's type as found in the .gff annotation file as the feature type.
-Availble only after using annotate! on Alignments.
+Availble only after using annotate! on AlignedReads.
 """
-type(aln::AlignedPart) = type(annotation(aln))
+type(aln::AlignedInterval) = type(annotation(aln))
 
 """
-    overlap(aln::AlignedPart)::UInt8
+    overlap(aln::AlignedInterval)::UInt8
 
 Returns the percentage of the sequence on the read contained within the annotation assigned to it.
-Availble only after using annotate! on Alignments.
+Availble only after using annotate! on AlignedReads.
 """
-overlap(aln::AlignedPart) = overlap(annotation(aln))
+overlap(aln::AlignedInterval) = overlap(annotation(aln))
 
 """
-    editdistance(aln::AlignedPart)::UInt8
+    editdistance(aln::AlignedInterval)::UInt8
 
 Returns the number of edit operations between the aligned sequence and the reference (NM tag in SAM/BAM).
 """
-editdistance(aln::AlignedPart) = aln.nms
+editdistance(aln::AlignedInterval) = aln.nms
 
 """
-    refinterval(aln::AlignedPart)::Interval{AlignmentAnnotation}
+    refinterval(aln::AlignedInterval)::Interval{AlignmentAnnotation}
 
 Returns the Interval{AlignmentAnnotation} that contains information on the reference sequence part of the alignment.
-Availble only after using annotate! on Alignments.
+Availble only after using annotate! on AlignedReads.
 """
-refinterval(aln::AlignedPart) = aln.ref
+refinterval(aln::AlignedInterval) = aln.ref
 
 """
-    refname(aln::AlignedPart)::String
+    refname(aln::AlignedInterval)::String
 
 Returns the id of the reference sequence the annotation comes from as found in the .gff annotation file as the chromosome name.
-Availble only after using annotate! on Alignments.
+Availble only after using annotate! on AlignedReads.
 """
-refname(aln::AlignedPart) = aln.ref.seqname
+refname(aln::AlignedInterval) = aln.ref.seqname
 
 """
-    refrange(aln::AlignedPart)::UnitRange
+    refrange(aln::AlignedInterval)::UnitRange
 
 Returns the Interval of the alignment on the reference sequence as a UnitRange.
 """
-refrange(aln::AlignedPart) = leftposition(aln):rightposition(aln)
+refrange(aln::AlignedInterval) = leftposition(aln):rightposition(aln)
 
 """
-    refsequence(aln::AlignedPart, genome::Genome)::LongDNA
+    refsequence(aln::AlignedInterval, genome::Genome)::LongDNA
 
-Returns the part of the reference sequence that the aln::AlignedPart belongs to.
+Returns the part of the reference sequence that the aln::AlignedInterval belongs to.
 """
-refsequence(aln::AlignedPart, genome::Genome)::LongSequence = genome[refname(aln)][refrange(aln)]
+refsequence(aln::AlignedInterval, genome::Genome)::LongSequence = genome[refname(aln)][refrange(aln)]
 
 """
-    leftposition(aln::AlignedPart)::Int
+    leftposition(aln::AlignedInterval)::Int
 
 Returns the leftmost position of the alignment on the reference sequence.
-Availble only after using annotate! on Alignments.
+Availble only after using annotate! on AlignedReads.
 """
-BioGenerics.leftposition(aln::AlignedPart) = aln.ref.first
+BioGenerics.leftposition(aln::AlignedInterval) = aln.ref.first
 
 """
-    rightposition(aln::AlignedPart)::Int
+    rightposition(aln::AlignedInterval)::Int
 
 Returns the rightmost position of the alignment on the reference sequence.
-Availble only after using annotate! on Alignments.
+Availble only after using annotate! on AlignedReads.
 """
-BioGenerics.rightposition(aln::AlignedPart) = aln.ref.last
+BioGenerics.rightposition(aln::AlignedInterval) = aln.ref.last
 
 """
-    strand(aln::AlignedPart)::Strand
-
-Returns the strand of the annotation.
-Availble only after using annotate! on Alignments.
-"""
-GenomicFeatures.strand(aln::AlignedPart) = aln.ref.strand
-
-"""
-    strand(aln::AlignedPart)::Strand
+    strand(aln::AlignedInterval)::Strand
 
 Returns the strand of the annotation.
-Availble only after using annotate! on Alignments.
+Availble only after using annotate! on AlignedReads.
 """
-ispositivestrand(aln::AlignedPart) = aln.ref.strand === STRAND_POS
+GenomicFeatures.strand(aln::AlignedInterval) = aln.ref.strand
 
 """
-    readrange(aln::AlignedPart)::UnitRange
+    strand(aln::AlignedInterval)::Strand
+
+Returns the strand of the annotation.
+Availble only after using annotate! on AlignedReads.
+"""
+ispositivestrand(aln::AlignedInterval) = aln.ref.strand === STRAND_POS
+
+"""
+    readrange(aln::AlignedInterval)::UnitRange
 
 Returns the Interval of the alignment on the read sequence as a UnitRange.
 """
-readrange(aln::AlignedPart) = aln.seq
+readrange(aln::AlignedInterval) = aln.seq
 
 """
-    Base.length(aln::AlignedPart)::Int
+    Base.length(aln::AlignedInterval)::Int
 
 Returns the the length of the alignment on the read sequence.
 """
-Base.length(aln::AlignedPart) = length(readrange(aln))
+Base.length(aln::AlignedInterval) = length(readrange(aln))
 
 """
-    nms(aln::AlignedPart)::UInt32
+    nms(aln::AlignedInterval)::UInt32
 
-Returns the edit distance of the AlignedPart.
+Returns the edit distance of the AlignedInterval.
 """
-nms(aln::AlignedPart) = aln.nms
+nms(aln::AlignedInterval) = aln.nms
 
 """
     leftposition(rang::UnitRange)::Int
@@ -508,125 +508,125 @@ BioGenerics.rightposition(rang::UnitRange) = last(rang)
 """
     hasannotation(rang::UnitRange)::Bool
 
-Checks if an annotation was assigned to the AlignedPart.
+Checks if an annotation was assigned to the AlignedInterval.
 """
-hasannotation(aln::AlignedPart) = !isempty(annotation(aln))
+hasannotation(aln::AlignedInterval) = !isempty(annotation(aln))
 
 """
-    sameannotation(aln1::AlignedPart, aln2::AlignedPart)::Bool
+    sameannotation(aln1::AlignedInterval, aln2::AlignedInterval)::Bool
 
-Checks if two AlignedParts share the same name and type in their annotation.
+Checks if two AlignedReads share the same name and type in their annotation.
 """
-sameannotation(aln1::AlignedPart, aln2::AlignedPart) = samename(aln1, aln2) && sametype(aln1, aln2)
-
-"""
-    samename(aln1::AlignedPart, aln2::AlignedPart)::Bool
-
-Checks if two AlignedParts share the same name and type in their annotation.
-"""
-samename(aln1::AlignedPart, aln2::AlignedPart) = name(aln1) == name(aln2)
+sameannotation(aln1::AlignedInterval, aln2::AlignedInterval) = samename(aln1, aln2) && sametype(aln1, aln2)
 
 """
-    sametype(aln1::AlignedPart, aln2::AlignedPart)::Bool
+    samename(aln1::AlignedInterval, aln2::AlignedInterval)::Bool
 
-Checks if two AlignedParts share the same name and type in their annotation.
+Checks if two AlignedReads share the same name and type in their annotation.
 """
-sametype(aln1::AlignedPart, aln2::AlignedPart) = type(aln1) == type(aln2)
+samename(aln1::AlignedInterval, aln2::AlignedInterval) = name(aln1) == name(aln2)
 
 """
-    distanceonread(aln1::AlignedPart, aln2::AlignedPart)::Int
+    sametype(aln1::AlignedInterval, aln2::AlignedInterval)::Bool
+
+Checks if two AlignedReads share the same name and type in their annotation.
+"""
+sametype(aln1::AlignedInterval, aln2::AlignedInterval) = type(aln1) == type(aln2)
+
+"""
+    distanceonread(aln1::AlignedInterval, aln2::AlignedInterval)::Int
 
 Computes the distance between two alignments on the same read. Returns negative numbers
 if the two parts overlap.
 """
-distanceonread(aln1::AlignedPart, aln2::AlignedPart) = max(first(aln1.seq), first(aln2.seq)) - min(last(aln1.seq), last(aln2.seq))
+distanceonread(aln1::AlignedInterval, aln2::AlignedInterval) = max(first(aln1.seq), first(aln2.seq)) - min(last(aln1.seq), last(aln2.seq))
 
-isoverlapping(aln1::AlignedPart, aln2::AlignedPart) = strand(aln1) === strand(aln2) ? isoverlapping(aln1.ref, aln2.ref) : false
+isoverlapping(aln1::AlignedInterval, aln2::AlignedInterval) = strand(aln1) === strand(aln2) ? isoverlapping(aln1.ref, aln2.ref) : false
 
-isfirstread(part::AlignedPart) = part.read === :read1
+isfirstread(part::AlignedInterval) = part.read === :read1
 
-@inline function Base.iterate(alnread::AlignedRead)
+@inline function Base.iterate(alnread::ReadIntervals)
     return isnothing(alnread.range) ? nothing : (alnread[1], 2)
 end
-@inline function Base.iterate(alnread::AlignedRead, state::Int)
+@inline function Base.iterate(alnread::ReadIntervals, state::Int)
     return state > length(alnread.range) ? nothing : (alnread[state], state+1)
 end
 
-Base.lastindex(alnread::AlignedRead) = length(alnread.range)
-function Base.getindex(alnread::AlignedRead, i::Int)
+Base.lastindex(alnread::ReadIntervals) = length(alnread.range)
+function Base.getindex(alnread::ReadIntervals, i::Int)
     f::Int = i+first(alnread.range)-1
-    return f in alnread.range ? AlignedPart(alnread.alns,  f) : throw(BoundsError(alnread, i))
+    return f in alnread.range ? AlignedInterval(alnread.alns,  f) : throw(BoundsError(alnread, i))
 end
-Base.getindex(alnread::AlignedRead, r::UnitRange{Int}) = AlignedRead(alnread.range[r], alnread.alns)
-Base.getindex(alnread::AlignedRead, b::Vector{Bool}) = [alnread.alns[alnread.prindex[index]] for (i::Int,index::Int) in enumerate(alnread.range) if b[i]]
-Base.isempty(alnread::AlignedRead) = isempty(alnread.range)
-Base.length(alnread::AlignedRead) = length(alnread.range)
+Base.getindex(alnread::ReadIntervals, r::UnitRange{Int}) = ReadIntervals(alnread.range[r], alnread.alns)
+Base.getindex(alnread::ReadIntervals, b::Vector{Bool}) = [alnread.alns[alnread.prindex[index]] for (i::Int,index::Int) in enumerate(alnread.range) if b[i]]
+Base.isempty(alnread::ReadIntervals) = isempty(alnread.range)
+Base.length(alnread::ReadIntervals) = length(alnread.range)
 
-readid(alnread::AlignedRead) = alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]]
-parts(alnread::AlignedRead) = [AlignedPart(alnread.alns, i) for i in alnread.range]
-annotatedparts(alnread::AlignedRead) = [AlignedPart(alnread.alns, i) for i in alnread.range if alnread.alns.annotated[alnread.alns.pindex[i]]]
-typein(alnread::AlignedRead, types::Vector{String}) = any(alnread.alns.antypes[i] in types for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
-hastype(alnread::AlignedRead, t::String) = any(alnread.alns.antypes[i] === t for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
-namein(alnread::AlignedRead, names::Vector{String}) = any(alnread.alns.annames[i] in names for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
-hasname(alnread::AlignedRead, n::String) = any(alnread.alns.annames[i] === n for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
-hasannotation(alnread::AlignedRead) = any(alnread.alns.annotated[i] for i in alnread.alns.pindex[alnread.range])
-annotatedcount(alnread::AlignedRead) = sum(alnread.alns.annotated[i] for i in alnread.alns.pindex[alnread.range])
-annotationcount(alnread::AlignedRead) = length(Set(name(part) for part in alnread))
+readid(alnread::ReadIntervals) = alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]]
+parts(alnread::ReadIntervals) = [AlignedInterval(alnread.alns, i) for i in alnread.range]
+annotatedparts(alnread::ReadIntervals) = [AlignedInterval(alnread.alns, i) for i in alnread.range if alnread.alns.annotated[alnread.alns.pindex[i]]]
+typein(alnread::ReadIntervals, types::Vector{String}) = any(alnread.alns.antypes[i] in types for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
+hastype(alnread::ReadIntervals, t::String) = any(alnread.alns.antypes[i] === t for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
+namein(alnread::ReadIntervals, names::Vector{String}) = any(alnread.alns.annames[i] in names for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
+hasname(alnread::ReadIntervals, n::String) = any(alnread.alns.annames[i] === n for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
+hasannotation(alnread::ReadIntervals) = any(alnread.alns.annotated[i] for i in alnread.alns.pindex[alnread.range])
+annotatedcount(alnread::ReadIntervals) = sum(alnread.alns.annotated[i] for i in alnread.alns.pindex[alnread.range])
+annotationcount(alnread::ReadIntervals) = length(Set(name(part) for part in alnread))
 
-function BioGenerics.leftposition(alnread::AlignedRead)
+function BioGenerics.leftposition(alnread::ReadIntervals)
     check_refname = alnread.alns.refnames[alnread.alns.pindex[first(alnread.range)]]
     all(v .== check_refname for v in view(alnread.alns.refnames, alnread.alns.pindex[alnread.range])) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
     minimum(view(alnread.alns.leftpos, alnread.alns.pindex[alnread.range]))
 end
-function BioGenerics.rightposition(alnread::AlignedRead)
+function BioGenerics.rightposition(alnread::ReadIntervals)
     check_refname = alnread.alns.refnames[alnread.alns.pindex[first(alnread.range)]]
     all(v .== check_refname for v in view(alnread.alns.refnames, alnread.alns.pindex[alnread.range])) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
     maximum(view(alnread.alns.rightpos, alnread.alns.pindex[alnread.range]))
 end
 
-function GenomicFeatures.strand(alnread::AlignedRead)
+function GenomicFeatures.strand(alnread::ReadIntervals)
     length(alnread) > 0 || (return STRAND_NA)
     #println(view(alnread.alns.strands, alnread.range), "\n",alnread.alns.strands[first(alnread.range)])
     check_strand = alnread.alns.strands[alnread.alns.pindex[first(alnread.range)]]
     return all(s === check_strand for s in view(alnread.alns.strands, alnread.alns.pindex[alnread.range])) ? check_strand : STRAND_BOTH
 end
 
-function ispositivestrand(alnread::AlignedRead)
+function ispositivestrand(alnread::ReadIntervals)
     s = strand(alnread)
     s === STRAND_NA && throw(AssertionError("Empty Alignment does not have a strand."))
-    s === STRAND_BOTH && throw(AssertionError("Alignments are not on the same strand."))
+    s === STRAND_BOTH && throw(AssertionError("AlignedReads are not on the same strand."))
     return s === STRAND_POS
 end
 
-summarize(alnread::AlignedRead) = (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
+summarize(alnread::ReadIntervals) = (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
                                     " Alignment with $(length(alnread)) part(s):\n   " *
                                     join([summarize(part) for part in alnread], "\n   ") * "\n"
-function summarize(alnread::AlignedRead, readseq::LongSequence)
+function summarize(alnread::ReadIntervals, readseq::LongSequence)
     length(Set(alnread.alns.reads[i] for i in alnread.alns.pindex[alnread.range])) === 1 || throw(AssertionError("Need two sequences for paired end reads!"))
     (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
     " Alignment with $(length(alnread)) part(s) on $(length(readseq)) nt read:\n    1:\t" *
     join([summarize(part, readseq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
 end
-function summarize(alnread::AlignedRead, read1seq::LongSequence, read2seq::LongSequence)
+function summarize(alnread::ReadIntervals, read1seq::LongSequence, read2seq::LongSequence)
     (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
     " Alignment with $(length(alnread)) part(s) on $(length(read1seq)) nt read1 and $(length(read2seq)) nt read2:\n    1:\t" *
     join([summarize(part, isfirstread(part) ? read1seq[part] : read2seq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
 end
 
-function Base.show(alnread::AlignedRead)
+function Base.show(alnread::ReadIntervals)
     println(summarize(alnread))
 end
-function Base.show(alnread::AlignedRead, readseq::LongSequence)
+function Base.show(alnread::ReadIntervals, readseq::LongSequence)
     println(summarize(alnread, readseq))
 end
-function Base.show(alnread::AlignedRead, read1seq::LongSequence, read2seq::LongSequence)
+function Base.show(alnread::ReadIntervals, read1seq::LongSequence, read2seq::LongSequence)
     println(summarize(alnread, read1seq, read2seq))
 end
 
 """
     overlapdistance(i1::Interval, i2::Interval)::Float64
 
-Returns the negative distance between two AlignedParts on the reference sequence or the positive overlap if it exists.
+Returns the negative distance between two AlignedReads on the reference sequence or the positive overlap if it exists.
 Returns -Inf if the alignments do not share the same reference id or lie on different strands.
 """
 function overlapdistance(i1::Interval{T}, i2::Interval{I})::Float64 where {T,I}
@@ -647,7 +647,7 @@ end
 """
     distance(i1::Interval, i2::Interval)::Float64
 
-Returns the distance between two AlignedParts on the reference sequence. Returns Inf if the alignments do not share
+Returns the distance between two AlignedReads on the reference sequence. Returns Inf if the alignments do not share
 the same reference id or lie on different strands
 """
 function distance(i1::Interval, i2::Interval; check_order=false)::Float64
@@ -655,36 +655,36 @@ function distance(i1::Interval, i2::Interval; check_order=false)::Float64
     return check_order && d>0 && first(i1) > first(i2) ? Inf : d
 end
 
-function nchimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true, check_order=false)
+function nchimeric(alnread::ReadIntervals; min_distance=1000, check_annotation=true, check_order=false)
     length(alnread) > 1 || return 0
     c = 0
     for i in alnread.range, j in i+1:last(alnread.range)
-        c += ischimeric(AlignedPart(alnread.alns, i), AlignedPart(alnread.alns, j); min_distance=min_distance, check_annotation=check_annotation, check_order=check_order)
+        c += ischimeric(AlignedInterval(alnread.alns, i), AlignedInterval(alnread.alns, j); min_distance=min_distance, check_annotation=check_annotation, check_order=check_order)
     end
     return c
 end
 
-function ischimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true, check_order=false)
+function ischimeric(alnread::ReadIntervals; min_distance=1000, check_annotation=true, check_order=false)
     length(alnread) > 1 || return false
     for i in alnread.range, j in i+1:last(alnread.range)
-        ischimeric(AlignedPart(alnread.alns, i), AlignedPart(alnread.alns, j); min_distance=min_distance, check_annotation=check_annotation, check_order=check_order) && return true
+        ischimeric(AlignedInterval(alnread.alns, i), AlignedInterval(alnread.alns, j); min_distance=min_distance, check_annotation=check_annotation, check_order=check_order) && return true
     end
     return false
 end
 
-function ischimeric(part1::AlignedPart, part2::AlignedPart; min_distance=1000, check_annotation=true, check_order=false)
+function ischimeric(part1::AlignedInterval, part2::AlignedInterval; min_distance=1000, check_annotation=true, check_order=false)
     check_annotation && hasannotation(part1) && hasannotation(part2) && (name(part1) == name(part2)) && (return false)
     return distance(refinterval(part1), refinterval(part2); check_order=check_order) > min_distance
 end
 
-function ismulti(alnread::AlignedRead; method=:distance)
+function ismulti(alnread::ReadIntervals; method=:distance)
     return method === :annotation ? (annotationcount(alnread) >= 3) :
         method === :distance ? (countchimeric(alnread; check_annotation=false) >= 3) :
         method === :both ? (countchimeric(alnread; check_annotation=true) >= 3) :
         throw(AssertionError("method must be :distance, :annotation or :both"))
 end
 
-function Base.empty!(alns::Alignments)
+function Base.empty!(alns::AlignedReads)
     empty!(alns.tempnames)
     empty!(alns.leftpos)
     empty!(alns.rightpos)
@@ -704,10 +704,10 @@ function Base.empty!(alns::Alignments)
     empty!(alns.reads)
 end
 
-nannotated(alns::Alignments) = sum(isassigned(alns.annames, i) && isassigned(alns.antypes, i) for i in 1:length(alns))
+nannotated(alns::AlignedReads) = sum(isassigned(alns.annames, i) && isassigned(alns.antypes, i) for i in 1:length(alns))
 
 annotate_filter(a::Interval{Annotation}, b::Interval{Nothing}) = strand(a) === strand(b)
-function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_type=nothing, min_prioritize_overlap=80, overwrite_type=nothing)
+function annotate!(alns::AlignedReads, features::Features{Annotation}; prioritize_type=nothing, min_prioritize_overlap=80, overwrite_type=nothing)
     myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(annotate_filter), Annotation}(
                                     annotate_filter,
                                     GenomicFeatures.ICTreeIntersection{Annotation}(),
@@ -743,8 +743,8 @@ function annotate!(alns::Alignments, features::Features{Annotation}; prioritize_
     end
 end
 
-Base.getindex(genome::Genome, ap::AlignedPart) = refsequence(ap, genome)
-Base.getindex(sequence::LongSequence, ap::AlignedPart) = sequence[readrange(ap)]
+Base.getindex(genome::Genome, ap::AlignedInterval) = refsequence(ap, genome)
+Base.getindex(sequence::LongSequence, ap::AlignedInterval) = sequence[readrange(ap)]
 
 function GenomeComparison(refgenome_file::String, compgenome_file::String, bam_file::String)
     pairwise_alignments = PairwiseAlignment[]
@@ -793,3 +793,12 @@ function summarize(genomecomp::GenomeComparison)
 end
 
 Base.show(genomecomp::GenomeComparison) = println(summarize(genomecomp))
+
+mutable struct BAMIterator
+    reader::BAM.Reader
+    record::BAM.Record
+    stop::Union{Nothing,Int}
+end
+
+@inline Base.iterate(it::BAMIterator, state=1) = (eof(it.reader) || (!isnothing(it.stop) && state>it.stop)) ? (close(it.reader); nothing) : (read!(it.reader, it.record), state+1)
+eachbamrecord(fname::String; stopat=nothing) = BAMIterator(BAM.Reader(open(fname)), BAM.Record(), stopat)

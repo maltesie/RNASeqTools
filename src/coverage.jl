@@ -8,7 +8,7 @@ function compute_coverage(bam_file::String; norm=1000000, include_secondary_alig
 
     (isfile(filename_f) && isfile(filename_r)) && !overwrite_existing && return (filename_f, filename_r)
 
-    alns = Alignments(bam_file; include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
+    alns = AlignedReads(bam_file; include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
     coverage = Coverage(alns; norm=norm, include_chimeric=include_chimeric, only_chimeric=only_chimeric, max_temp_length=max_temp_length)
 
     writer_f = BigWig.Writer(open(filename_f, "w"), alns.chroms)
@@ -34,7 +34,7 @@ function compute_coverage(files::SingleTypeFiles; norm=1000000, include_secondar
     return PairedSingleTypeFiles(bw_files, ".bw", "_forward", "_reverse")
 end
 
-function Coverage(alignments::Alignments; norm=1000000, max_temp_length=1000, include_chimeric=false, only_chimeric=false)
+function Coverage(alignments::AlignedReads; norm=1000000, max_temp_length=1000, include_chimeric=false, only_chimeric=false)
     vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in alignments.chroms)
     vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in alignments.chroms)
     for alignment in alignments
@@ -221,9 +221,9 @@ function maxdiffpositions(coverage::Coverage; type="DIFF", rev=false, min_diff=2
     coverage_values = values(coverage)
     features = Interval{Annotation}[]
     for chr in keys(coverage_values)
-        findex, _ = localmaxdiffindex(coverage_values[chr][1]; rev=rev, min_diff=min_diff, min_ratio=min_ratio, 
+        findex, _ = localmaxdiffindex(coverage_values[chr][1]; rev=rev, min_diff=min_diff, min_ratio=min_ratio,
                                                             compute_within=compute_within, circular=circular)
-        rindex, _ = localmaxdiffindex(coverage_values[chr][2]; rev=rev, min_diff=min_diff, min_ratio=min_ratio, 
+        rindex, _ = localmaxdiffindex(coverage_values[chr][2]; rev=rev, min_diff=min_diff, min_ratio=min_ratio,
                                                             compute_within=compute_within, circular=circular)
         for (ii, i) in enumerate(findall(findex))
             push!(features, Interval(chr, i, i, STRAND_POS, Annotation(type, "forward_$ii")))

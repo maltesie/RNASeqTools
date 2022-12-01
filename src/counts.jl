@@ -35,7 +35,7 @@ function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=
     for range in values(conditions)
         mybams = samples[range]
         for (i, bam_file) in enumerate(mybams)
-            alignments = Alignments(bam_file; include_secondary_alignments=include_secondary_alignments,
+            alignments = AlignedReads(bam_file; include_secondary_alignments=include_secondary_alignments,
                                     include_alternative_alignments=include_alternative_alignments, is_reverse_complement=is_reverse_complement)
             annotate!(alignments, features)
             for alignment in alignments
