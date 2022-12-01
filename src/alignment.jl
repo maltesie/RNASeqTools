@@ -181,16 +181,17 @@ end
 function AlignedReads(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
     T::Type = hash_id ? UInt : String
-    ns = Vector{T}(undef, 1000000)
-    ls = Vector{Int}(undef, 1000000)
-    rs = Vector{Int}(undef, 1000000)
-    is = Vector{String}(undef, 1000000)
-    ss = Vector{Strand}(undef, 1000000)
-    nms = Vector{UInt32}(undef, 1000000)
-    rls = Vector{Int}(undef, 1000000)
-    rrs = Vector{Int}(undef, 1000000)
-    rds = Vector{Symbol}(undef, 1000000)
+    ns = Vector{T}(undef, 2000000)
+    ls = Vector{Int}(undef, 2000000)
+    rs = Vector{Int}(undef, 2000000)
+    is = Vector{String}(undef, 2000000)
+    ss = Vector{Strand}(undef, 2000000)
+    nms = Vector{UInt32}(undef, 2000000)
+    rls = Vector{Int}(undef, 2000000)
+    rrs = Vector{Int}(undef, 2000000)
+    rds = Vector{Symbol}(undef, 2000000)
     chromosome_list = Vector{Tuple{String,Int}}()
+    lc = 0
     BAM.Reader(open(bam_file)) do reader
         append!(chromosome_list, [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))])
         index::Int = 0
@@ -200,28 +201,23 @@ function AlignedReads(bam_file::String; include_secondary_alignments=true, inclu
             current_read::Symbol = (isread2(record) != is_reverse_complement) ? :read2 : :read1
             index += 1
             xastrings = hasxatag(record) ? string.(split(xatag(record), ";")[1:end-1]) : String[]
-            if index + length(xastrings) > length(ns)
-                for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
-                    resize!(z, length(z)+1000000)
-                end
-            end
-            n::T = hash_id ? hash(view(record.data, 1:(BAM.seqname_length(record) - 1))) : string(name_view)
+            index + length(xastrings) > length(ns) && resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), length(ns)+2000000)
+            name_view = view(record.data, UInt8(1):(BAM.seqname_length(record) - UInt8(1)))
+            n::T = hash_id ? hash(name_view) : string(name_view)
             (l::Int,r::Int) = (BAM.leftposition(record), BAM.rightposition(record))
             (ref::String, s::Strand) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
             nm::UInt32 = nmtag(record)
             for xastring in xastrings
                 ap = AlignedInterval(xastring; read=current_read)
-                (ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index]) =
-                (n, leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, editdistance(ap))
+                ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index] =
+                n, leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, editdistance(ap)
                 index += 1
             end
             readstart, readstop, _, readlen = readpositions(record)
             (rl, rr) = (BAM.ispositivestrand(record) != (current_read === :read2)) ? (readstart,readstop) : (readlen-readstop+1,readlen-readstart+1)
             ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index] = n, l, r, ref, s, rl, rr, current_read, nm
         end
-        for z in (ns, ls, rs, is, ss, rls, rrs, rds, nms)
-            resize!(z, index)
-        end
+        resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), index)
     end
     nindex = sortperm(ns)
     ranges = samevalueintervals(ns, nindex)
