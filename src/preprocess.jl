@@ -129,7 +129,7 @@ end
 function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=nothing,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=nothing, filter_complexity=nothing,
-    average_window_quality=nothing, deduplicate=true, skip_quality_filtering=false, overwrite_existing=false)
+    average_window_quality=nothing, deduplicate=false, skip_quality_filtering=false, overwrite_existing=false)
 
     @assert trim_loc in [:read1, :read2]
 
@@ -179,7 +179,7 @@ end
 function trim_fastp(input_files::PairedSingleTypeFiles;
     fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
-    average_window_quality=20, deduplicate=true, skip_quality_filtering=false, overwrite_existing=false)
+    average_window_quality=20, deduplicate=false, skip_quality_filtering=false, overwrite_existing=false)
 
     files = Vector{Tuple{String, Union{String, Nothing}}}(input_files.list)
     trim_fastp(files; fastp_bin=fastp_bin, prefix=prefix, adapter=adapter, trim=trim, trim_loc=trim_loc,

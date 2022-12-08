@@ -65,7 +65,7 @@ struct AlignedReads{T<:Union{String,UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
-struct ReadIntervals
+struct AlignedRead
     range::UnitRange{Int}
     alns::AlignedReads
 end

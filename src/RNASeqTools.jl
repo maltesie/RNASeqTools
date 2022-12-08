@@ -9,7 +9,7 @@ using IterTools
 
 export align_mem, align_minimap, align_kraken2
 export preprocess_data, trim_fastp, split_libs, download_prefetch, download_fasterq, transform, split_interleaved, split_each_read
-export Genome, Sequences, PairedSequences, AlignedReads, AlignedInterval, ReadIntervals, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage
+export Genome, Sequences, PairedSequences, AlignedReads, AlignedInterval, AlignedRead, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage
 export Annotation, AlignmentAnnotation, BaseAnnotation, BaseCoverage, Counts, FeatureCounts, GenomeComparison, Logo
 export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles
 export PairedFastaFiles, PairedFastagzFiles, PaireFastqFiles, PairedFastqgzFiles

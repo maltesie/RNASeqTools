@@ -290,7 +290,7 @@ AlignedInterval(
     alnpart.read
 )
 
-Base.getindex(alns::AlignedReads, i::Int) = ReadIntervals(alns.ranges[i], alns)
+Base.getindex(alns::AlignedReads, i::Int) = AlignedRead(alns.ranges[i], alns)
 Base.getindex(alns::AlignedReads, r::UnitRange{Int}) = AlignedReads(alns.chroms, alns.tempnames, alns.leftpos, alns.rightpos, alns.read_leftpos, alns.read_rightpos,
                                                                 alns.reads, alns.nms, alns.refnames, alns.strands, alns.annames, alns.antypes,
                                                                 alns.anols, alns.anleftrel, alns.anrightrel, alns.pindex, alns.annotated, alns.ranges[r])
@@ -474,13 +474,6 @@ Returns the Interval of the alignment on the read sequence as a UnitRange.
 readrange(aln::AlignedInterval) = aln.seq
 
 """
-    Base.length(aln::AlignedInterval)::Int
-
-Returns the the length of the alignment on the read sequence.
-"""
-Base.length(aln::AlignedInterval) = length(readrange(aln))
-
-"""
     nms(aln::AlignedInterval)::UInt32
 
 Returns the edit distance of the AlignedInterval.
@@ -541,81 +534,82 @@ isoverlapping(aln1::AlignedInterval, aln2::AlignedInterval) = strand(aln1) === s
 
 isfirstread(part::AlignedInterval) = part.read === :read1
 
-@inline function Base.iterate(alnread::ReadIntervals)
+@inline function Base.iterate(alnread::AlignedRead)
     return isnothing(alnread.range) ? nothing : (alnread[1], 2)
 end
-@inline function Base.iterate(alnread::ReadIntervals, state::Int)
+@inline function Base.iterate(alnread::AlignedRead, state::Int)
     return state > length(alnread.range) ? nothing : (alnread[state], state+1)
 end
 
-Base.lastindex(alnread::ReadIntervals) = length(alnread.range)
-function Base.getindex(alnread::ReadIntervals, i::Int)
+Base.lastindex(alnread::AlignedRead) = length(alnread.range)
+function Base.getindex(alnread::AlignedRead, i::Int)
     f::Int = i+first(alnread.range)-1
     return f in alnread.range ? AlignedInterval(alnread.alns,  f) : throw(BoundsError(alnread, i))
 end
-Base.getindex(alnread::ReadIntervals, r::UnitRange{Int}) = ReadIntervals(alnread.range[r], alnread.alns)
-Base.getindex(alnread::ReadIntervals, b::Vector{Bool}) = [alnread.alns[alnread.prindex[index]] for (i::Int,index::Int) in enumerate(alnread.range) if b[i]]
-Base.isempty(alnread::ReadIntervals) = isempty(alnread.range)
-Base.length(alnread::ReadIntervals) = length(alnread.range)
+Base.getindex(alnread::AlignedRead, r::UnitRange{Int}) = AlignedRead(alnread.range[r], alnread.alns)
+Base.getindex(alnread::AlignedRead, b::Vector{Bool}) = [alnread.alns[alnread.prindex[index]] for (i::Int,index::Int) in enumerate(alnread.range) if b[i]]
+Base.isempty(alnread::AlignedRead) = isempty(alnread.range)
+Base.length(alnread::AlignedRead) = length(alnread.range)
 
-readid(alnread::ReadIntervals) = alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]]
-parts(alnread::ReadIntervals) = [AlignedInterval(alnread.alns, i) for i in alnread.range]
-annotatedparts(alnread::ReadIntervals) = [AlignedInterval(alnread.alns, i) for i in alnread.range if alnread.alns.annotated[alnread.alns.pindex[i]]]
-typein(alnread::ReadIntervals, types::Vector{String}) = any(alnread.alns.antypes[i] in types for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
-hastype(alnread::ReadIntervals, t::String) = any(alnread.alns.antypes[i] === t for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
-namein(alnread::ReadIntervals, names::Vector{String}) = any(alnread.alns.annames[i] in names for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
-hasname(alnread::ReadIntervals, n::String) = any(alnread.alns.annames[i] === n for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
-hasannotation(alnread::ReadIntervals) = any(alnread.alns.annotated[i] for i in alnread.alns.pindex[alnread.range])
-annotatedcount(alnread::ReadIntervals) = sum(alnread.alns.annotated[i] for i in alnread.alns.pindex[alnread.range])
-annotationcount(alnread::ReadIntervals) = length(Set(name(part) for part in alnread))
+readid(alnread::AlignedRead) = alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]]
+parts(alnread::AlignedRead) = [AlignedInterval(alnread.alns, i) for i in alnread.range]
+annotatedparts(alnread::AlignedRead) = [AlignedInterval(alnread.alns, i) for i in alnread.range if alnread.alns.annotated[alnread.alns.pindex[i]]]
+typein(alnread::AlignedRead, types::Vector{String}) = any(alnread.alns.antypes[i] in types for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
+hastype(alnread::AlignedRead, t::String) = any(alnread.alns.antypes[i] === t for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
+namein(alnread::AlignedRead, names::Vector{String}) = any(alnread.alns.annames[i] in names for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
+hasname(alnread::AlignedRead, n::String) = any(alnread.alns.annames[i] === n for i::Int in alnread.alns.pindex[alnread.range] if alnread.alns.annotated[i])
+hasannotation(alnread::AlignedRead) = any(alnread.alns.annotated[i] for i in alnread.alns.pindex[alnread.range])
+annotatedcount(alnread::AlignedRead) = sum(alnread.alns.annotated[i] for i in alnread.alns.pindex[alnread.range])
+nnames(alnread::AlignedRead) = length(Set(name(part) for part in alnread))
+ntypes(alnread::AlignedRead) = length(Set(type(part) for part in alnread))
 
-function BioGenerics.leftposition(alnread::ReadIntervals)
+function BioGenerics.leftposition(alnread::AlignedRead)
     check_refname = alnread.alns.refnames[alnread.alns.pindex[first(alnread.range)]]
     all(v .== check_refname for v in view(alnread.alns.refnames, alnread.alns.pindex[alnread.range])) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
     minimum(view(alnread.alns.leftpos, alnread.alns.pindex[alnread.range]))
 end
-function BioGenerics.rightposition(alnread::ReadIntervals)
+function BioGenerics.rightposition(alnread::AlignedRead)
     check_refname = alnread.alns.refnames[alnread.alns.pindex[first(alnread.range)]]
     all(v .== check_refname for v in view(alnread.alns.refnames, alnread.alns.pindex[alnread.range])) || throw(AssertionError("AlignmentParts are not on the same reference sequence."))
     maximum(view(alnread.alns.rightpos, alnread.alns.pindex[alnread.range]))
 end
 
-function GenomicFeatures.strand(alnread::ReadIntervals)
+function GenomicFeatures.strand(alnread::AlignedRead)
     length(alnread) > 0 || (return STRAND_NA)
     #println(view(alnread.alns.strands, alnread.range), "\n",alnread.alns.strands[first(alnread.range)])
     check_strand = alnread.alns.strands[alnread.alns.pindex[first(alnread.range)]]
     return all(s === check_strand for s in view(alnread.alns.strands, alnread.alns.pindex[alnread.range])) ? check_strand : STRAND_BOTH
 end
 
-function ispositivestrand(alnread::ReadIntervals)
+function ispositivestrand(alnread::AlignedRead)
     s = strand(alnread)
     s === STRAND_NA && throw(AssertionError("Empty Alignment does not have a strand."))
     s === STRAND_BOTH && throw(AssertionError("AlignedReads are not on the same strand."))
     return s === STRAND_POS
 end
 
-summarize(alnread::ReadIntervals) = (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
+summarize(alnread::AlignedRead) = (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
                                     " Alignment with $(length(alnread)) part(s):\n   " *
                                     join([summarize(part) for part in alnread], "\n   ") * "\n"
-function summarize(alnread::ReadIntervals, readseq::LongSequence)
+function summarize(alnread::AlignedRead, readseq::LongSequence)
     length(Set(alnread.alns.reads[i] for i in alnread.alns.pindex[alnread.range])) === 1 || throw(AssertionError("Need two sequences for paired end reads!"))
     (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
     " Alignment with $(length(alnread)) part(s) on $(length(readseq)) nt read:\n    1:\t" *
     join([summarize(part, readseq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
 end
-function summarize(alnread::ReadIntervals, read1seq::LongSequence, read2seq::LongSequence)
+function summarize(alnread::AlignedRead, read1seq::LongSequence, read2seq::LongSequence)
     (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
     " Alignment with $(length(alnread)) part(s) on $(length(read1seq)) nt read1 and $(length(read2seq)) nt read2:\n    1:\t" *
     join([summarize(part, isfirstread(part) ? read1seq[part] : read2seq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
 end
 
-function Base.show(alnread::ReadIntervals)
+function Base.show(alnread::AlignedRead)
     println(summarize(alnread))
 end
-function Base.show(alnread::ReadIntervals, readseq::LongSequence)
+function Base.show(alnread::AlignedRead, readseq::Union{LongSubSeq, LongSequence})
     println(summarize(alnread, readseq))
 end
-function Base.show(alnread::ReadIntervals, read1seq::LongSequence, read2seq::LongSequence)
+function Base.show(alnread::AlignedRead, read1seq::Union{LongSubSeq, LongSequence}, read2seq::Union{LongSubSeq, LongSequence})
     println(summarize(alnread, read1seq, read2seq))
 end
 
@@ -651,7 +645,7 @@ function distance(i1::Interval, i2::Interval; check_order=false)::Float64
     return check_order && d>0 && first(i1) > first(i2) ? Inf : d
 end
 
-function nchimeric(alnread::ReadIntervals; min_distance=1000, check_annotation=true, check_order=false)
+function nchimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true, check_order=false)
     length(alnread) > 1 || return 0
     c = 0
     for i in alnread.range, j in i+1:last(alnread.range)
@@ -660,7 +654,7 @@ function nchimeric(alnread::ReadIntervals; min_distance=1000, check_annotation=t
     return c
 end
 
-function ischimeric(alnread::ReadIntervals; min_distance=1000, check_annotation=true, check_order=false)
+function ischimeric(alnread::AlignedRead; min_distance=1000, check_annotation=true, check_order=false)
     length(alnread) > 1 || return false
     for i in alnread.range, j in i+1:last(alnread.range)
         ischimeric(AlignedInterval(alnread.alns, i), AlignedInterval(alnread.alns, j); min_distance=min_distance, check_annotation=check_annotation, check_order=check_order) && return true
@@ -673,10 +667,10 @@ function ischimeric(part1::AlignedInterval, part2::AlignedInterval; min_distance
     return distance(refinterval(part1), refinterval(part2); check_order=check_order) > min_distance
 end
 
-function ismulti(alnread::ReadIntervals; method=:distance)
-    return method === :annotation ? (annotationcount(alnread) >= 3) :
-        method === :distance ? (countchimeric(alnread; check_annotation=false) >= 3) :
-        method === :both ? (countchimeric(alnread; check_annotation=true) >= 3) :
+function ismulti(alnread::AlignedRead; method=:distance)
+    return method === :annotation ? (nnames(alnread) >= 3) :
+        method === :distance ? (nchimeric(alnread; check_annotation=false) >= 3) :
+        method === :both ? (nchimeric(alnread; check_annotation=true) >= 3) :
         throw(AssertionError("method must be :distance, :annotation or :both"))
 end
 
@@ -700,7 +694,7 @@ function Base.empty!(alns::AlignedReads)
     empty!(alns.reads)
 end
 
-nannotated(alns::AlignedReads) = sum(isassigned(alns.annames, i) && isassigned(alns.antypes, i) for i in 1:length(alns))
+nannotated(alns::AlignedReads) = sum(alns.annotated)
 
 annotate_filter(a::Interval{Annotation}, b::Interval{Nothing}) = strand(a) === strand(b)
 function annotate!(alns::AlignedReads, features::Features{Annotation}; prioritize_type=nothing, min_prioritize_overlap=80, overwrite_type=nothing)
@@ -711,7 +705,7 @@ function annotate!(alns::AlignedReads, features::Features{Annotation}; prioritiz
                                     Interval("", 1, 1, STRAND_NA, Annotation()))
                             for refn in refnames(features))
 
-    for i::Int in 1:length(alns)
+    for i::Int in 1:nintervals(alns)
         alns.refnames[i] in keys(myiterators) || continue
         myiterator = myiterators[alns.refnames[i]]
         myiterator.query = Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i])
