@@ -17,7 +17,7 @@ export cut!, nucleotidedistribution, annotate!, featureseqs, asdataframe, isposi
 export nannotation, ischimeric, ismulti, refinterval, readrange, refrange, annotation, hasannotation, ispositivestrand, sameread, nread
 export name, type, overlap, parts, refname, featureparams, featureparam, setfeatureparam!, hastype, hasname, typein, namein, distanceonread
 export hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, covratio, normalize!, hasannotationkey, readid, summarize
-export add5utrs!, add3utrs!, addutrs!, addigrs!, maxdiffpositions, consensusseq, consensusbits, nintervals
+export add5utrs!, add3utrs!, addutrs!, addigrs!, maxdiffpositions, consensusseq, consensusbits, nintervals, eachrecord
 export eachpair, isfirstread, sync!
 export groupfiles, difference_table
 
