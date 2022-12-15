@@ -441,18 +441,19 @@ end
     - ´unpair_penalty::Int´: scoring penalty only used in paired end mapping. Penalty for mappings that do not set the paired flag
     - ´unpair_rescue::Bool´: perform Smith-Waterman to try to rescue read pair if pair is lost.
     - ´min_seed_len::Int´: Minimum seed length. Matches shorter than INT will be missed.
-    - ´reseeding_factor::Float64´: Trigger re-seeding for a MEM longer than minSeedLenFLOAT. Larger value yields fewer seeds, which leads to faster alignment speed but lower accuracy.
+    - ´reseeding_factor::Float64´: Trigger re-seeding for a MEM longer than min_seed_len. Larger value yields fewer seeds, which leads to faster alignment speed but lower accuracy.
 """
 function align_mem(in_file1::String, in_file2::Union{String,Nothing}, genome_file::String, out_file::String=fnamefromseqfile(in_file1, in_file2);
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
-    min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools")
+    min_seed_len=18, reseeding_factor=1.4, is_ont=false, is_interleaved_paired_end=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools")
 
     cmd = pipeline(`$bwa_bin index $genome_file`)
     run(cmd)
     params = ["-A", match, "-B", mismatch, "-O", gap_open, "-E", gap_extend, "-T", min_score, "-L", clipping_penalty, "-r", reseeding_factor, "-k", min_seed_len, "-t", threads]
-    isnothing(in_file2) || append!(params, ["-U", unpair_penalty])
+    (isnothing(in_file2) && !is_interleaved_paired_end) || append!(params, ["-U", unpair_penalty])
     is_ont && append!(params, ["-x", "ont2d"])
     unpair_rescue && push!(params, "-P")
+    is_interleaved_paired_end && push!(params, "-p")
     fileparams = isnothing(in_file2) ? [genome_file, in_file1] : [genome_file, in_file1, in_file2]
     stats_file = out_file * ".log"
     run(pipeline(
@@ -467,10 +468,10 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, genome_fil
 end
 align_mem(in_file::String, genome_file::String, out_file::String=fnamefromseqfile(in_file);
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=18,
-    reseeding_factor=1.4, is_ont=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools") =
+    reseeding_factor=1.4, is_ont=false, is_interleaved_paired_end=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools") =
     align_mem(in_file, nothing, genome_file, out_file;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, min_seed_len=min_seed_len,
-        reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
+        reseeding_factor=reseeding_factor, is_ont=is_ont, is_interleaved_paired_end=is_interleaved_paired_end, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
 """
     Helper dispatch of align_mem, which is a wrapper for bwa-mem2. Runs align_mem on `read_files::T`
@@ -479,7 +480,7 @@ align_mem(in_file::String, genome_file::String, out_file::String=fnamefromseqfil
 """
 function align_mem(read_files::T, genome::Genome; min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1,
     clipping_penalty=5, unpair_penalty=9, reseeding_factor=1.4, min_seed_len=18, unpair_rescue=false, is_ont=false,
-    threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
+    is_interleaved_paired_end=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
 
     tmp_genome = tempname()
     write(tmp_genome, genome)
@@ -492,13 +493,13 @@ function align_mem(read_files::T, genome::Genome; min_score=20, match=1, mismatc
         isa(read_files, SingleTypeFiles) ?
         align_mem(file, tmp_genome, out_file;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open,
-                gap_extend=gap_extend, clipping_penalty=clipping_penalty,  min_seed_len=min_seed_len,
+                gap_extend=gap_extend, clipping_penalty=clipping_penalty,  min_seed_len=min_seed_len, is_interleaved_paired_end=is_interleaved_paired_end,
                 reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin) :
         align_mem(first(file), last(file), tmp_genome, out_file;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
                 clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
                 min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
-                sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
+                is_interleaved_paired_end=is_interleaved_paired_end, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
     end
     rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
@@ -513,7 +514,7 @@ end
     of Sequences and their alignment against multiple genomes.
 """
 function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String="alignments.bam"; min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1,
-    clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6,
+    clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, min_seed_len=18, reseeding_factor=1.4, is_ont=false, is_interleaved_paired_end=false, threads=6,
     sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
 
     (isfile(out_file) && !overwrite_existing) && return
@@ -535,12 +536,12 @@ function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String="
         align_mem(tmp_reads, tmp_genome, this_out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
-            is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+            is_ont=is_ont, is_interleaved_paired_end=is_interleaved_paired_end, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin) :
         align_mem(tmp_reads, tmp_reads2, tmp_genome, this_out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
             min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
-            sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
+            is_interleaved_paired_end=is_interleaved_paired_end, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
 
         rm(tmp_genome)
     end
@@ -565,11 +566,11 @@ function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String="
 end
 align_mem(reads::T, genome::Genome, out_file::String;
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, unpair_penalty=9, min_seed_len=18, reseeding_factor=1.4,
-    unpair_rescue=false, is_ont=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:Sequences} =
+    unpair_rescue=false, is_ont=false, is_interleaved_paired_end=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:Sequences} =
     align_mem(reads, [genome], out_file;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty,
         unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
-        sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
+        is_interleaved_paired_end=is_interleaved_paired_end, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
 
 function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, genome::Genome;
     fastp_bin="fastp", trimmed_prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20, max_length=nothing,
