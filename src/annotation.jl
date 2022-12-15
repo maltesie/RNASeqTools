@@ -292,7 +292,7 @@ function summarize(features::Features)
     end
     printstring = "$(nb_pos+nb_neg) features in total with $nb_pos on + strand and $nb_neg on - strand:\n"
     infotable = DataFrame("type"=>ts, [chr=>[stats[chr][t] for t in ts] for chr in chrs]...)
-    printstring *= DataFrames.pretty_table(String, infotable, nosubheader=true)
+    printstring *= pretty_table(String, infotable, nosubheader=true)
     return printstring
 end
 
