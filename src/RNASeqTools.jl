@@ -19,7 +19,7 @@ export name, type, overlap, parts, refname, featureparams, featureparam, setfeat
 export hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, covratio, normalize!, hasannotationkey, readid, summarize
 export add5utrs!, add3utrs!, addutrs!, addigrs!, maxdiffpositions, consensusseq, consensusbits, nintervals, eachrecord
 export eachpair, isfirstread, sync!
-export groupfiles, difference_table
+export groupfiles, filesexist, difference_table
 
 include("types.jl")
 include("files.jl")

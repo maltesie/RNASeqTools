@@ -203,7 +203,7 @@ function AlignedReads(bam_file::String; include_secondary_alignments=true, inclu
             xastrings = hasxatag(record) ? string.(split(xatag(record), ";")[1:end-1]) : String[]
             index + length(xastrings) > length(ns) && resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), length(ns)+2000000)
             name_view = view(record.data, UInt8(1):(BAM.seqname_length(record) - UInt8(1)))
-            n::T = hash_id ? hash(name_view) : string(name_view)
+            n::T = hash_id ? hash(name_view) : String(name_view)
             (l::Int,r::Int) = (BAM.leftposition(record), BAM.rightposition(record))
             (ref::String, s::Strand) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
             nm::UInt32 = nmtag(record)
@@ -588,16 +588,19 @@ function ispositivestrand(alnread::AlignedRead)
     return s === STRAND_POS
 end
 
-summarize(alnread::AlignedRead) = (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
+summarize(alnread::AlignedRead) = (typeof(alnread.alns) == AlignedReads{String} ? "[$(alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]])] " : "") *
+                                    (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
                                     " Alignment with $(length(alnread)) part(s):\n   " *
                                     join([summarize(part) for part in alnread], "\n   ") * "\n"
 function summarize(alnread::AlignedRead, readseq::LongSequence)
+    (typeof(alnread.alns) == AlignedReads{String} ? "[$(alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]])] " : "") *
     length(Set(alnread.alns.reads[i] for i in alnread.alns.pindex[alnread.range])) === 1 || throw(AssertionError("Need two sequences for paired end reads!"))
     (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
     " Alignment with $(length(alnread)) part(s) on $(length(readseq)) nt read:\n    1:\t" *
     join([summarize(part, readseq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
 end
 function summarize(alnread::AlignedRead, read1seq::LongSequence, read2seq::LongSequence)
+    (typeof(alnread.alns) == AlignedReads{String} ? "[$(alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]])] " : "") *
     (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
     " Alignment with $(length(alnread)) part(s) on $(length(read1seq)) nt read1 and $(length(read2seq)) nt read2:\n    1:\t" *
     join([summarize(part, isfirstread(part) ? read1seq[part] : read2seq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"

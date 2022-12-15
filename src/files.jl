@@ -105,11 +105,24 @@ function PairedSingleTypeFiles(folder::String, type::String; suffix1="_1", suffi
 end
 
 groupfiles(files::SingleTypeFiles) = groups([basename(f) for f in files.list])
-function groupfiles(files::PairedSingleTypeFiles) 
+function groupfiles(files::PairedSingleTypeFiles)
     g1 = groups([basename(f[1]) for f in files.list])
     g2 = groups([basename(f[2]) for f in files.list])
     g1 == g2 || throw(AssertionError("Groups made from first and second file in pairs do not match!"))
     return g1
+end
+
+function filesexist(files::SingleTypeFiles)
+    for file in files
+        isfile(file) || throw(AssertionError("$file does not exist!"))
+    end
+end
+
+function filesexist(files::PairedSingleTypeFiles)
+    for (file1, file2) in files
+        isfile(file1) || throw(AssertionError("$file1 does not exist!"))
+        isfile(file2) || throw(AssertionError("$file2 does not exist!"))
+    end
 end
 
 type(files::T) where {T<:FileCollection} = files.type
