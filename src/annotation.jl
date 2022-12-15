@@ -279,9 +279,9 @@ function annotate!(features::Features, annotations::Features; key_gen=typenameke
     end
 end
 
-function Base.show(features::Features)
+function summarize(features::Features)
     chrs = refnames(features)
-    ts = types(features)
+    ts = sort(collect(types(features)))
     stats = Dict(chr=>Dict(t=>0 for t in ts) for chr in chrs)
     nb_pos = 0
     nb_neg = 0
@@ -290,13 +290,14 @@ function Base.show(features::Features)
         nb_pos += strand(f) === STRAND_POS
         nb_neg += strand(f) === STRAND_NEG
     end
-    dt = Int(floor(maximum(length(t) for t in ts)/8))+1
-    printstring = "\n$(nb_pos+nb_neg) features in total with $nb_pos on + strand and $nb_neg on - strand:\n\n"
-    printstring *= "type$(repeat("\t",dt))$(join([chr[1:min(8,length(chr))]*repeat(" ", 9-min(8,length(chr))) for chr in chrs], "\t"))\n\n"
-    for t in ts
-        printstring *= "$(t)$(repeat("\t",dt-Int(floor(length(t)/8))))$(join([stats[chr][t] for chr in chrs], "\t\t"))\n"
-    end
-    println(printstring)
+    printstring = "$(nb_pos+nb_neg) features in total with $nb_pos on + strand and $nb_neg on - strand:\n"
+    infotable = DataFrame("type"=>ts, [chr=>[stats[chr][t] for t in ts] for chr in chrs]...)
+    printstring *= DataFrames.pretty_table(String, infotable, nosubheader=true)
+    return printstring
+end
+
+function Base.show(features::Features)
+    println(summarize(features))
 end
 
 function embl_to_gff(embl_file::String, gff_file::String, chrs::Vector{String})
