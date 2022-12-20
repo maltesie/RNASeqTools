@@ -461,10 +461,7 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, genome_fil
         stdout = pipeline(
             `$sam_bin view -u`,
             stdout = sort_bam ? pipeline(`$sam_bin sort -o $out_file`) : out_file)))
-    run(pipeline(
-        `$sam_bin index $out_file`,
-        `$sam_bin stats $out_file`,
-        stats_file))
+    run(sort_bam ? pipeline(`$sam_bin index $out_file`, `$sam_bin stats $out_file`, stats_file) : pipeline(`$sam_bin stats $out_file`, stats_file))
 end
 align_mem(in_file::String, genome_file::String, out_file::String=fnamefromseqfile(in_file);
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=18,
