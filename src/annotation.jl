@@ -249,29 +249,6 @@ end
 covratio(features::Features, coverages::PairedSingleTypeFiles; round_digits=2) =
     [covratio(features, Coverage(f1, f2); round_digits=round_digits) for (f1, f2) in coverages]
 
-function asdataframe(features::Features; add_keys=:all)
-    add_keys === :none && (add_keys = Set())
-    add_keys === :all && (add_keys = Set(key for feature in features for key in keys(featureparams(feature))))
-    df = DataFrame(name=repeat([""], length(features)), refname=repeat([""], length(features)), type=repeat([""], length(features)),
-                    left=repeat([-1], length(features)), right=repeat([-1], length(features)), strand=repeat(['*'], length(features)))
-    for key in add_keys
-        df[!, Symbol(key)] = repeat([""], length(features))
-    end
-    for (i,feature) in enumerate(features)
-        df[i, :name] = name(feature)
-        df[i, :refname] = refname(feature)
-        df[i, :type] = type(feature)
-        df[i, :left] = leftposition(feature)
-        df[i, :right] = rightposition(feature)
-        df[i, :strand] = strand(feature) === STRAND_NEG ? '-' : '+'
-        pa = featureparams(feature)
-        for key in sort(collect(keys(pa)))
-            (key in add_keys || add_keys === :all) && (df[i, Symbol(key)] = pa[key])
-        end
-    end
-    return df
-end
-
 function annotate!(features::Features, annotations::Features; key_gen=typenamekey)
     for feature in features
         overlap_string = join([key_gen(annotation) for annotation in eachoverlap(feature, annotations)], "; ")
@@ -290,13 +267,11 @@ function summarize(features::Features)
         nb_pos += strand(f) === STRAND_POS
         nb_neg += strand(f) === STRAND_NEG
     end
-    printstring = "$(nb_pos+nb_neg) features in total with $nb_pos on + strand and $nb_neg on - strand:\n"
-    infotable = DataFrame("type"=>ts, [chr=>[stats[chr][t] for t in ts] for chr in chrs]...)
-    printstring *= pretty_table(String, infotable, nosubheader=true)
+    printstring = "$(typeof(features)) with $(nb_pos+nb_neg) (+:$nb_pos, -:$nb_neg) features of types $(ts) for $(length(chrs)) reference sequences.\n"
     return printstring
 end
 
-function Base.show(features::Features)
+function Base.show(io::IO, features::Features)
     println(summarize(features))
 end
 

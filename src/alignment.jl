@@ -228,7 +228,8 @@ function AlignedReads(bam_file::String; include_secondary_alignments=true, inclu
 end
 
 Base.length(alns::AlignedReads) = length(alns.ranges)
-nintervals(alns::AlignedReads) = length(alns.tempnames)
+ninterval(alns::AlignedReads) = length(alns.tempnames)
+nread(alns::AlignedReads) = length(alns)
 
 @inline function Base.iterate(alns::AlignedReads)
     return isempty(alns.ranges) ? nothing : (alns[1], 2)
@@ -251,7 +252,7 @@ end
 sync!(alns::AlignedReads{T}, seqs::Sequences{T}) where {T<:Union{String, UInt}} =
     sync!(seqs, alns)
 
-function Base.show(alns::AlignedReads; n=-1, only_chimeric=false, filter_name=nothing, filter_type=nothing)
+function print_reads(alns::AlignedReads; n=-1, only_chimeric=false, filter_name=nothing, filter_type=nothing)
     c = 0
     for aln in alns
         c == n && break
@@ -353,7 +354,7 @@ end
 
 Function for structured printing of the content of AlignedInterval
 """
-function Base.show(part::AlignedInterval)
+function Base.show(io::IO, part::AlignedInterval)
     println(summarize(part))
 end
 
@@ -606,7 +607,7 @@ function summarize(alnread::AlignedRead, read1seq::LongSequence, read2seq::LongS
     join([summarize(part, isfirstread(part) ? read1seq[part] : read2seq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
 end
 
-function Base.show(alnread::AlignedRead)
+function Base.show(io::IO, alnread::AlignedRead)
     println(summarize(alnread))
 end
 function Base.show(alnread::AlignedRead, readseq::Union{LongSubSeq, LongSequence})
@@ -677,6 +678,10 @@ function ismulti(alnread::AlignedRead; method=:distance)
         throw(AssertionError("method must be :distance, :annotation or :both"))
 end
 
+summarize(alns::AlignedReads) = "$(typeof(alns)) with $(ninterval(alns)) aligned parts from $(nread(alns)) reads."
+
+Base.show(io::IO, alns::AlignedReads) = println(summarize(alns))
+
 function Base.empty!(alns::AlignedReads)
     empty!(alns.tempnames)
     empty!(alns.leftpos)
@@ -738,54 +743,6 @@ end
 
 Base.getindex(genome::Genome, ap::AlignedInterval) = refsequence(ap, genome)
 Base.getindex(sequence::LongSequence, ap::AlignedInterval) = sequence[readrange(ap)]
-
-function GenomeComparison(refgenome_file::String, compgenome_file::String, bam_file::String)
-    pairwise_alignments = PairwiseAlignment[]
-    fromto = Tuple{Interval,Interval}[]
-    refgenome = Genome(refgenome_file)
-    compgenome = Genome(compgenome_file)
-    record = BAM.Record()
-    reader = BAM.Reader(open(bam_file))
-    while !eof(reader)
-        read!(reader, record)
-        seqstart, seqstop, _, _ = readpositions(record)
-        refseq = refgenome[BAM.refname(record)]#[BAM.leftposition(record):BAM.rightposition(record)]
-        compseq = compgenome[BAM.seqname(record)]#[seqstart:seqstop]
-        BAM.ispositivestrand(record) || reverse_complement!(compseq)
-        aln = BAM.alignment(record)
-        #filter!(x -> x.op === OP_HARD_CLIP || x.op === OP_SOFT_CLIP, aln.anchors)
-        alnseq = AlignedSequence(refseq, aln)
-        pwa = PairwiseAlignment(alnseq, compseq)
-        push!(pairwise_alignments, pwa)
-        push!(fromto, (Interval(BAM.refname(record), BAM.leftposition(record), BAM.rightposition(record), STRAND_NA),
-                        Interval(BAM.tempname(record), seqstart, seqstop, BAM.ispositivestrand(record) ? STRAND_POS : STRAND_NEG)))
-    end
-    return GenomeComparison(pairwise_alignments, fromto)
-end
-
-Base.length(genomecomp::GenomeComparison) = length(genomecomp.alns)
-Base.iterate(genomecomp::GenomeComparison) = ((genomecomp.alns[1], genomecomp.fromto[1]...), 2)
-Base.iterate(genomecomp::GenomeComparison, state::Int) = state > length(genomecomp) ? nothing :
-                                                            ((genomecomp.alns[state], genomecomp.fromto[state]...), state+1)
-
-cutfill(str::String, len::Int) = length(str) > len ? str[1:len] : str * repeat(" ", len - length(str))
-function summarize(genomecomp::GenomeComparison)
-    s = "refname\t\tfrom\tto\tstrand\tcompname\tfrom\tto\tmatches\tsnps\tinserts\tdels\n"
-    for (i, (pwa, from, to)) in enumerate(genomecomp)
-        lref, rref = cutfill(string(leftposition(from)), 8), cutfill(string(rightposition(from)), 8)
-        lcomp, rcomp = cutfill(string(leftposition(to)), 8), cutfill(string(rightposition(to)), 8)
-        refn, compn = cutfill(refname(from), 16), cutfill(refname(to), 16)
-        matches = cutfill(string(count_matches(pwa)), 8)
-        snp = cutfill(string(count_mismatches(pwa)), 8)
-        inserts = cutfill(string(count_insertions(pwa)), 8)
-        dels = cutfill(string(count_deletions(pwa)), 8)
-        st = cutfill(strand(to) === STRAND_POS ? "+" : "-", 8)
-        s *= "$refn$lref$rref$st$compn$lcomp$rcomp$matches$snp$inserts$dels\n"
-    end
-    return s
-end
-
-Base.show(genomecomp::GenomeComparison) = println(summarize(genomecomp))
 
 mutable struct BAMIterator
     reader::BAM.Reader

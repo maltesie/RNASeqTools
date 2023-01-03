@@ -35,8 +35,8 @@ function compute_coverage(files::SingleTypeFiles; norm=1000000, include_secondar
 end
 
 function Coverage(alignments::AlignedReads; norm=1000000, max_temp_length=1000, include_chimeric=false, only_chimeric=false)
-    vals_f = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in alignments.chroms)
-    vals_r = CoverageValues(chr=>zeros(Float64, len) for (chr, len) in alignments.chroms)
+    vals_f = Dict{String, Vector{Float64}}(chr=>zeros(Float64, len) for (chr, len) in alignments.chroms)
+    vals_r = Dict{String, Vector{Float64}}(chr=>zeros(Float64, len) for (chr, len) in alignments.chroms)
     for alignment in alignments
         if ischimeric(alignment; check_annotation = false, min_distance = max_temp_length)
             include_chimeric || only_chimeric || continue
@@ -87,7 +87,7 @@ function Coverage(bigwig_forward_file::String, bigwig_reverse_file::String)
     return Coverage(IntervalCollection(intervals, true), chrlist_f)
 end
 
-function Coverage(values_f::CoverageValues, values_r::CoverageValues, chroms::Vector{Tuple{String, Int}})
+function Coverage(values_f::Dict{String, Vector{Float64}}, values_r::Dict{String, Vector{Float64}}, chroms::Vector{Tuple{String, Int}})
     new_intervals = Vector{Interval{Float64}}()
     for vals in (values_f, values_r)
         current_pos = 1
@@ -130,6 +130,9 @@ function Base.:*(coverage::Coverage, factor::Float64)
     vals = values(coverage)
     Coverage(Dict(chr=>(val[1] .* factor) for (chr,val) in vals), Dict(chr=>(val[2] .* factor) for (chr,val) in vals), coverage.chroms)
 end
+
+summarize(coverage::Coverage) = "$(typeof(coverage)) on $(length(coverage.chroms)) reference sequences"
+Base.show(io::IO, coverage::Coverage) = println(summarize(coverage)) 
 
 value(interval::Interval{Float64}) = interval.metadata
 Base.length(coverage::Coverage) = length(coverage.list)

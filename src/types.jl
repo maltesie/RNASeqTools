@@ -8,13 +8,6 @@ abstract type AlignmentContainer end
 
 abstract type FileCollection end
 
-abstract type InteractionContainer end
-
-abstract type CountContainer end
-
-LongDNAPair = Tuple{LongSequence, LongSequence}
-CoverageValues = Dict{String, Vector{Float64}}
-
 struct Sequences{T<:Union{String, UInt}}
     seq::LongSequence
     tempnames::Vector{T}
@@ -77,25 +70,9 @@ struct AlignedInterval
     read::Symbol
 end
 
-struct GenomeComparison
-    alns::Vector{PairwiseAlignment}
-    fromto::Vector{Tuple{Interval,Interval}}
-end
-
 struct Features{T} <: AnnotationContainer
     list::IntervalCollection{T}
     chroms::Dict{String, Int}
-end
-
-struct Counts <: CountContainer
-    conditions::Dict{String, Vector{Int}}
-    values::Matrix{Float64}
-end
-
-struct FeatureCounts <: CountContainer
-    conditions::Dict{String, Vector{Int}}
-    values::Matrix{Float64}
-    features::Features{Annotation}
 end
 
 struct Coverage <: AnnotationContainer

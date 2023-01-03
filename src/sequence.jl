@@ -123,6 +123,9 @@ end
 Sequences(genomes::Vector{Genome}) =
     Sequences([genome.seq for genome in genomes], UInt.(i for i in 1:length(genomes)), [i:i for i in 1:length(genomes)])
 
+summarize(seqs::Sequences) = "$(typeof(seqs)) with $(length(seqs)) sequences on $(nread(seqs)) reads"
+Base.show(io::IO, seqs::Sequences) = println(summarize(seqs))
+
 Base.getindex(seqs::Sequences, index::Int) = view(seqs.seq, seqs.ranges[index])
 Base.getindex(seqs::Sequences, range::Union{StepRange{Int, Int}, UnitRange{Int}}) = Sequences(seqs.seq, seqs.tempnames[range], seqs.ranges[range])
 
@@ -341,4 +344,4 @@ consensusseq(logo::Logo) = LongDNA{4}(logo.alphabet[argmax.(eachrow(logo.weights
 summarize(logo::Logo) = "Consensus sequence of logo of $(logo.nseqs) sequences of length $(size(logo.weights, 1)):\n\n" *
     "sequence: " * string(consensusseq(logo)) * "\nbits    : " * join(round.(Int, consensusbits(logo)))
 
-Base.show(logo::Logo) = println(summarize(logo))
+Base.show(io::IO, logo::Logo) = println(summarize(logo))
