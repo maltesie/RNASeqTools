@@ -713,7 +713,7 @@ function annotate!(alns::AlignedReads, features::Features{Annotation}; prioritiz
                                     Interval("", 1, 1, STRAND_NA, Annotation()))
                             for refn in refnames(features))
 
-    for i::Int in 1:nintervals(alns)
+    for i::Int in 1:ninterval(alns)
         alns.refnames[i] in keys(myiterators) || continue
         myiterator = myiterators[alns.refnames[i]]
         myiterator.query = Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i])
