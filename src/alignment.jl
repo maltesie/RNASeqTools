@@ -590,19 +590,19 @@ function ispositivestrand(alnread::AlignedRead)
 end
 
 summarize(alnread::AlignedRead) = (typeof(alnread.alns) == AlignedReads{String} ? "[$(alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]])] " : "") *
-                                    (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
+                                    (ischimeric(alnread) ? "Chimeric" : "Single") *
                                     " Alignment with $(length(alnread)) part(s):\n   " *
                                     join([summarize(part) for part in alnread], "\n   ") * "\n"
 function summarize(alnread::AlignedRead, readseq::LongSequence)
     (typeof(alnread.alns) == AlignedReads{String} ? "[$(alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]])] " : "") *
     length(Set(alnread.alns.reads[i] for i in alnread.alns.pindex[alnread.range])) === 1 || throw(AssertionError("Need two sequences for paired end reads!"))
-    (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
+    (ischimeric(alnread) ? "Chimeric" : "Single") *
     " Alignment with $(length(alnread)) part(s) on $(length(readseq)) nt read:\n    1:\t" *
     join([summarize(part, readseq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
 end
 function summarize(alnread::AlignedRead, read1seq::LongSequence, read2seq::LongSequence)
     (typeof(alnread.alns) == AlignedReads{String} ? "[$(alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]])] " : "") *
-    (ischimeric(alnread) ? (ismulti(alnread) ? "Multi-chimeric" : "Chimeric") : "Single") *
+    (ischimeric(alnread) ?  "Chimeric" : "Single") *
     " Alignment with $(length(alnread)) part(s) on $(length(read1seq)) nt read1 and $(length(read2seq)) nt read2:\n    1:\t" *
     join([summarize(part, isfirstread(part) ? read1seq[part] : read2seq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
 end
