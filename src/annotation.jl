@@ -6,7 +6,7 @@ params(feature::Interval{Annotation}) = feature.metadata.params
 param(feature::Interval{Annotation}, key::String) = feature.metadata.params[key]
 param(feature::Interval{Annotation}, key::String, ::Type{T}) where {T} = parse(T, feature.metadata.params[key])
 setparam!(feature::Interval{Annotation}, key::String, value::String) = feature.metadata.params[key] = value
-hasparam(feature::Interval{Annotation}, key::String) = key in keys(featureparams(feature))
+hasparam(feature::Interval{Annotation}, key::String) = key in keys(params(feature))
 annotation(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata
 hasannotation(feature::Interval{T}) where T<:AnnotationStyle = !isempty(annotation(feature))
 ispositivestrand(feature::Interval{T}) where T<:AnnotationStyle = strand(feature) === STRAND_POS
