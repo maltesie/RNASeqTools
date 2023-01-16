@@ -201,7 +201,7 @@ function Base.write(file::String, features::Features; zip=false, tabix=false)
             write(writer, GFF3.Record("##sequence-region $(refname(feature)) 1 $(chroms[refname(feature)])"))
             delete!(chroms, refname(feature))
         end
-        write(writer, GFF3.Record("$(refname(feature))\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(featureparams(feature)))"))
+        write(writer, GFF3.Record("$(refname(feature))\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(params(feature)))"))
     end
     b = close(writer)
     sleep(0.5)
