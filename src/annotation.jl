@@ -184,9 +184,9 @@ function lastoverlap(feature::Interval, features::Features)
 end
 
 function paramstring(params::Dict{String,String}; priority=("Name",))
-    ps = join(("$key=$(params[key])" for key in priority if key in keys(params)), "; ")
-    os = join(("$key=$(params[key])" for key in sort(collect(keys(params))) if !(key in priority)), "; ")
-    both = ps * ((isempty(ps) || isempty(os)) ? "" : "; ") * os
+    ps = join(("$key=$(params[key])" for key in priority if key in keys(params)), ";")
+    os = join(("$key=$(params[key])" for key in sort(collect(keys(params))) if !(key in priority)), ";")
+    both = ps * ((isempty(ps) || isempty(os)) ? "" : ";") * os
     return isempty(both) ? "none" : both
 end
 paramstring(feature::Interval{Annotation}; priority=("Name",)) = paramstring(params(feature); priority=priority)
