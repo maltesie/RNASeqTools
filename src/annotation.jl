@@ -189,7 +189,7 @@ function paramstring(params::Dict{String,String}; priority=("Name",))
     both = ps * ((isempty(ps) || isempty(os)) ? "" : "; ") * os
     return isempty(both) ? "none" : both
 end
-paramstring(feature::Interval{Annotation}; priority=("Name",)) = paramstring(featureparams(feature); priority=priority)
+paramstring(feature::Interval{Annotation}; priority=("Name",)) = paramstring(params(feature); priority=priority)
 
 function Base.write(file::String, features::Features; zip=false, tabix=false)
     chroms = copy(features.chroms)
@@ -201,7 +201,7 @@ function Base.write(file::String, features::Features; zip=false, tabix=false)
             write(writer, GFF3.Record("##sequence-region $(refname(feature)) 1 $(chroms[refname(feature)])"))
             delete!(chroms, refname(feature))
         end
-        write(writer, GFF3.Record("$(refname(feature))\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(params(feature)))"))
+        write(writer, GFF3.Record("$(refname(feature))\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(feature))"))
     end
     b = close(writer)
     sleep(0.5)
@@ -252,7 +252,7 @@ covratio(features::Features, coverages::PairedSingleTypeFiles; round_digits=2) =
 function annotate!(features::Features, annotations::Features; key_gen=typenamekey)
     for feature in features
         overlap_string = join([key_gen(annotation) for annotation in eachoverlap(feature, annotations)], "; ")
-        setfeatureparam!(feature, "overlaps", isempty(overlap_string) ? "nothing" : overlap_string)
+        setparam!(feature, "overlaps", isempty(overlap_string) ? "nothing" : overlap_string)
     end
 end
 
