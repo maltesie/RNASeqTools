@@ -191,7 +191,7 @@ function paramstring(params::Dict{String,String}; priority=("Name",))
 end
 paramstring(feature::Interval{Annotation}; priority=("Name",)) = paramstring(params(feature); priority=priority)
 
-function Base.write(file::String, features::Features; zip=false, tabix=false)
+function Base.write(file::String, features::Features; zip=false, tabix=false, skip_missformatted=true)
     chroms = copy(features.chroms)
     writer = GFF3.Writer(open(file, "w"))
     write(writer, GFF3.Record("##gff-version 3.2.1"))
@@ -201,7 +201,11 @@ function Base.write(file::String, features::Features; zip=false, tabix=false)
             write(writer, GFF3.Record("##sequence-region $(refname(feature)) 1 $(chroms[refname(feature)])"))
             delete!(chroms, refname(feature))
         end
-        write(writer, GFF3.Record("$(refname(feature))\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(feature))"))
+        try
+            write(writer, GFF3.Record("$(refname(feature))\t.\t$(type(feature))\t$(feature.first)\t$(feature.last)\t.\t$(feature.strand)\t.\t$(paramstring(feature))"))
+        catch e
+            skip_missformatted ? println("Skipped $(summarize(feature))") : rethrow(e)
+        end
     end
     b = close(writer)
     sleep(0.5)
