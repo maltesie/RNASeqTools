@@ -132,7 +132,7 @@ function Base.:*(coverage::Coverage, factor::Float64)
 end
 
 summarize(coverage::Coverage) = "$(typeof(coverage)) on $(length(coverage.chroms)) reference sequences"
-Base.show(io::IO, coverage::Coverage) = println(summarize(coverage)) 
+Base.show(io::IO, coverage::Coverage) = println(summarize(coverage))
 
 value(interval::Interval{Float64}) = interval.metadata
 Base.length(coverage::Coverage) = length(coverage.list)
@@ -220,7 +220,7 @@ function localmaxdiffindex(coverage::Vector{Float64}; rev=false, min_diff=2, min
     return peak_index, mima
 end
 
-function maxdiffpositions(coverage::Coverage; type="DIFF", rev=false, min_diff=2, min_ratio=1.1, compute_within=5, circular=true)
+function maxdiffpositions(coverage::Coverage; type="DIFF", samplename=nothing, rev=false, min_diff=2, min_ratio=1.1, compute_within=5, circular=true)
     coverage_values = values(coverage)
     features = Interval{Annotation}[]
     for chr in keys(coverage_values)
@@ -229,10 +229,12 @@ function maxdiffpositions(coverage::Coverage; type="DIFF", rev=false, min_diff=2
         rindex, _ = localmaxdiffindex(coverage_values[chr][2]; rev=rev, min_diff=min_diff, min_ratio=min_ratio,
                                                             compute_within=compute_within, circular=circular)
         for (ii, i) in enumerate(findall(findex))
-            push!(features, Interval(chr, i, i, STRAND_POS, Annotation(type, "forward_$ii")))
+            push!(features, Interval(chr, i, i, STRAND_POS,
+                isnothing(samplename) ? Annotation(type, "forward_$ii") : Annotation(type, "forward_$ii"; from=samplename)))
         end
         for (ii, i) in enumerate(findall(rindex))
-            push!(features, Interval(chr, i, i, STRAND_NEG, Annotation(type, "reverse_$ii")))
+            push!(features, Interval(chr, i, i, STRAND_NEG,
+            isnothing(samplename) ? Annotation(type, "reverse_$ii") : Annotation(type, "reverse_$ii"; from=samplename)))
         end
     end
     return Features(features)

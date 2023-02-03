@@ -25,7 +25,7 @@ function Annotation()
 end
 
 function Annotation(type::String, name::String; args...)
-    Annotation(type, name, merge(Dict("Name"=>name), Dict{String, String}("$key"=>value for (key,value) in args)))
+    Annotation(type, name, merge(Dict("Name"=>name), Dict{String, String}("$key"=>"$value" for (key,value) in args)))
 end
 
 Base.isempty(annotation::Annotation) = isempty(annotation.type) && isempty(annotation.name)
