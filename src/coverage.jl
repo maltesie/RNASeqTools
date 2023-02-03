@@ -230,11 +230,11 @@ function maxdiffpositions(coverage::Coverage; type="DIFF", samplename=nothing, r
                                                             compute_within=compute_within, circular=circular)
         for (ii, i) in enumerate(findall(findex))
             push!(features, Interval(chr, i, i, STRAND_POS,
-                isnothing(samplename) ? Annotation(type, "forward_$ii") : Annotation(type, "forward_$ii"; from=samplename)))
+                isnothing(samplename) ? Annotation(type, "forward_$ii") : Annotation(type, "$(samplename)_forward_$ii"; from=samplename)))
         end
         for (ii, i) in enumerate(findall(rindex))
             push!(features, Interval(chr, i, i, STRAND_NEG,
-            isnothing(samplename) ? Annotation(type, "reverse_$ii") : Annotation(type, "reverse_$ii"; from=samplename)))
+            isnothing(samplename) ? Annotation(type, "reverse_$ii") : Annotation(type, "$(samplename)_reverse_$ii"; from=samplename)))
         end
     end
     return Features(features)
