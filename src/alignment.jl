@@ -577,7 +577,6 @@ end
 
 function GenomicFeatures.strand(alnread::AlignedRead)
     length(alnread) > 0 || (return STRAND_NA)
-    #println(view(alnread.alns.strands, alnread.range), "\n",alnread.alns.strands[first(alnread.range)])
     check_strand = alnread.alns.strands[alnread.alns.pindex[first(alnread.range)]]
     return all(s === check_strand for s in view(alnread.alns.strands, alnread.alns.pindex[alnread.range])) ? check_strand : STRAND_BOTH
 end
@@ -585,7 +584,7 @@ end
 function ispositivestrand(alnread::AlignedRead)
     s = strand(alnread)
     s === STRAND_NA && throw(AssertionError("Empty Alignment does not have a strand."))
-    s === STRAND_BOTH && throw(AssertionError("AlignedReads are not on the same strand."))
+    s === STRAND_BOTH && throw(AssertionError("AlignedRead parts are not on the same strand."))
     return s === STRAND_POS
 end
 
@@ -645,6 +644,7 @@ Returns the distance between two AlignedReads on the reference sequence. Returns
 the same reference id or lie on different strands
 """
 function distance(i1::Interval, i2::Interval; check_order=false)::Float64
+    ((refname(i1) != refname(i2)) || (strand(i1) != strand(i2))) && return Inf
     d::Float64 = distance(leftposition(i1), rightposition(i1), leftposition(i2), rightposition(i2))
     return check_order && d>0 && first(i1) > first(i2) ? Inf : d
 end
