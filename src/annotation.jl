@@ -10,6 +10,9 @@ hasparam(feature::Interval{Annotation}, key::String) = key in keys(params(featur
 annotation(feature::Interval{T}) where T<:AnnotationStyle = feature.metadata
 hasannotation(feature::Interval{T}) where T<:AnnotationStyle = !isempty(annotation(feature))
 ispositivestrand(feature::Interval{T}) where T<:AnnotationStyle = strand(feature) === STRAND_POS
+Base.getindex(feature::Interval{Annotation}, key::String) = param(feature, key)
+Base.setindex!(feature::Interval{Annotation}, val::String, key::String) = setparam!(feature, key, val)
+
 
 function summarize(feature::Interval{Annotation})
     s = "Feature: [$(leftposition(feature)), $(rightposition(feature))] on $(refname(feature)) ($(strand(feature))) - "
@@ -276,7 +279,7 @@ function summarize(features::Features)
 end
 
 function Base.show(io::IO, features::Features)
-    println(summarize(features))
+    println(io, summarize(features))
 end
 
 function embl_to_gff(embl_file::String, gff_file::String, chrs::Vector{String})

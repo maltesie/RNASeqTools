@@ -132,7 +132,7 @@ function Base.:*(coverage::Coverage, factor::Float64)
 end
 
 summarize(coverage::Coverage) = "$(typeof(coverage)) on $(length(coverage.chroms)) reference sequences"
-Base.show(io::IO, coverage::Coverage) = println(summarize(coverage))
+Base.show(io::IO, coverage::Coverage) = println(io, summarize(coverage))
 
 value(interval::Interval{Float64}) = interval.metadata
 Base.length(coverage::Coverage) = length(coverage.list)
@@ -197,13 +197,19 @@ end
 correlation(coverages::Vector{Coverage}) = correlation(coverages...)
 
 function localmaxdiffindex(coverage::Vector{Float64}; rev=false, min_diff=2, min_ratio=1.1, compute_within=5, circular=true)
-    all(coverage .>= 0) || all(coverage .<= 0) || throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
+    if all(coverage .>= 0)
+        coverage .+= 1
+    elseif all(coverage .<= 0)
+        coverage .-= 1
+    else
+        throw(AssertionError("Coverage values have to be positive for + strand and negative for - strand!"))
+    end
     rev && (coverage = reverse(coverage))
     circular && (coverage = vcat(coverage[end-compute_within+1:end], coverage, coverage[1:compute_within]))
     is_negative_strand = all(coverage .<= 0)
     d = zeros(Float64, length(coverage))
     d[is_negative_strand ? (1:length(d)-1) : (2:length(d))] = @view(coverage[2:end]) .- @view(coverage[1:end-1])
-    peak_index = zeros(Bool, length(d))
+    peak_index = falses(length(d))
     mima = zeros(Float64, length(d), 2)
     for i in compute_within+1:length(d)-compute_within
         ((d[i] >= min_diff) && (d[i] === maximum(view(d, i-compute_within:i+compute_within)))) || continue
@@ -214,27 +220,30 @@ function localmaxdiffindex(coverage::Vector{Float64}; rev=false, min_diff=2, min
     end
     circular && (peak_index = peak_index[compute_within+1:end-compute_within])
     circular && (mima = mima[compute_within+1:end-compute_within, :])
-    mima = mima[peak_index, :]
     rev && reverse!(peak_index)
     rev && reverse!(mima; dims=1)
-    return peak_index, mima
+    return collect(findall(peak_index)), mima[peak_index, :] .- 1
 end
 
 function maxdiffpositions(coverage::Coverage; type="DIFF", samplename=nothing, rev=false, min_diff=2, min_ratio=1.1, compute_within=5, circular=true)
     coverage_values = values(coverage)
     features = Interval{Annotation}[]
     for chr in keys(coverage_values)
-        findex, _ = localmaxdiffindex(coverage_values[chr][1]; rev=rev, min_diff=min_diff, min_ratio=min_ratio,
+        findex, fmima = localmaxdiffindex(coverage_values[chr][1]; rev=rev, min_diff=min_diff, min_ratio=min_ratio,
                                                             compute_within=compute_within, circular=circular)
-        rindex, _ = localmaxdiffindex(coverage_values[chr][2]; rev=rev, min_diff=min_diff, min_ratio=min_ratio,
+        rindex, rmima = localmaxdiffindex(coverage_values[chr][2]; rev=rev, min_diff=min_diff, min_ratio=min_ratio,
                                                             compute_within=compute_within, circular=circular)
-        for (ii, i) in enumerate(findall(findex))
+        for (ii, i) in enumerate(findex)
             push!(features, Interval(chr, i, i, STRAND_POS,
-                isnothing(samplename) ? Annotation(type, "forward_$ii") : Annotation(type, "$(samplename)_forward_$ii"; from=samplename)))
+                isnothing(samplename) ?
+                Annotation(type, "forward_$ii") :
+                Annotation(type, "$(samplename)_forward_$ii"; from=samplename, height=fmima[ii, 2], diff=fmima[ii, 2]-fmima[ii, 1])))
         end
-        for (ii, i) in enumerate(findall(rindex))
+        for (ii, i) in enumerate(rindex)
             push!(features, Interval(chr, i, i, STRAND_NEG,
-            isnothing(samplename) ? Annotation(type, "reverse_$ii") : Annotation(type, "$(samplename)_reverse_$ii"; from=samplename)))
+                isnothing(samplename) ?
+                Annotation(type, "reverse_$ii") :
+                Annotation(type, "$(samplename)_reverse_$ii"; from=samplename, height=rmima[ii, 2], diff=rmima[ii, 2]-rmima[ii, 1])))
         end
     end
     return Features(features)
