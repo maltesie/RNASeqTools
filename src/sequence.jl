@@ -127,7 +127,8 @@ summarize(seqs::Sequences) = "$(typeof(seqs)) with $(length(seqs)) sequences on 
 Base.show(io::IO, seqs::Sequences) = println(summarize(seqs))
 
 Base.getindex(seqs::Sequences, index::Int) = view(seqs.seq, seqs.ranges[index])
-Base.getindex(seqs::Sequences, range::Union{StepRange{Int, Int}, UnitRange{Int}}) = Sequences(seqs.seq, seqs.tempnames[range], seqs.ranges[range])
+Base.getindex(seqs::Sequences, range::Union{StepRange{Int, Int}, UnitRange{Int}}) =
+    Sequences(seqs.seq[1:last(maximum(seqs.ranges))], seqs.tempnames[range], seqs.ranges[range])
 
 function Base.getindex(seqs::Sequences, index::Union{UInt,String})
     r = searchsorted(seqs.tempnames, index)
@@ -304,8 +305,15 @@ function Base.iterate(gmi::GenomeMatchIterator, (state,rev)=(1,false))
 end
 Base.eachmatch(test_sequence::LongDNA{4}, genome::Genome; k=0) = GenomeMatchIterator(test_sequence, genome; k=k)
 
-function Base.collect(m::T) where T<:Union{MatchIterator,GenomeMatchIterator}
+function Base.collect(m::GenomeMatchIterator)
     re = Interval{Nothing}[]
+    for match in m
+        push!(re, match)
+    end
+    return re
+end
+function Base.collect(m::MatchIterator)
+    re = UnitRange{Int}[]
     for match in m
         push!(re, match)
     end
@@ -314,12 +322,19 @@ end
 
 function nucleotidedistribution(seqs::Sequences; normalize=true, align=:left)
     align in (:left, :right) || throw(AssertionError("align has to be :left or :right"))
-    max_length = maximum(length(read) for read in seqs)
-    count = Dict{DNA, Vector{Float64}}(DNA_A => zeros(max_length), DNA_T=>zeros(max_length), DNA_G=>zeros(max_length), DNA_C=>zeros(max_length), DNA_N=>zeros(max_length))
-    for read in seqs
-        for (i::Int, n::DNA) in enumerate(read)
-            align === :right && (i += max_length - length(read))
-            count[n][i] += 1
+    max_length = maximum(length(r) for r in seqs.ranges)
+    count = Dict{DNA, Vector{Float64}}(
+        DNA_A=>zeros(max_length), DNA_T=>zeros(max_length),
+        DNA_G=>zeros(max_length), DNA_C=>zeros(max_length),
+        DNA_N=>zeros(max_length)
+    )
+    index::BitVector = falses(length(seqs.seq))
+    for n in keys(count)
+        index .= seqs.seq .== n
+        for r in seqs.ranges
+            for (ii::Int, i::Int) in enumerate(r)
+                index[i] && (count[n][align == :right ? length(read)-ii+1 : ii] += 1.0)
+            end
         end
     end
     if normalize
