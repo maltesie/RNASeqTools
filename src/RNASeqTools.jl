@@ -3,7 +3,7 @@ module RNASeqTools
 import XAM: BAM
 using FASTX, CodecZlib, GFF3, BigWig
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
-using IterTools
+using IterTools, StringViews
 
 export align_mem, align_minimap, align_kraken2
 export preprocess_data, trim_fastp, split_libs, download_prefetch, transform, split_interleaved, split_each_read
@@ -15,7 +15,7 @@ export nucleotidedistribution, annotate!, featureseqs, ispositivestrand, hasanno
 export ischimeric, ismulti, refinterval, readrange, refrange, annotation, hasannotation, ispositivestrand, sameread, nread
 export name, type, overlap, parts, refname, params, param, setparam!, hasparam, hastype, hasname, typein, namein, distanceonread
 export hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, covratio, normalize!, readid, summarize
-export add5utrs!, add3utrs!, addutrs!, addigrs!, maxdiffpositions, consensusseq, consensusbits, ninterval, eachrecord
+export add5utrs!, add3utrs!, addutrs!, addigrs!, maxdiffpositions, consensusseq, consensusbits, ninterval, eachbamrecord, eachfastqrecord, eachfastarecord
 export eachpair, isfirstread, sync!
 export groupfiles, filesexist
 

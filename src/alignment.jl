@@ -751,4 +751,4 @@ mutable struct BAMIterator
 end
 
 @inline Base.iterate(it::BAMIterator, state=1) = (eof(it.reader) || (!isnothing(it.stop) && state>it.stop)) ? (close(it.reader); nothing) : (read!(it.reader, it.record), state+1)
-eachrecord(fname::String; stopat=nothing) = BAMIterator(BAM.Reader(open(fname)), BAM.Record(), stopat)
+eachbamrecord(fname::String; stopat=nothing) = BAMIterator(BAM.Reader(open(fname)), BAM.Record(), stopat)

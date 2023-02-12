@@ -160,34 +160,34 @@ end
 function read_reads(file::String; is_reverse_complement=false, hash_id=true, sort_by_name=true)::Sequences
     seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
     is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
-    is_zipped = endswith(file, ".gz")
-    f = is_zipped ? GzipDecompressorStream(open(file, "r")) : open(file, "r")
-    reader = is_fastq ? FASTQ.Reader(f) : FASTA.Reader(f)
-    record = is_fastq ? FASTQ.Record() : FASTA.Record()
-    i::Int64 = 0
-    current_range::UnitRange{Int64} = 1:0
-    while !eof(reader)
-        read!(reader, record)
-        id = hash_id ? hash(@view(record.data[record.identifier])) : FASTX.identifier(record)
-        s = LongDNA{4}(@view(record.data[record.sequence]))
-        is_reverse_complement && reverse_complement!(s)
-        i += 1
-        current_range = last(current_range)+1:last(current_range)+length(record.sequence)
-        length(seqs.seq) < last(current_range) && resize!(seqs.seq, length(seqs.seq)+max(1000000, last(current_range)-length(seqs.seq)))
-        length(seqs.tempnames) < i && (resize!(seqs.tempnames, length(seqs.tempnames)+10000);resize!(seqs.ranges, length(seqs.ranges)+10000))
+    data = UInt8[]
+    current_range = 1:0
+    i::Int = 0
+    for record in (is_fastq ? eachfastqrecord(file) : eachfastarecord(file))
+        i+=1
+        id = hash_id ? hash(StringView(@view(record.data[record.identifier]))) : FASTX.identifier(record)
+        s = @view(record.data[record.sequence])
+        current_range = last(current_range)+1:last(current_range)+length(s)
+        length(data) < last(current_range) && resize!(data, length(data)+max(1000000, last(current_range)-length(data)))
+        length(seqs.tempnames) < i && (resize!(seqs.tempnames, length(seqs.tempnames)+10000); resize!(seqs.ranges, length(seqs.ranges)+10000))
         seqs.tempnames[i] = id
         seqs.ranges[i] = current_range
-        seqs.seq[current_range] = s
+        data[current_range] .= s
     end
     resize!(seqs.seq, last(current_range))
+    resize!(data, last(current_range))
+    seqs.seq[:] = LongDNA{4}(data)
     resize!(seqs.tempnames, i)
     resize!(seqs.ranges, i)
+    if is_reverse_complement 
+        reverse_complement!(seqs.seq)
+        seqs.ranges .= [(length(seqs.seq)-seqs.ranges[i][2]+1):(length(seqs.seq)-seqs.ranges[i][1]+1) for i in length(seqs.ranges):-1:1]
+    end
     if sort_by_name
         sort_index = sortperm(seqs.tempnames)
         seqs.tempnames[1:end] = seqs.tempnames[sort_index]
         seqs.ranges[1:end] = seqs.ranges[sort_index]
     end
-    close(reader)
     return seqs
 end
 
@@ -360,3 +360,21 @@ summarize(logo::Logo) = "Consensus sequence of logo of $(logo.nseqs) sequences o
     "sequence: " * string(consensusseq(logo)) * "\nbits    : " * join(round.(Int, consensusbits(logo)))
 
 Base.show(io::IO, logo::Logo) = println(summarize(logo))
+
+mutable struct FASTQIterator
+    reader::FASTQ.Reader
+    record::FASTQ.Record
+    stop::Union{Nothing,Int}
+end
+
+@inline Base.iterate(it::FASTQIterator, state=1) = (eof(it.reader) || (!isnothing(it.stop) && state>it.stop)) ? (close(it.reader); nothing) : (read!(it.reader, it.record), state+1)
+eachfastqrecord(fname::String; stopat=nothing) = FASTQIterator(FASTQ.Reader(endswith(fname, ".gz") ? GzipDecompressorStream(open(fname)) : open(fname)), FASTQ.Record(), stopat)
+
+mutable struct FASTAIterator
+    reader::FASTA.Reader
+    record::FASTA.Record
+    stop::Union{Nothing,Int}
+end
+
+@inline Base.iterate(it::FASTAIterator, state=1) = (eof(it.reader) || (!isnothing(it.stop) && state>it.stop)) ? (close(it.reader); nothing) : (read!(it.reader, it.record), state+1)
+eachfastarecord(fname::String; stopat=nothing) = FASTAIterator(FASTA.Reader(endswith(fname, ".gz") ? GzipDecompressorStream(open(fname)) : open(fname)), FASTA.Record(), stopat)
