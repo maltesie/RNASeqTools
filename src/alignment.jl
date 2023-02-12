@@ -136,13 +136,13 @@ paironsamestrand(record::BAM.Record, invert::Symbol)::Bool =
 
 @inline function translateddata(data::SubArray{UInt8,1})
     for i in 1:length(data)
-        (data[i] == 0x00) && (return data[1:i-1])
+        (data[i] == 0x00) && (return @view data[1:i-1])
     end
 end
 
 @inline function xatag(data::SubArray{UInt8,1})
     for i in 1:length(data)-2
-        (0x00 == data[i]) & (0x58 == data[i+1]) & (0x41 == data[i+2]) &&
+        ((0x00 == data[i]) & (0x58 == data[i+1]) & (0x41 == data[i+2])) &&
         (return translateddata(@view(data[i+4:end])))
     end
     return nothing
@@ -150,7 +150,7 @@ end
 
 function hasxatag(data::SubArray{UInt8,1})
     for i in 1:length(data)-2
-        (0x00 == data[i]) & (0x58 == data[i+1]) & (0x41 == data[i+2]) && (return true)
+        ((0x00 == data[i]) & (0x58 == data[i+1]) & (0x41 == data[i+2])) && (return true)
     end
     return false
 end
@@ -180,38 +180,43 @@ end
 
 function AlignedReads(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
-    T::Type = hash_id ? UInt : String
-    ns = Vector{T}(undef, 2000000)
-    ls = Vector{Int}(undef, 2000000)
-    rs = Vector{Int}(undef, 2000000)
-    is = Vector{String}(undef, 2000000)
-    ss = Vector{Strand}(undef, 2000000)
-    nms = Vector{UInt32}(undef, 2000000)
-    rls = Vector{Int}(undef, 2000000)
-    rrs = Vector{Int}(undef, 2000000)
-    rds = Vector{Symbol}(undef, 2000000)
+    ns = Vector{hash_id ? UInt : String}(undef, 1000000)
+    ls = Vector{Int}(undef, 1000000)
+    rs = Vector{Int}(undef, 1000000)
+    is = Vector{String}(undef, 1000000)
+    ss = Vector{Strand}(undef, 1000000)
+    nms = Vector{UInt32}(undef, 1000000)
+    rls = Vector{Int}(undef, 1000000)
+    rrs = Vector{Int}(undef, 1000000)
+    rds = Vector{Symbol}(undef, 1000000)
     chromosome_list = Vector{Tuple{String,Int}}()
-    lc = 0
     BAM.Reader(open(bam_file)) do reader
         append!(chromosome_list, [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))])
         index::Int = 0
         while !eof(reader)
             read!(reader, record)
-            (!BAM.ismapped(record) || (!isprimary(record) && !include_secondary_alignments) || (hasxatag(record) && !include_alternative_alignments)) && continue
+            has_alternatives = hasxatag(record)
+            (!BAM.ismapped(record) || (!isprimary(record) && !include_secondary_alignments) || (has_alternatives && !include_alternative_alignments)) && continue
             current_read::Symbol = (isread2(record) != is_reverse_complement) ? :read2 : :read1
             index += 1
-            xastrings = hasxatag(record) ? string.(split(xatag(record), ";")[1:end-1]) : String[]
-            index + length(xastrings) > length(ns) && resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), length(ns)+2000000)
-            name_view = view(record.data, UInt8(1):(BAM.seqname_length(record) - UInt8(1)))
-            n::T = hash_id ? hash(name_view) : String(name_view)
-            (l::Int,r::Int) = (BAM.leftposition(record), BAM.rightposition(record))
+            xas::String = has_alternatives ? xatag(record) : ""
+            ((index + count(';', xas)) > length(ns)) && resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), length(ns)+1000000)
+            name_view = StringView(@view(record.data[1:(BAM.seqname_length(record) - 1)]))
+            n = hash_id ? hash(name_view) : String(name_view)
+            (l::Int, r::Int) = (BAM.leftposition(record), BAM.rightposition(record))
             (ref::String, s::Strand) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
             nm::UInt32 = nmtag(record)
-            for xastring in xastrings
-                ap = AlignedInterval(xastring; read=current_read)
-                ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index] =
-                n, leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, editdistance(ap)
-                index += 1
+            if has_alternatives
+                v::Int = 0
+                for _ in 1:count(';', xas)
+                    nextv = findnext(';', xas, v+1)
+                    xastring = String(view(xas, (v+1):(nextv-1)))
+                    ap = AlignedInterval(xastring; read=current_read)
+                    ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index] =
+                    n, leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, editdistance(ap)
+                    index += 1
+                    v = nextv
+                end
             end
             readstart, readstop, _, readlen = readpositions(record)
             (rl, rr) = (BAM.ispositivestrand(record) != (current_read === :read2)) ? (readstart,readstop) : (readlen-readstop+1,readlen-readstart+1)
@@ -247,6 +252,7 @@ end
 
 function sync!(seqs::Sequences{T}, alns::AlignedReads{T}) where {T<:Union{String, UInt}}
     filter!(seqs, Set(alns.tempnames))
+    sortbyname!(seqs)
     filter!(alns, Set(seqs.tempnames))
 end
 sync!(alns::AlignedReads{T}, seqs::Sequences{T}) where {T<:Union{String, UInt}} =
@@ -316,7 +322,7 @@ end
 
 Generates string with information on the AlignedInterval combined with the read sequence.
 """
-function summarize(part::AlignedInterval, readseqpart::LongSequence)
+function summarize(part::AlignedInterval, readseqpart::Union{LongSubSeq, LongSequence})
     s = "[$(first(part.seq)), $(last(part.seq))] on $(part.read) - "
     s *= "[$(part.ref.first), $(part.ref.last)] on $(part.ref.seqname) ($(part.ref.strand)) "
     s *= "with edit distance $(part.nms) - "
@@ -345,7 +351,7 @@ end
 
 Function for structured printing of the content of AlignedInterval
 """
-function Base.show(part::AlignedInterval, readseqpart::LongSequence)
+function Base.show(part::AlignedInterval, readseqpart::Union{LongSubSeq, LongSequence})
     println(summarize(part, readseqpart))
 end
 
@@ -592,22 +598,24 @@ summarize(alnread::AlignedRead) = (typeof(alnread.alns) == AlignedReads{String} 
                                     (ischimeric(alnread) ? "Chimeric" : "Single") *
                                     " Alignment with $(length(alnread)) part(s):\n   " *
                                     join([summarize(part) for part in alnread], "\n   ") * "\n"
-function summarize(alnread::AlignedRead, readseq::LongSequence)
-    (typeof(alnread.alns) == AlignedReads{String} ? "[$(alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]])] " : "") *
+
+function summarize(alnread::AlignedRead, readseq::Union{LongSubSeq, LongSequence})
     length(Set(alnread.alns.reads[i] for i in alnread.alns.pindex[alnread.range])) === 1 || throw(AssertionError("Need two sequences for paired end reads!"))
+    (typeof(alnread.alns) == AlignedReads{String} ? "[$(alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]])] " : "") *
     (ischimeric(alnread) ? "Chimeric" : "Single") *
     " Alignment with $(length(alnread)) part(s) on $(length(readseq)) nt read:\n    1:\t" *
-    join([summarize(part, readseq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
+    join([summarize(part, readseq[readrange(part)])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
 end
-function summarize(alnread::AlignedRead, read1seq::LongSequence, read2seq::LongSequence)
+
+function summarize(alnread::AlignedRead, read1seq::Union{LongSubSeq, LongSequence}, read2seq::Union{LongSubSeq, LongSequence})
     (typeof(alnread.alns) == AlignedReads{String} ? "[$(alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]])] " : "") *
     (ischimeric(alnread) ?  "Chimeric" : "Single") *
     " Alignment with $(length(alnread)) part(s) on $(length(read1seq)) nt read1 and $(length(read2seq)) nt read2:\n    1:\t" *
-    join([summarize(part, isfirstread(part) ? read1seq[part] : read2seq[part])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
+    join([summarize(part, isfirstread(part) ? read1seq[readrange(part)] : read2seq[readrange(part)])*(i < length(alnread) ? "\n    $(i+1):\t" : "") for (i,part) in enumerate(alnread)]) * "\n"
 end
 
 function Base.show(io::IO, alnread::AlignedRead)
-    println(summarize(alnread))
+    println(io, summarize(alnread))
 end
 function Base.show(alnread::AlignedRead, readseq::Union{LongSubSeq, LongSequence})
     println(summarize(alnread, readseq))
