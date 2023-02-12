@@ -79,7 +79,7 @@ function Sequences(::Type{T}) where {T<:Union{String, UInt}}
     Sequences(LongDNA{4}(""), T[], UnitRange{Int}[])
 end
 
-function Sequences(seqs::Vector{LongDNA{4}}, seqnames::Vector{UInt})
+function Sequences(seqs::Vector{LongDNA{4}}, seqnames::Vector{T}; sort_by_name=false) where T <: Union{UInt, String}
     (length(seqnames) == length(seqs)) || throw(AssertionError("number of names must match the number of sequences!"))
     (length(seqnames) == length(unique(seqnames))) || throw(AssertionError("names must be unique!"))
     ranges = Vector{UnitRange{Int}}(undef, length(seqs))
@@ -91,54 +91,26 @@ function Sequences(seqs::Vector{LongDNA{4}}, seqnames::Vector{UInt})
         seq[current_range] = s
         ranges[i] = current_range
     end
-    sortindex = sortperm(seqnames)
-    return Sequences(seq, seqnames[sortindex], ranges[sortindex])
+    seqs = Sequences(seq, seqnames, ranges)
+    sort_by_name && sortbyname!(seqs)
+    return seqs
 end
 Sequences(seqs::Vector{LongDNA{4}}) = Sequences(seqs, Vector{UInt}(1:length(seqs)))
 
-function Sequences(seqs::Vector{LongDNA{4}}, seqnames::Vector{String})
-    (length(seqnames) == length(seqs)) || throw(AssertionError("number of names must match the number of sequences!"))
-    (length(seqnames) == length(unique(seqnames))) || throw(AssertionError("names must be unique!"))
-    ranges = Vector{UnitRange{Int}}(undef, length(seqs))
-    seq = LongDNA{4}("")
-    resize!(seq, sum(length(s) for s in seqs))
-    current_range = 1:0
-    for (i,s) in enumerate(seqs)
-        current_range = last(current_range)+1:last(current_range)+length(s)
-        seq[current_range] = s
-        ranges[i] = current_range
-    end
-    sortindex = sortperm(hash.(seqnames))
-    return Sequences(seq, seqnames[sortindex], ranges[sortindex])
-end
-
-function Sequences(file::String; is_reverse_complement=false, hash_id=true, sort_by_name=true)
+function Sequences(file::String; is_reverse_complement=false, hash_id=true, sort_by_name=false)
     read_reads(file; is_reverse_complement=is_reverse_complement, hash_id=hash_id, sort_by_name=sort_by_name)
-end
-
-function Sequences(file1::String, file2::String; is_reverse_complement=false, hash_id=true, sort_by_name=true)
-    read_reads(file1, file2; is_reverse_complement=is_reverse_complement, hash_id=hash_id, sort_by_name=sort_by_name)
 end
 
 Sequences(genomes::Vector{Genome}) =
     Sequences([genome.seq for genome in genomes], UInt.(i for i in 1:length(genomes)), [i:i for i in 1:length(genomes)])
 
 summarize(seqs::Sequences) = "$(typeof(seqs)) with $(length(seqs)) sequences on $(nread(seqs)) reads"
-Base.show(io::IO, seqs::Sequences) = println(summarize(seqs))
+Base.show(io::IO, seqs::Sequences) = println(io, summarize(seqs))
 
 Base.getindex(seqs::Sequences, index::Int) = view(seqs.seq, seqs.ranges[index])
-Base.getindex(seqs::Sequences, range::Union{StepRange{Int, Int}, UnitRange{Int}}) =
-    Sequences(seqs.seq[1:last(maximum(seqs.ranges))], seqs.tempnames[range], seqs.ranges[range])
-
-function Base.getindex(seqs::Sequences, index::Union{UInt,String})
-    r = searchsorted(seqs.tempnames, index)
-    if length(r) === 2
-        return (view(seqs.seq, seqs.ranges[first(r)]), view(seqs.seq, seqs.ranges[last(r)]))
-    elseif length(r) === 1
-        return view(seqs.seq, seqs.ranges[first(r)])
-    else
-        throw(KeyError)
-    end
+function Base.getindex(seqs::Sequences, range::Union{StepRange{Int, Int}, UnitRange{Int}})
+    mi, ma = first(minimum(seqs.ranges[range])), last(maximum(seqs.ranges[range]))
+    Sequences(seqs.seq[mi:ma], seqs.tempnames[range], [r .- (mi-1) for r in seqs.ranges[range]])
 end
 
 Base.length(seqs::Sequences) = length(seqs.tempnames)
@@ -147,6 +119,19 @@ nread(seqs::Sequences) = length(unique(seqs.tempnames))
 @inline Base.iterate(seqs::Sequences, state::Int) = state > length(seqs.ranges) ? nothing : (view(seqs.seq, seqs.ranges[state]), state+1)
 eachpair(seqs::Sequences) = partition(seqs, 2)
 Base.empty!(seqs::Sequences) = (empty!(seqs.seq); empty!(seqs.tempnames); empty!(seqs.ranges))
+
+function sortbyname!(seqs::Sequences{T}) where T <:Union{UInt, String}
+    sortids = sortperm(seqs.tempnames)
+    seqs.tempnames .= seqs.tempnames[sortids]
+    seqs.ranges .= seqs.ranges[sortids]
+    seqs
+end
+
+function BioSequences.reverse_complement!(seqs::Sequences{T}) where T <:Union{UInt, String}
+    reverse_complement!(seqs.seq)
+    seqs.ranges .= [(length(seqs.seq)-last(r)+1):(length(seqs.seq)-first(r)+1) for r in seqs.ranges]
+    seqs
+end
 
 function Base.filter!(seqs::Sequences{T}, tempnames::Set{T}) where {T<:Union{String, UInt}}
     bitindex = (in).(seqs.tempnames, Ref(tempnames))
@@ -157,96 +142,33 @@ function Base.filter!(seqs::Sequences{T}, tempnames::Set{T}) where {T<:Union{Str
     resize!(seqs.tempnames, n_seqs)
 end
 
-function read_reads(file::String; is_reverse_complement=false, hash_id=true, sort_by_name=true)::Sequences
+function read_reads(file::String; is_reverse_complement=false, hash_id=true, sort_by_name=false)
     seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
     is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
     data = UInt8[]
     current_range = 1:0
-    i::Int = 0
-    for record in (is_fastq ? eachfastqrecord(file) : eachfastarecord(file))
-        i+=1
+    lasti::Int = 0
+    for (i, record) in enumerate(is_fastq ? eachfastqrecord(file) : eachfastarecord(file))
         id = hash_id ? hash(StringView(@view(record.data[record.identifier]))) : FASTX.identifier(record)
         s = @view(record.data[record.sequence])
         current_range = last(current_range)+1:last(current_range)+length(s)
         length(data) < last(current_range) && resize!(data, length(data)+max(1000000, last(current_range)-length(data)))
-        length(seqs.tempnames) < i && (resize!(seqs.tempnames, length(seqs.tempnames)+10000); resize!(seqs.ranges, length(seqs.ranges)+10000))
+        if length(seqs.tempnames) < i
+            resize!(seqs.tempnames, length(seqs.tempnames)+10000) 
+            resize!(seqs.ranges, length(seqs.ranges)+10000)
+        end
         seqs.tempnames[i] = id
         seqs.ranges[i] = current_range
         data[current_range] .= s
+        lasti = i
     end
     resize!(seqs.seq, last(current_range))
     resize!(data, last(current_range))
     seqs.seq[:] = LongDNA{4}(data)
-    resize!(seqs.tempnames, i)
-    resize!(seqs.ranges, i)
-    if is_reverse_complement 
-        reverse_complement!(seqs.seq)
-        seqs.ranges .= [(length(seqs.seq)-seqs.ranges[i][2]+1):(length(seqs.seq)-seqs.ranges[i][1]+1) for i in length(seqs.ranges):-1:1]
-    end
-    if sort_by_name
-        sort_index = sortperm(seqs.tempnames)
-        seqs.tempnames[1:end] = seqs.tempnames[sort_index]
-        seqs.ranges[1:end] = seqs.ranges[sort_index]
-    end
-    return seqs
-end
-
-function read_reads(file1::String, file2::String; is_reverse_complement=false, hash_id=true, sort_by_name=true)::Sequences
-    seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
-
-    is_fastq1 = any([endswith(file1, ending) for ending in FASTQ_TYPES])
-    is_zipped1 = endswith(file1, ".gz")
-    f1 = is_zipped1 ? GzipDecompressorStream(open(file1, "r")) : open(file1, "r")
-    reader1 = is_fastq1 ? FASTQ.Reader(f1) : FASTA.Reader(f1)
-    record1 = is_fastq1 ? FASTQ.Record() : FASTA.Record()
-
-    is_fastq2 = any([endswith(file2, ending) for ending in FASTQ_TYPES])
-    is_zipped2 = endswith(file2, ".gz")
-    f2 = is_zipped2 ? GzipDecompressorStream(open(file2, "r")) : open(file2, "r")
-    reader2 = is_fastq2 ? FASTQ.Reader(f2) : FASTA.Reader(f2)
-    record2 = is_fastq2 ? FASTQ.Record() : FASTA.Record()
-
-    i::Int64 = 0
-    current_range::UnitRange{Int64} = 1:0
-    while !eof(reader1) && !eof(reader2)
-        read!(reader1, record1)
-        read!(reader2, record2)
-        id1 = hash_id ? hash(@view record1.data[record1.identifier]) : FASTX.identifier(record1)
-        id2 = hash_id ? hash(@view record2.data[record2.identifier]) : FASTX.identifier(record2)
-        id1 === id2 || throw(
-            AssertionError("tempnames of read1 and read2 do not match: $(String(record1.data[record1.identifier])) != $(String(record2.data[record2.identifier]))")
-        )
-        s1 = LongDNA{4}(@view record1.data[record1.sequence])
-        s2 = LongDNA{4}(@view record2.data[record2.sequence])
-        is_reverse_complement && ((s1,s2) = (s2,s1))
-        reverse_complement!(s2)
-        i += 1
-        current_range = last(current_range)+1:last(current_range)+length(s1)
-        paired_end = last(current_range) + length(s2)
-        length(seqs.seq) < paired_end && resize!(seqs.seq, length(seqs.seq)+max(1000000, paired_end-length(seqs.seq)))
-        length(seqs.tempnames) < i+1 && (resize!(seqs.tempnames, length(seqs.tempnames)+10000);resize!(seqs.ranges, length(seqs.ranges)+10000))
-        seqs.tempnames[i] = id1
-        seqs.ranges[i] = current_range
-        seqs.seq[current_range] = s1
-        i += 1
-        current_range = last(current_range)+1:last(current_range)+length(s2)
-        seqs.tempnames[i] = id2
-        seqs.ranges[i] = current_range
-        seqs.seq[current_range] = s2
-    end
-    resize!(seqs.seq, last(current_range))
-    resize!(seqs.tempnames, i)
-    resize!(seqs.ranges, i)
-    if sort_by_name
-        si = sortperm(seqs.tempnames[1:2:end])
-        sort_index = zeros(Int, 2*length(si))
-        sort_index[1:2:end] = si .* 2 .- 1
-        sort_index[2:2:end] = si .* 2
-        seqs.tempnames[1:end] = seqs.tempnames[sort_index]
-        seqs.ranges[1:end] = seqs.ranges[sort_index]
-    end
-    close(reader1)
-    close(reader2)
+    resize!(seqs.tempnames, lasti)
+    resize!(seqs.ranges, lasti)
+    is_reverse_complement && reverse_complement!(seqs)
+    sort_by_name && sortbyname!(seqs)
     return seqs
 end
 
@@ -255,21 +177,6 @@ function Base.write(fname::String, seqs::Sequences{T}) where T
     FASTA.Writer(GzipCompressorStream(open(fname, "w"); level=2)) do writer
         for (i,s) in enumerate(seqs)
             rec = FASTA.Record(T <: UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s)
-            write(writer, rec)
-        end
-    end
-end
-function Base.write(fname1::String, fname2::String, seqs::Sequences{T}) where T
-    rec = FASTA.Record()
-    FASTA.Writer(GzipCompressorStream(open(fname1, "w"); level=2)) do writer
-        for (i,(s1,_)) in enumerate(eachpair(seqs))
-            rec = FASTA.Record(T <: UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s1)
-            write(writer, rec)
-        end
-    end
-    FASTA.Writer(GzipCompressorStream(open(fname2, "w"); level=2)) do writer
-        for (i,(_,s2)) in enumerate(eachpair(seqs))
-            rec = FASTA.Record(T <: UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s2)
             write(writer, rec)
         end
     end
@@ -333,7 +240,7 @@ function nucleotidedistribution(seqs::Sequences; normalize=true, align=:left)
         index .= seqs.seq .== n
         for r in seqs.ranges
             for (ii::Int, i::Int) in enumerate(r)
-                index[i] && (count[n][align == :right ? length(read)-ii+1 : ii] += 1.0)
+                index[i] && (count[n][align == :right ? ii+(max_length-length(r)) : ii] += 1.0)
             end
         end
     end
@@ -359,7 +266,7 @@ consensusseq(logo::Logo) = LongDNA{4}(logo.alphabet[argmax.(eachrow(logo.weights
 summarize(logo::Logo) = "Consensus sequence of logo of $(logo.nseqs) sequences of length $(size(logo.weights, 1)):\n\n" *
     "sequence: " * string(consensusseq(logo)) * "\nbits    : " * join(round.(Int, consensusbits(logo)))
 
-Base.show(io::IO, logo::Logo) = println(summarize(logo))
+Base.show(io::IO, logo::Logo) = println(io, summarize(logo))
 
 mutable struct FASTQIterator
     reader::FASTQ.Reader
