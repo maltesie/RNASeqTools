@@ -210,8 +210,7 @@ function AlignedReads(bam_file::String; include_secondary_alignments=true, inclu
                 v::Int = 0
                 for _ in 1:count(';', xas)
                     nextv = findnext(';', xas, v+1)
-                    xastring = String(view(xas, (v+1):(nextv-1)))
-                    ap = AlignedInterval(xastring; read=current_read)
+                    ap = AlignedInterval(xas[(v+1):(nextv-1)]; read=current_read)
                     ns[index], ls[index], rs[index], is[index], ss[index], rls[index], rrs[index], rds[index], nms[index] =
                     n, leftposition(ap), rightposition(ap), refname(ap), strand(ap), first(readrange(ap)), last(readrange(ap)), current_read, editdistance(ap)
                     index += 1
