@@ -19,8 +19,8 @@ function summarize(feature::Interval{Annotation})
     s *= hasannotation(feature) ? "annotation: $(type(feature)):$(name(feature))" : "not annotated"
     s *= "\nparameters: $(paramstring(feature))\n"
 end
-function Base.show(feature::Interval{Annotation})
-    println(summarize(feature))
+function Base.show(io::IO, feature::Interval{Annotation})
+    print(io, summarize(feature))
 end
 
 function Annotation()
@@ -274,12 +274,11 @@ function summarize(features::Features)
         nb_pos += strand(f) === STRAND_POS
         nb_neg += strand(f) === STRAND_NEG
     end
-    printstring = "$(typeof(features)) with $(nb_pos+nb_neg) (+:$nb_pos, -:$nb_neg) features of types $(ts) for $(length(chrs)) reference sequences.\n"
-    return printstring
+    return "$(typeof(features)) with $(nb_pos+nb_neg) (+:$nb_pos, -:$nb_neg) features of types $(ts) for $(length(chrs)) reference sequences."
 end
 
 function Base.show(io::IO, features::Features)
-    println(io, summarize(features))
+    print(io, summarize(features))
 end
 
 function embl_to_gff(embl_file::String, gff_file::String, chrs::Vector{String})

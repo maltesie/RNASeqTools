@@ -8,6 +8,8 @@ abstract type AlignmentContainer end
 
 abstract type FileCollection end
 
+abstract type CountContainer end
+
 struct Sequences{T<:Union{String, UInt}}
     seq::LongSequence
     tempnames::Vector{T}
@@ -73,6 +75,11 @@ end
 struct Features{T} <: AnnotationContainer
     list::IntervalCollection{T}
     chroms::Dict{String, Int}
+end
+
+struct FeatureCounts <: CountContainer
+    features::Features{Annotation}
+    values::Matrix{Float64}
 end
 
 struct Coverage <: AnnotationContainer

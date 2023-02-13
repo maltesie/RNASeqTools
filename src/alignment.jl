@@ -350,8 +350,8 @@ end
 
 Function for structured printing of the content of AlignedInterval
 """
-function Base.show(part::AlignedInterval, readseqpart::Union{LongSubSeq, LongSequence})
-    println(summarize(part, readseqpart))
+function Base.show(io::IO, part::AlignedInterval, readseqpart::Union{LongSubSeq, LongSequence})
+    print(io, summarize(part, readseqpart))
 end
 
 """
@@ -360,7 +360,7 @@ end
 Function for structured printing of the content of AlignedInterval
 """
 function Base.show(io::IO, part::AlignedInterval)
-    println(summarize(part))
+    print(io, summarize(part))
 end
 
 """
@@ -614,13 +614,13 @@ function summarize(alnread::AlignedRead, read1seq::Union{LongSubSeq, LongSequenc
 end
 
 function Base.show(io::IO, alnread::AlignedRead)
-    println(io, summarize(alnread))
+    print(io, summarize(alnread))
 end
-function Base.show(alnread::AlignedRead, readseq::Union{LongSubSeq, LongSequence})
-    println(summarize(alnread, readseq))
+function Base.show(io::IO, alnread::AlignedRead, readseq::Union{LongSubSeq, LongSequence})
+    print(io, summarize(alnread, readseq))
 end
-function Base.show(alnread::AlignedRead, read1seq::Union{LongSubSeq, LongSequence}, read2seq::Union{LongSubSeq, LongSequence})
-    println(summarize(alnread, read1seq, read2seq))
+function Base.show(io::IO, alnread::AlignedRead, read1seq::Union{LongSubSeq, LongSequence}, read2seq::Union{LongSubSeq, LongSequence})
+    print(io, summarize(alnread, read1seq, read2seq))
 end
 
 """

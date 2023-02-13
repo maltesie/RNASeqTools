@@ -1,4 +1,4 @@
-function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignments=false,
+function compute_coverage(bam_file::String; norm=1000000, include_secondary_alignments=false, include_alternative_alignments=false,
                                             is_reverse_complement=false, max_temp_length=1000, include_chimeric=false,
                                             only_chimeric=false, overwrite_existing=false,
                                             suffix_forward="_forward", suffix_reverse="_reverse")
@@ -8,7 +8,8 @@ function compute_coverage(bam_file::String; norm=1000000, include_secondary_alig
 
     (isfile(filename_f) && isfile(filename_r)) && !overwrite_existing && return (filename_f, filename_r)
 
-    alns = AlignedReads(bam_file; include_secondary_alignments=include_secondary_alignments, is_reverse_complement=is_reverse_complement)
+    alns = AlignedReads(bam_file; include_secondary_alignments=include_secondary_alignments, include_alternative_alignments=include_alternative_alignments,
+        is_reverse_complement=is_reverse_complement)
     coverage = Coverage(alns; norm=norm, include_chimeric=include_chimeric, only_chimeric=only_chimeric, max_temp_length=max_temp_length)
 
     writer_f = BigWig.Writer(open(filename_f, "w"), alns.chroms)
@@ -132,7 +133,7 @@ function Base.:*(coverage::Coverage, factor::Float64)
 end
 
 summarize(coverage::Coverage) = "$(typeof(coverage)) on $(length(coverage.chroms)) reference sequences"
-Base.show(io::IO, coverage::Coverage) = println(io, summarize(coverage))
+Base.show(io::IO, coverage::Coverage) = print(io, summarize(coverage))
 
 value(interval::Interval{Float64}) = interval.metadata
 Base.length(coverage::Coverage) = length(coverage.list)

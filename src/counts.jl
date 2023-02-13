@@ -1,4 +1,4 @@
-function coveragecount(features::Features, samples::Vector{Coverage}; aggregation=:max)
+function coveragecount(features::Features{Annotation}, samples::Vector{Coverage}; aggregation=:max)
     aggregation in (:max, :mean) || throw(AssertionError("aggretation must be :max or :mean"))
     vals = [values(coverage) for coverage in samples]
     averages = zeros(Float64, length(features), length(samples))
@@ -12,51 +12,47 @@ function coveragecount(features::Features, samples::Vector{Coverage}; aggregatio
     return averages
 end
 
-function FeatureCounts(features::Features, samples::Vector{Coverage}; conditions=Dict("sample"=>collect(1:length(samples))), aggregation=maximum, normalization_method=:none)
+function FeatureCounts(features::Features{Annotation}, samples::Vector{Coverage}; aggregation=:max, normalization_method=:none)
     normalization_method in (:none, :tpm, :tpkm, :tmm) || raise(AssertionError("No method implemented for $normalization_method"))
     c = coveragecount(features, samples; aggregation=aggregation)
     normalization_method in (:tmm, :tpm) && normalize!(c; normalization_method=normalization_method)
     normalization_method === :tpkm && normalize!(c, features)
-    return FeatureCounts(conditions, c, features)
+    return FeatureCounts(features, c)
 end
 
-function FeatureCounts(features::Features, samples::PairedSingleTypeFiles; conditions=groupfiles(samples), aggregation=:max, normalization_method=:none)
+function FeatureCounts(features::Features{Annotation}, samples::PairedSingleTypeFiles; aggregation=:max, normalization_method=:none)
     samples.type === ".bw" || throw(AssertionError("Only .bw files are supported."))
     coverages = [Coverage(file_forward, file_reverse) for (file_forward, file_reverse) in samples]
-    FeatureCounts(features, coverages; conditions=conditions, aggregation=aggregation, normalization_method=normalization_method)
+    FeatureCounts(features, coverages; aggregation=aggregation, normalization_method=normalization_method)
 end
 
-function FeatureCounts(features::Features, samples::SingleTypeFiles; conditions=groupfiles(samples),
-        normalization_method=:none, include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false)
+function FeatureCounts(features::Features{Annotation}, samples::SingleTypeFiles; normalization_method=:none, include_secondary_alignments=true,
+        include_alternative_alignments=false, is_reverse_complement=false)
     normalization_method in (:none, :tpm, :tpkm, :rle) || raise(AssertionError("No method implemented for $normalization_method"))
     samples.type === ".bam" || throw(AssertionError("Only .bam files are supported"))
-    counts = zeros(Float64, length(features), sum(length(v) for v in values(conditions)))
+    counts = zeros(Float64, length(features), length(samples))
     feature_trans = Dict{UInt, Int}(hash(name(feature), hash(type(feature)))=>i for (i, feature) in enumerate(features))
-    for range in values(conditions)
-        mybams = samples[range]
-        for (i, bam_file) in enumerate(mybams)
-            alignments = AlignedReads(bam_file; include_secondary_alignments=include_secondary_alignments,
-                                    include_alternative_alignments=include_alternative_alignments, is_reverse_complement=is_reverse_complement)
-            annotate!(alignments, features)
-            for alignment in alignments
-                for part in alignment
-                    hasannotation(part) || continue
-                    counts[feature_trans[hash(name(feature), hash(type(feature)))], range[i]] += 1.0
-                end
+    for (i, bam_file) in enumerate(samples)
+        alignments = AlignedReads(bam_file; include_secondary_alignments=include_secondary_alignments,
+                                include_alternative_alignments=include_alternative_alignments, is_reverse_complement=is_reverse_complement)
+        annotate!(alignments, features)
+        for alignment in alignments
+            for part in alignment
+                hasannotation(part) || continue
+                counts[feature_trans[hash(name(feature), hash(type(feature)))], range[i]] += 1.0
             end
         end
     end
     normalization_method in (:rle, :tpm) && normalize!(counts; normalization_method=normalization_method)
     normalization_method === :tpkm && normalize!(counts, features)
-    FeatureCounts(conditions, counts, features)
+    FeatureCounts(features, counts)
 end
 
-function Base.getindex(counts::T, condition::String) where {T<:CountContainer}
-    return counts.values[:, counts.conditions[condition]]
-end
 Base.length(counts::T) where {T<:CountContainer} = size(counts.values)[1]
+nsamples(counts::T) where {T<:CountContainer} = size(counts.values)[2]
 
-conditionrange(counts::T, condition::String) where {T<:CountContainer} = counts.conditions[condition]
+summarize(counts::FeatureCounts) = "FeatureCounts with $(length(counts)) features and $(nsamples(counts)) samples."
+Base.show(io::IO, counts::FeatureCounts) = print(io, summarize(counts))
 
 function gmean(a::Array{Float64})
     s = 0.0
@@ -83,47 +79,27 @@ end
 normalize!(counts::T; normalization_method=:rle) where {T<:CountContainer} =
     normalize!(counts.values; normalization_method=normalization_method)
 
-function normalize!(m::Matrix{Float64}, features::Features; normalization_method=:rpkm)
+function normalize!(m::Matrix{Float64}, features::Features{Annotation}; normalization_method=:rpkm)
     normalization_method != :tpkm && raise(AssertionError("No method implemented for $normalization_method"))
     normalize!(m; normalization_method=:rpm)
     for feature in features
         m[i, !] ./= (length(feature) / 1000)
     end
+    return m
 end
-normalize!(counts::T, features::Features; normalization_method=:rpkm) where {T<:CountContainer} =
+normalize!(counts::T, features::Features{Annotation}; normalization_method=:rpkm) where {T<:CountContainer} =
     normalize!(counts.values, features; normalization_method=normalization_method)
 
-function normalize!(m::Matrix{Float64}, features::Features, genome::Genome; normalization_method=:cqn)
+function normalize!(m::Matrix{Float64}, features::Features{Annotation}, genome::Genome; normalization_method=:cqn)
     normalization_method != :cqn && raise(AssertionError("No method implemented for $normalization_method"))
 end
-normalize!(counts::T, features::Features, genome::Genome; normalization_method=:cqn) where {T<:CountContainer} =
+normalize!(counts::T, features::Features{Annotation}, genome::Genome; normalization_method=:cqn) where {T<:CountContainer} =
     normalize!(counts.values, features, genome; normalization_method=normalization_method)
 
-function asdataframe(counts::T, names=nothing) where {T<:CountContainer}
-    df = DataFrame()
-    if counts isa FeatureCounts
-        df[!, :name] = length(types(counts.features)) > 1 ? [name(feature) * "_" * type(feature) for feature in counts.features] : [name(feature) for feature in counts.features]
-        df[!, :strand]  = [strand(feature) for feature in counts.features]
-        df[!, :left] = [leftposition(feature) for feature in counts.features]
-        df[!, :right] = [rightposition(feature) for feature in counts.features]
-    else
-        df[!, :name] = ["$i" for i in 1:length(counts)]
-    end
-    isnothing(names) || (df[!, :name] = names)
-    for (c, r) in counts.conditions
-        for (i, ii) in enumerate(r)
-            df[!, Symbol("$(c)_$i")] = vec(counts.values[:, ii])
-        end
-    end
-    return df
-end
-
-function difference_glm(counts::T, control_condition::String, experiment_condition::String; d=NegativeBinomial(), tail=:both) where {T<:CountContainer}
-    control_range = counts.conditions[control_condition]
-    exp_range = counts.conditions[experiment_condition]
-    design_matrix = ones(Int, (length(control_range)+length(exp_range), 2))
-    design_matrix[1:length(control_range), 2] .= 0
-    data_matrix = Int.(floor.(hcat(counts[control_condition], counts[experiment_condition])))
+function difference_glm(counts::T, ctrl_index::Vector{Int}, exp_index::Vector{Int}; d=NegativeBinomial(), tail=:both) where {T<:CountContainer}
+    design_matrix = ones(Int, (length(ctrl_index)+length(exp_index), 2))
+    design_matrix[1:length(ctrl_index), 2] .= 0
+    data_matrix = Int.(round.(Int, hcat(counts.values[:, ctrl_index], counts.values[:, exp_index])))
     bases = Vector{Float64}(undef, length(counts))
     fcs = Vector{Float64}(undef, length(counts))
     ps = Vector{Float64}(undef, length(counts))
@@ -144,28 +120,17 @@ function difference_glm(counts::T, control_condition::String, experiment_conditi
             fcs[i] = fc / log(2)
             ps[i] = p
         catch e
-            bases[i] = mean(y[1:length(control_range)])
-            fcs[i] = log2(mean(y[end-length(exp_range):end]) / mean(y[1:length(control_range)]))
+            bases[i] = mean(y[1:length(ctrl_index)])
+            fcs[i] = log2(mean(y[end-length(exp_index):end]) / mean(y[1:length(ctrl_index)]))
             ps[i] = 1.0
         end
     end
     padj = adjust(PValues(ps), BenjaminiHochberg())
     return (exp.(bases), fcs, padj)
 end
+difference_glm(counts::T, ctrl_index::UnitRange{Int}, exp_index::UnitRange{Int}; d=NegativeBinomial(), tail=:both) where {T<:CountContainer} =
+    difference_glm(counts, collect(ctrl_index), collect(exp_index); d=d, tail=tail)
 
-function difference_dataframe(counts::T, control_condition::String, experiment_condition::String; method=:glm) where {T<:CountContainer}
-    method in (:glm, :ttest) || throw(AssertionError("Method must be eather :ttest or :glm"))
-
-    difference_function = method === :glm ? difference_glm : difference_ttest
-    (base_mean, fc, padj) = difference_function(counts, control_condition, experiment_condition)
-
-    df = asdataframe(counts)
-    df.base_mean = base_mean
-    df.fdr = padj
-    df.fc = fc
-    return df
-end
-
-function correlation(counts::Counts)
+function correlation(counts::T) where T <: CountContainer
     return cor(counts.values, dims=1)
 end

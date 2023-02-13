@@ -159,7 +159,7 @@ function Base.show(files::SingleTypeFiles)
     for (i,file) in enumerate(files)
         s *= "$i:\t$file\n"
     end
-    println(s)
+    print(s)
 end
 
 function Base.show(files::PairedSingleTypeFiles)
@@ -167,7 +167,7 @@ function Base.show(files::PairedSingleTypeFiles)
     for (i,(file1, file2)) in enumerate(files)
         s *= "$(i):\t$file1\n\t$file2\n"
     end
-    println(s)
+    print(s)
 end
 
 CsvFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".csv"; prefix=prefix)
