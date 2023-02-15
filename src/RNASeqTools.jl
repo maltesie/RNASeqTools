@@ -4,6 +4,7 @@ import XAM: BAM
 using FASTX, CodecZlib, GFF3, BigWig
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 using IterTools, StringViews, Distributions, GLM, MultipleTesting
+import IntervalTrees
 
 export align_mem, align_minimap, align_kraken2
 export preprocess_data, trim_fastp, split_libs, download_prefetch, transform, split_interleaved, split_each_read

@@ -687,7 +687,7 @@ end
 
 summarize(alns::AlignedReads) = "$(typeof(alns)) with $(ninterval(alns)) aligned parts from $(nread(alns)) reads."
 
-Base.show(io::IO, alns::AlignedReads) = println(summarize(alns))
+Base.show(io::IO, alns::AlignedReads) = println(io, summarize(alns))
 
 function Base.empty!(alns::AlignedReads)
     empty!(alns.tempnames)
@@ -711,20 +711,16 @@ end
 
 nannotated(alns::AlignedReads) = sum(alns.annotated)
 
-annotate_filter(a::Interval{Annotation}, b::Interval{Nothing}) = strand(a) === strand(b)
+annotate_filter(a::Interval{Annotation}, b::Interval{Annotation}) = strand(a) === strand(b)
 function annotate!(alns::AlignedReads, features::Features{Annotation}; prioritize_type=nothing, min_prioritize_overlap=80, overwrite_type=nothing)
-    myiterators = Dict(refn=>GenomicFeatures.ICTreeIntervalIntersectionIterator{typeof(annotate_filter), Annotation}(
-                                    annotate_filter,
-                                    GenomicFeatures.ICTreeIntersection{Annotation}(),
-                                    features.list.trees[refn],
-                                    Interval("", 1, 1, STRAND_NA, Annotation()))
-                            for refn in refnames(features))
-
+    ann = Annotation()
+    intersection = IntervalTrees.Intersection{Int, Interval{Annotation}, 64}()
     for i::Int in 1:ninterval(alns)
-        alns.refnames[i] in keys(myiterators) || continue
-        myiterator = myiterators[alns.refnames[i]]
-        myiterator.query = Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i])
-        for feature_interval in myiterator
+        alns.refnames[i] in keys(features.list.trees) || continue
+        query = Interval(alns.refnames[i], alns.leftpos[i], alns.rightpos[i], alns.strands[i], ann)
+        IntervalTrees.firstintersection!(features.list.trees[alns.refnames[i]].root, query, nothing, intersection, annotate_filter)
+        while intersection.index > 0
+            feature_interval = intersection.node.entries[intersection.index]
             olp = round(UInt8, (min(feature_interval.last, alns.rightpos[i]) - max(feature_interval.first, alns.leftpos[i]) + 1) /
                                 (alns.rightpos[i] - alns.leftpos[i] + 1) * 100)
 
@@ -744,6 +740,7 @@ function annotate!(alns::AlignedReads, features::Features{Annotation}; prioritiz
                 alns.annotated[i] = true
                 priority && break
             end
+            IntervalTrees.nextintersection!(intersection.node, intersection.index, query, intersection, annotate_filter)
         end
     end
 end
