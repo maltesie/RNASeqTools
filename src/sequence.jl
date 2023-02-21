@@ -51,7 +51,7 @@ function Base.:*(genome1::Genome, genome2::Genome)
 end
 
 function Base.write(file::String, genome::Genome)
-    write_genomic_fasta(Dict(chr=>seq for (chr, seq) in genome), file)
+    write_genomic_fasta(Dict(chr=>LongDNA{4}(seq) for (chr, seq) in genome), file)
 end
 
 function read_genomic_fasta(fasta_file::String)
