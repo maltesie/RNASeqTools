@@ -60,9 +60,9 @@ struct AlignedReads{T<:Union{String,UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
-struct AlignedRead
+struct AlignedRead{T}
     range::UnitRange{Int}
-    alns::AlignedReads
+    alns::AlignedReads{T}
 end
 
 struct AlignedInterval
