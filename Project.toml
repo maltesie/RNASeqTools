@@ -1,7 +1,7 @@
 name = "RNASeqTools"
 uuid = "c929925e-1c85-4562-9573-d68085edd19a"
 authors = ["Malte Siemers <malte.siemers@uni-jena.de>"]
-version = "0.3.1"
+version = "0.3.2"
 
 [deps]
 BigWig = "9d649c22-cb6b-11e8-1fa9-f3896fced444"
