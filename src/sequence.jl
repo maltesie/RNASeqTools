@@ -15,9 +15,10 @@ Genome(sequence::LongDNA{4}, name::String) = Genome([sequence], [name])
 Genome(genome_file::String) = Genome(read_genomic_fasta(genome_file))
 
 Base.length(genome::Genome) = length(genome.seq)
-Base.getindex(genome::Genome, key::String) = genome.seq[genome.chroms[key]]
-Base.getindex(genome::Genome, key::Pair{String, UnitRange}) = genome[first(key)][last(key)]
-Base.getindex(genome::Genome, key::Interval{Nothing}) = genome[refname(key)][leftposition(key):rightposition(key)]
+Base.getindex(genome::Genome, key::String) = view(genome.seq, genome.chroms[key])
+Base.getindex(genome::Genome, key::Pair{String, UnitRange}) = view(genome[first(key)], last(key))
+Base.getindex(genome::Genome, key::Interval{Nothing}) = view(genome[refname(key)], leftposition(key):rightposition(key))
+Base.getindex(genome::Genome, key::Interval{Annotation}) = view(genome[refname(key)], leftposition(key):rightposition(key))
 
 function nchromosome(genome::Genome)
     return length(genome.chroms)
@@ -25,14 +26,14 @@ end
 
 function Base.iterate(genome::Genome)
     (chr, slice) = first(genome.chroms)
-    ((chr, genome.seq[slice]), 1)
+    ((chr, view(genome.seq, slice)), 1)
 end
 
 function Base.iterate(genome::Genome, state::Int)
     state += 1
     state > length(genome.chroms) && (return nothing)
     for (i, (chr, slice)) in enumerate(genome.chroms)
-        (i == state) && (return ((chr, genome.seq[slice]), state))
+        (i == state) && (return ((chr, view(genome.seq, slice)), state))
     end
 end
 
