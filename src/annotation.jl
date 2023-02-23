@@ -361,18 +361,28 @@ end
 
 function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
     new_features = Vector{Interval{Annotation}}()
-    base_features_pos = [feature for feature in features if (feature.strand == STRAND_POS)]
-    base_features_neg = [feature for feature in features if (feature.strand == STRAND_NEG)]
-    for base_features in (base_features_pos, base_features_neg)
-        nb_features = base_features === base_features_pos ? length(base_features_pos) : length(base_features_neg)
-        for i in 1:nb_features-1
-            feature, next_feature = base_features[i], base_features[i+1]
-            refname(feature) == refname(next_feature) || continue
-            stop, start = leftposition(next_feature), rightposition(feature)
-            (stop-1) - (start + 1) > min_igr_length || continue
-            igr = Interval(refname(feature), start+1, stop-1, base_features === base_features_pos ? STRAND_POS : STRAND_NEG,
-                Annotation(igr_type, name(feature)*":"*name(next_feature)))
-            push!(new_features, igr)
+    for ref in keys(features.chroms)
+        base_features_pos = [feature for feature in features if (feature.strand == STRAND_POS) && (refname(feature) == ref)]
+        base_features_neg = [feature for feature in features if (feature.strand == STRAND_NEG) && (refname(feature) == ref)]
+        for (is_pos_strand, base_features) in zip((true, false),(base_features_pos, base_features_neg))
+            nb_features = is_pos_strand ? length(base_features_pos) : length(base_features_neg)
+            for i in 1:nb_features-1
+                feature, next_feature = base_features[i], base_features[i+1]
+                refname(feature) == refname(next_feature) || continue
+                stop, start = leftposition(next_feature), rightposition(feature)
+                (stop-1) - (start + 1) > min_igr_length || continue
+                igr = Interval(refname(feature), start+1, stop-1, is_pos_strand ? STRAND_POS : STRAND_NEG,
+                    Annotation(igr_type, is_pos_strand ? name(feature)*":"*name(next_feature) : name(next_feature)*":"*name(feature)))
+                push!(new_features, igr)
+            end
+            firstfeature = first(base_features)
+            firstigr = Interval(refname(firstfeature), 1, leftposition(firstfeature)-1, is_pos_strand ? STRAND_POS : STRAND_NEG,
+                Annotation(igr_type, is_pos_strand ? "START:"*name(firstfeature) : name(firstfeature)*":START"))
+            push!(new_features, firstigr)
+            lastfeature = last(base_features)
+            lastigr = Interval(refname(lastfeature), rightposition(lastfeature)+1, features.chroms[refname(lastfeature)], is_pos_strand ? STRAND_POS : STRAND_NEG,
+                Annotation(igr_type, is_pos_strand ? name(lastfeature)*":END" : "END:"*name(lastfeature)))
+            push!(new_features, lastigr)
         end
     end
     merge!(features, Features(new_features))
