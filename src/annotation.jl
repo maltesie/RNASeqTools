@@ -361,7 +361,7 @@ end
 
 function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
     new_features = Vector{Interval{Annotation}}()
-    for ref in keys(features.chroms)
+    for ref in keys(features.list.trees)
         base_features_pos = [feature for feature in features if (feature.strand == STRAND_POS) && (refname(feature) == ref)]
         base_features_neg = [feature for feature in features if (feature.strand == STRAND_NEG) && (refname(feature) == ref)]
         for (is_pos_strand, base_features) in zip((true, false),(base_features_pos, base_features_neg))
@@ -375,14 +375,16 @@ function addigrs!(features::Features; igr_type="IGR", min_igr_length=20)
                     Annotation(igr_type, is_pos_strand ? name(feature)*":"*name(next_feature) : name(next_feature)*":"*name(feature)))
                 push!(new_features, igr)
             end
-            firstfeature = first(base_features)
-            firstigr = Interval(refname(firstfeature), 1, leftposition(firstfeature)-1, is_pos_strand ? STRAND_POS : STRAND_NEG,
-                Annotation(igr_type, is_pos_strand ? "START:"*name(firstfeature) : name(firstfeature)*":START"))
-            push!(new_features, firstigr)
-            lastfeature = last(base_features)
-            lastigr = Interval(refname(lastfeature), rightposition(lastfeature)+1, features.chroms[refname(lastfeature)], is_pos_strand ? STRAND_POS : STRAND_NEG,
-                Annotation(igr_type, is_pos_strand ? name(lastfeature)*":END" : "END:"*name(lastfeature)))
-            push!(new_features, lastigr)
+            if !isempty(features.chroms)
+                firstfeature = first(base_features)
+                firstigr = Interval(refname(firstfeature), 1, leftposition(firstfeature)-1, is_pos_strand ? STRAND_POS : STRAND_NEG,
+                    Annotation(igr_type, is_pos_strand ? "START:"*name(firstfeature) : name(firstfeature)*":START"))
+                push!(new_features, firstigr)
+                lastfeature = last(base_features)
+                lastigr = Interval(refname(lastfeature), rightposition(lastfeature)+1, features.chroms[refname(lastfeature)], is_pos_strand ? STRAND_POS : STRAND_NEG,
+                    Annotation(igr_type, is_pos_strand ? name(lastfeature)*":END" : "END:"*name(lastfeature)))
+                push!(new_features, lastigr)
+            end
         end
     end
     merge!(features, Features(new_features))
