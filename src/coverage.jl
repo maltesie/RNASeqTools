@@ -213,8 +213,9 @@ function localmaxdiffindex(coverage::Vector{Float64}; rev=false, min_diff=2, min
     peak_index = falses(length(d))
     mima = zeros(Float64, length(d), 2)
     for i in compute_within+1:length(d)-compute_within
-        ((d[i] >= min_diff) && (d[i] === maximum(view(d, i-compute_within:i+compute_within)))) || continue
+        (d[i] === maximum(view(d, i-compute_within:i+compute_within))) || continue
         mi, ma = (minimum(view(coverage, i-compute_within:i-1)), maximum(view(coverage, i+1:i+compute_within)))
+        (abs(ma-mi) >= min_diff) || continue
         peak_index[i] = is_negative_strand ? mi/ma >= min_ratio : ma/mi >= min_ratio
         mima[i, 1] = is_negative_strand ? -ma : mi
         mima[i, 2] = is_negative_strand ? -mi : ma
