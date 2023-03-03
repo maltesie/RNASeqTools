@@ -90,7 +90,7 @@ function Features(gff_file::String, type::Vector{String}; name_keys=["Name"], sa
         end
         name in keys(names) ? (names[name]+=1) : (names[name]=1)
         (same_name_rule === :first && names[name] > 1) && continue
-        n = names[name] > 1 ? name[2] * "$(names[name])" : name[2]
+        n = names[name] > 1 ? name[2] * "_$(names[name])" : name[2]
         annot = Annotation(GFF3.featuretype(feature), n, Dict(pair[1] => join(pair[2], ",") for pair in GFF3.attributes(feature)))
         push!(intervals, Interval(seqn, GFF3.seqstart(feature), GFF3.seqend(feature), GFF3.strand(feature), annot))
     end
