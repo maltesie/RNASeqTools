@@ -159,10 +159,7 @@ function hasxatag(record::BAM.Record)
     return hasxatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
 end
 
-function xatag(record::BAM.Record)
-    xa = xatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
-    return isnothing(xa) ? nothing : String(xa)
-end
+xatag(record::BAM.Record) = xatag(@view(record.data[BAM.auxdata_position(record):BAM.data_size(record)]))
 
 function astag(record::BAM.Record)
     data = @view(record.data[BAM.auxdata_position(record):BAM.data_size(record)])
@@ -199,7 +196,7 @@ function AlignedReads(bam_file::String; include_secondary_alignments=true, inclu
             (!BAM.ismapped(record) || (!isprimary(record) && !include_secondary_alignments) || (has_alternatives && !include_alternative_alignments)) && continue
             current_read::Symbol = (isread2(record) != is_reverse_complement) ? :read2 : :read1
             index += 1
-            xas::String = has_alternatives ? xatag(record) : ""
+            xas = has_alternatives ? StringView(xatag(record)) : nothing
             ((index + count(';', xas)) > length(ns)) && resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), length(ns)+1000000)
             name_view = StringView(@view(record.data[1:(BAM.seqname_length(record) - 1)]))
             n = hash_id ? hash(name_view) : String(name_view)
@@ -305,15 +302,16 @@ Base.getindex(alns::AlignedReads, r::UnitRange{Int}) = AlignedReads(alns.chroms,
     Constructor for the AlignedInterval struct. Builds AlignedInterval from a XA string, which is created by bwa-mem2
     for alternative mappings. Inverts strand, if `check_invert::Bool` is true.
 """
-function AlignedInterval(xapart::String; read=:read1)
-    chr, pos, cigar, nm = split(xapart, ",")
-    refstart = parse(Int, pos)
-    strand = ((refstart > 0) != read===:read2) ? STRAND_POS : STRAND_NEG
-    readstart, readstop, relrefstop, readlen = readpositions(cigar)
-    seq_interval = ((refstart > 0)  != (read === :read2)) ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
+function AlignedInterval(xapart::StringView; read=:read1)
+    chr, pos, cigar = (i for (i,c) in enumerate(xapart) if c === ',')
+    refstart = parse(Int, xapart[(chr+1):(pos-1)])
+    is_forward = ((refstart > 0) != (read===:read2))
+    strand = is_forward ? STRAND_POS : STRAND_NEG
+    readstart, readstop, relrefstop, readlen = readpositions(xapart[(pos+1):(cigar-1)])
+    seq_interval = is_forward ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
     refstart *= sign(refstart)
     ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, AlignmentAnnotation())
-    return AlignedInterval(ref_interval, seq_interval, parse(UInt32, nm), read)
+    return AlignedInterval(ref_interval, seq_interval, parse(UInt32, xapart[(cigar+1):end]), read)
 end
 
 """

@@ -19,6 +19,7 @@ Base.getindex(genome::Genome, key::String) = view(genome.seq, genome.chroms[key]
 Base.getindex(genome::Genome, key::Pair{String, UnitRange}) = view(genome[first(key)], last(key))
 Base.getindex(genome::Genome, key::Interval{Nothing}) = view(genome[refname(key)], leftposition(key):rightposition(key))
 Base.getindex(genome::Genome, key::Interval{Annotation}) = view(genome[refname(key)], leftposition(key):rightposition(key))
+Base.getindex(genome::Genome, key::Interval{Float64}) = view(genome[refname(key)], leftposition(key):rightposition(key))
 
 function nchromosome(genome::Genome)
     return length(genome.chroms)
@@ -71,6 +72,9 @@ function write_genomic_fasta(genome::Dict{String, T}, fasta_file::String) where 
         end
     end
 end
+
+summarize(genome::Genome) = "$(typeof(genome)) with $(length(genome)) nucleotides on $(length(genome.chroms)) sequences."
+Base.show(io::IO, genome::Genome) = print(io, summarize(genome))
 
 function Sequences()
     Sequences(LongDNA{4}(""), UInt[], UnitRange{Int}[])
@@ -183,44 +187,67 @@ function Base.write(fname::String, seqs::Sequences{T}) where T
     end
 end
 
-struct MatchIterator
-    sq::Union{ExactSearchQuery,ApproximateSearchQuery}
+struct MatchIterator{T <: Union{ExactSearchQuery,ApproximateSearchQuery,PWMSearchQuery}}
+    sq::T
     seq::LongDNA{4}
     max_dist::Int
 end
 MatchIterator(test_sequence::LongDNA{4}, seq::LongDNA{4}; k=0) =
     MatchIterator(k>0 ? ApproximateSearchQuery(test_sequence) : ExactSearchQuery(test_sequence), seq, k)
-function Base.iterate(m::MatchIterator, state=1)
-    current_match = m.max_dist > 0 ? findnext(m.sq, m.max_dist, m.seq, state) : findnext(m.sq, m.seq, state)
+MatchIterator(logo::Logo, seq::LongDNA{4}; min_bits=sum(maximum(logo.weights; dims=1))) = MatchIterator(PWMSearchQuery(PWM{DNA}(logo.weights), min_bits), seq, 0)
+function Base.iterate(m::MatchIterator{T}, state=1) where {T <: Union{ExactSearchQuery,ApproximateSearchQuery,PWMSearchQuery}}
+    current_match = if m.max_dist > 0 
+        findnext(m.sq, m.max_dist, m.seq, state) 
+    elseif T <: ExactSearchQuery
+        findnext(m.sq, m.seq, state)
+    elseif T <: PWMSearchQuery
+        i = findnext(m.sq, m.seq, state)
+        isnothing(i) ? nothing : (i:(i+size(m.sq.pwm.data)[2]-1))
+    end
     isnothing(current_match) && return nothing
     current_match, last(current_match)
 end
 Base.eachmatch(test_sequence::LongDNA{4}, seq::LongDNA{4}; k=0) = MatchIterator(test_sequence, seq; k=k)
+Base.eachmatch(logo::Logo, seq::LongDNA{4}; min_bits=sum(maximum(logo.weights; dims=1))) = MatchIterator(logo, seq; min_bits=min_bits)
 
-struct GenomeMatchIterator
-    mi_f::MatchIterator
-    mi_r::MatchIterator
-    chroms::Dict{String, UnitRange}
+struct GenomeMatchIterator{T <: Union{ExactSearchQuery,ApproximateSearchQuery,PWMSearchQuery}}
+    mi_f::MatchIterator{T}
+    mi_r::MatchIterator{T}
+    chroms::Dict{String, UnitRange{Int}}
 end
+
 GenomeMatchIterator(test_sequence::LongDNA{4}, genome::Genome; k=0) =
     GenomeMatchIterator(MatchIterator(test_sequence, genome.seq; k=k), MatchIterator(reverse_complement(test_sequence), genome.seq; k=k), genome.chroms)
-function Base.iterate(gmi::GenomeMatchIterator, (state,rev)=(1,false))
+
+GenomeMatchIterator(logo::Logo, genome::Genome; min_bits=sum(maximum(logo.weights; dims=1))) =
+    GenomeMatchIterator(
+        MatchIterator(logo, genome.seq; min_bits=min_bits), 
+        MatchIterator(Logo(logo.nseqs, reverse(logo.weights), logo.alphabet), genome.seq; min_bits=min_bits), 
+        genome.chroms
+    )
+
+function Base.iterate(gmi::GenomeMatchIterator{T}, (state,rev)=(1,false)) where {T <: Union{ExactSearchQuery,ApproximateSearchQuery,PWMSearchQuery}}
     i = iterate(rev ? gmi.mi_r : gmi.mi_f, state)
     isnothing(i) && return rev ? nothing : iterate(gmi, (1,true))
     for (chr, r) in gmi.chroms
-        (first(r) <= first(first(i)) <= last(r)) && return Interval(chr, first(i) .- first(r), rev ? STRAND_NEG : STRAND_POS), (last(i), rev)
+        (first(r) <= first(first(i)) <= last(r)) || continue
+        match_score::Float64 = T <: PWMSearchQuery ? 
+            scoreat(gmi.mi_f.seq, rev ? gmi.mi_r.sq.pwm : gmi.mi_f.sq.pwm, first(first(i))) :
+            sum((rev ? gmi.mi_r.sq.seq : gmi.mi_f.sq.seq) .== view(gmi.mi_f.seq, i))
+        return Interval(chr, first(i) .- (first(r)-1), rev ? STRAND_NEG : STRAND_POS, match_score), (last(i), rev)
     end
 end
 Base.eachmatch(test_sequence::LongDNA{4}, genome::Genome; k=0) = GenomeMatchIterator(test_sequence, genome; k=k)
+Base.eachmatch(logo::Logo, genome::Genome; min_bits=sum(maximum(logo.weights; dims=1))) = GenomeMatchIterator(logo, genome; min_bits=min_bits)
 
-function Base.collect(m::GenomeMatchIterator)
-    re = Interval{Nothing}[]
+function Base.collect(m::GenomeMatchIterator{T}) where {T <: Union{ExactSearchQuery,ApproximateSearchQuery,PWMSearchQuery}}
+    re = Interval{Float64}[]
     for match in m
         push!(re, match)
     end
     return re
 end
-function Base.collect(m::MatchIterator)
+function Base.collect(m::MatchIterator{T}) where {T <: Union{ExactSearchQuery,ApproximateSearchQuery,PWMSearchQuery}}
     re = UnitRange{Int}[]
     for match in m
         push!(re, match)
@@ -257,14 +284,14 @@ information_content(m::Matrix{Float64}; n=Inf) = m .* (2 .- ([-1 * sum(x > 0 ? x
 
 function Logo(seqs::Sequences; align=:left)
     nc = nucleotidedistribution(seqs; align=align)
-    m = hcat(nc[DNA_A], nc[DNA_T], nc[DNA_G], nc[DNA_C])
-    Logo(length(seqs), information_content(m; n=length(seqs)), [DNA_A, DNA_T, DNA_G, DNA_C])
+    m = hcat(nc[DNA_A], nc[DNA_C], nc[DNA_G], nc[DNA_T])
+    Logo(length(seqs), information_content(m; n=length(seqs))', [DNA_A, DNA_C, DNA_G, DNA_T])
 end
 
-consensusbits(logo::Logo) = round.(maximum.(eachrow(logo.weights)); digits=2)
-consensusseq(logo::Logo) = LongDNA{4}(logo.alphabet[argmax.(eachrow(logo.weights))])
+consensusbits(logo::Logo) = round.(maximum.(eachcol(logo.weights)); digits=2)
+consensusseq(logo::Logo) = LongDNA{4}(logo.alphabet[argmax.(eachcol(logo.weights))])
 
-summarize(logo::Logo) = "Consensus sequence of logo of $(logo.nseqs) sequences of length $(size(logo.weights, 1)):\n\n" *
+summarize(logo::Logo) = "Consensus sequence of logo of $(logo.nseqs) sequences of length $(size(logo.weights, 2)):\n\n" *
     "sequence: " * string(consensusseq(logo)) * "\nbits    : " * join(round.(Int, consensusbits(logo)))
 
 Base.show(io::IO, logo::Logo) = print(io, summarize(logo))
