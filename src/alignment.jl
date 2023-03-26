@@ -197,7 +197,7 @@ function AlignedReads(bam_file::String; include_secondary_alignments=true, inclu
             current_read::Symbol = (isread2(record) != is_reverse_complement) ? :read2 : :read1
             index += 1
             xas = has_alternatives ? StringView(xatag(record)) : nothing
-            ((index + count(';', xas)) > length(ns)) && resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), length(ns)+1000000)
+            ((index + (isnothing(xas) ? 0 : count(';', xas))) > length(ns)) && resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), length(ns)+1000000)
             name_view = StringView(@view(record.data[1:(BAM.seqname_length(record) - 1)]))
             n = hash_id ? hash(name_view) : String(name_view)
             (l::Int, r::Int) = (BAM.leftposition(record), BAM.rightposition(record))
@@ -310,7 +310,7 @@ function AlignedInterval(xapart::StringView; read=:read1)
     readstart, readstop, relrefstop, readlen = readpositions(xapart[(pos+1):(cigar-1)])
     seq_interval = is_forward ? (readstart:readstop) : (readlen-readstop+1:readlen-readstart+1)
     refstart *= sign(refstart)
-    ref_interval = Interval(chr, refstart, refstart+relrefstop, strand, AlignmentAnnotation())
+    ref_interval = Interval(xapart[chr+1:pos-1], refstart, refstart+relrefstop, strand, AlignmentAnnotation())
     return AlignedInterval(ref_interval, seq_interval, parse(UInt32, xapart[(cigar+1):end]), read)
 end
 
@@ -436,7 +436,7 @@ refrange(aln::AlignedInterval) = leftposition(aln):rightposition(aln)
 
 Returns the part of the reference sequence that the aln::AlignedInterval belongs to.
 """
-refsequence(aln::AlignedInterval, genome::Genome)::LongSequence = genome[refname(aln)][refrange(aln)]
+refsequence(aln::AlignedInterval, genome::Genome)::LongDNA{4} = genome[refname(aln)][refrange(aln)]
 
 """
     leftposition(aln::AlignedInterval)::Int
@@ -744,7 +744,7 @@ function annotate!(alns::AlignedReads, features::Features{Annotation}; prioritiz
 end
 
 Base.getindex(genome::Genome, ap::AlignedInterval) = refsequence(ap, genome)
-Base.getindex(sequence::LongSequence, ap::AlignedInterval) = sequence[readrange(ap)]
+Base.getindex(sequence::LongDNA{4}, ap::AlignedInterval) = view(sequence, readrange(ap))
 
 mutable struct BAMIterator
     reader::BAM.Reader

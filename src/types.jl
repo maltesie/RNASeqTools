@@ -11,7 +11,7 @@ abstract type FileCollection end
 abstract type CountContainer end
 
 struct Sequences{T<:Union{String, UInt}}
-    seq::LongSequence
+    seq::LongDNA{4}
     tempnames::Vector{T}
     ranges::Vector{UnitRange{Int}}
 end
@@ -23,7 +23,7 @@ struct Logo
 end
 
 struct Genome
-    seq::LongSequence
+    seq::LongDNA{4}
     chroms::Dict{String, UnitRange{Int}}
 end
 
