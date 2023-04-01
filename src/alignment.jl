@@ -175,6 +175,12 @@ function nmtag(record::BAM.Record)
     return unsafe_load(Ptr{UInt32}(pointer(record.data, BAM.auxdata_position(record)+3))) << t >> t
 end
 
+"""
+AlignedReads(bam_file::String)
+
+    Constructor for AlignedReads. Reads alignment records and stores alignment positions on reference and read and additional information
+    such as reference name, strand and edit distance of the alignment sorted according to the read they originate from.
+"""
 function AlignedReads(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
     record = BAM.Record()
     ns = Vector{hash_id ? UInt : String}(undef, 1000000)
@@ -299,8 +305,10 @@ Base.getindex(alns::AlignedReads, r::UnitRange{Int}) = AlignedReads(alns.chroms,
                                                                 alns.anols, alns.anleftrel, alns.anrightrel, alns.pindex, alns.annotated, alns.ranges[r])
 
 """
-    Constructor for the AlignedInterval struct. Builds AlignedInterval from a XA string, which is created by bwa-mem2
-    for alternative mappings. Inverts strand, if `check_invert::Bool` is true.
+AlignedInterval(xapart::StringView)
+
+    Constructor for the AlignedInterval struct. Builds AlignedInterval from a XA string containing alternative mappings. 
+    Inverts strand, if `check_invert::Bool` is true.
 """
 function AlignedInterval(xapart::StringView; read=:read1)
     chr, pos, cigar = (i for (i,c) in enumerate(xapart) if c === ',')

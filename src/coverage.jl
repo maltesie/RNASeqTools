@@ -20,6 +20,7 @@ function compute_coverage(bam_file::String; norm=1000000, include_secondary_alig
     end
     close(writer_f)
     close(writer_r)
+    empty!(alns)
     return (filename_f, filename_r)
 end
 
