@@ -219,15 +219,21 @@ end
 
 typenamekey(feature::Interval{Annotation}) = type(feature) * ":" * name(feature)
 function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
-    seqs = Vector{LongDNA}()
-    names = Vector{String}()
-    for feature in features
-        seq = genome[refname(feature)][leftposition(feature):rightposition(feature)]
-        strand(feature) == STRAND_NEG && reverse_complement!(seq)
-        push!(seqs, seq)
-        push!(names, key_gen(feature))
+    seq = randdnaseq(sum(length(f)+1 for f in features))
+    names = Vector{String}(undef, length(features))
+    ranges = Vector{UnitRange{Int}}(undef, length(features))
+    offset = 1
+    for (i,feature) in enumerate(features)
+        (l, r) = leftposition(feature), rightposition(feature)
+        s = copy(genome[refname(feature)][l:r])
+        strand(feature) == STRAND_NEG && reverse_complement!(s)
+        r = offset:(offset + (r - l))
+        copyto!(view(seq, r), s)
+        ranges[i] = r
+        names[i] = key_gen(feature)
+        offset = last(r)+1
     end
-    return Sequences(seqs, names)
+    return Sequences(seq, names, ranges)
 end
 
 function covratio(features::Features, coverage::Coverage; round_digits=2)
