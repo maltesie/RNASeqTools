@@ -13,7 +13,7 @@ function coveragecount(features::Features{Annotation}, samples::Vector{Coverage}
 end
 
 function FeatureCounts(features::Features{Annotation}, samples::Vector{Coverage}; aggregation=:max, normalization_method=:none)
-    normalization_method in (:none, :tpm, :tpkm, :tmm) || throw(AssertionError("No method implemented for $normalization_method"))
+    normalization_method in (:none, :tpm, :tpkm, :rle) || throw(AssertionError("No method implemented for $normalization_method"))
     c = coveragecount(features, samples; aggregation=aggregation)
     normalization_method in (:tmm, :tpm) && normalize!(c; normalization_method=normalization_method)
     normalization_method === :tpkm && normalize!(c, features)
@@ -28,7 +28,7 @@ end
 
 function FeatureCounts(features::Features{Annotation}, samples::SingleTypeFiles; normalization_method=:none, include_secondary_alignments=true,
         include_alternative_alignments=false, is_reverse_complement=false)
-    normalization_method in (:none, :tpm, :tpkm, :rle) || raise(AssertionError("No method implemented for $normalization_method"))
+    normalization_method in (:none, :tpm, :tpkm, :rle) || throw(AssertionError("No method implemented for $normalization_method"))
     samples.type === ".bam" || throw(AssertionError("Only .bam files are supported"))
     counts = zeros(Float64, length(features), length(samples))
     feature_trans = Dict{UInt, Int}(hash(name(feature), hash(type(feature)))=>i for (i, feature) in enumerate(features))
