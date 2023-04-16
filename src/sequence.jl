@@ -80,11 +80,7 @@ function Sequences()
     Sequences(LongDNA{4}(""), UInt[], UnitRange{Int}[])
 end
 
-function Sequences(::Type{T}) where {T<:Union{String, UInt}}
-    Sequences(LongDNA{4}(""), T[], UnitRange{Int}[])
-end
-
-function Sequences(seqs::Vector{LongDNA{4}}, seqnames::Vector{T}; sort_by_name=false) where T <: Union{UInt, String}
+function Sequences(seqs::Vector{LongDNA{4}}, seqnames::Vector{UInt}; sort_by_name=false)
     (length(seqnames) == length(seqs)) || throw(AssertionError("number of names must match the number of sequences!"))
     (length(seqnames) == length(unique(seqnames))) || throw(AssertionError("names must be unique!"))
     ranges = Vector{UnitRange{Int}}(undef, length(seqs))
@@ -125,20 +121,20 @@ nread(seqs::Sequences) = length(unique(seqs.tempnames))
 eachpair(seqs::Sequences) = partition(seqs, 2)
 Base.empty!(seqs::Sequences) = (empty!(seqs.seq); empty!(seqs.tempnames); empty!(seqs.ranges))
 
-function sortbyname!(seqs::Sequences{T}) where T <:Union{UInt, String}
+function sortbyname!(seqs::Sequences)
     sortids = sortperm(seqs.tempnames)
     seqs.tempnames .= seqs.tempnames[sortids]
     seqs.ranges .= seqs.ranges[sortids]
     seqs
 end
 
-function BioSequences.reverse_complement!(seqs::Sequences{T}) where T <:Union{UInt, String}
+function BioSequences.reverse_complement!(seqs::Sequences)
     reverse_complement!(seqs.seq)
     seqs.ranges .= [(length(seqs.seq)-last(r)+1):(length(seqs.seq)-first(r)+1) for r in seqs.ranges]
     seqs
 end
 
-function Base.filter!(seqs::Sequences{T}, tempnames::Set{T}) where {T<:Union{String, UInt}}
+function Base.filter!(seqs::Sequences, tempnames::Set{UInt})
     bitindex = (in).(seqs.tempnames, Ref(tempnames))
     n_seqs = sum(bitindex)
     seqs.ranges[1:n_seqs] = seqs.ranges[bitindex]
@@ -148,40 +144,40 @@ function Base.filter!(seqs::Sequences{T}, tempnames::Set{T}) where {T<:Union{Str
 end
 
 function read_reads(file::String; is_reverse_complement=false, hash_id=true, sort_by_name=false)
-    seqs::Sequences{hash_id ? UInt : String} = hash_id ? Sequences(UInt) : Sequences(String)
     is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
-    data = UInt8[]
-    current_range = 1:0
+    data = Vector{UInt8}(undef, 500000000)
+    tempnames = Vector{UInt64}(undef, 5000000)
+    ranges = Vector{UnitRange{Int}}(undef, 5000000)
+    current_range::UnitRange{Int} = 1:0
     lasti::Int = 0
-    for (i, record) in enumerate(is_fastq ? eachfastqrecord(file) : eachfastarecord(file))
-        id = hash_id ? hash(StringView(@view(record.data[record.identifier]))) : FASTX.identifier(record)
+    for (i::Int, record) in enumerate(is_fastq ? eachfastqrecord(file) : eachfastarecord(file))
         s = @view(record.data[record.sequence])
-        current_range = last(current_range)+1:last(current_range)+length(s)
-        length(data) < last(current_range) && resize!(data, length(data)+max(1000000, last(current_range)-length(data)))
-        if length(seqs.tempnames) < i
-            resize!(seqs.tempnames, length(seqs.tempnames)+10000)
-            resize!(seqs.ranges, length(seqs.ranges)+10000)
+        current_range = last(current_range)+1:last(current_range)+length(record.sequence)
+        length(data) < last(current_range) && resize!(data, length(data)+max(100000000, last(current_range)-length(data)))
+        if length(tempnames) < i
+            resize!(tempnames, length(tempnames)+1000000)
+            resize!(ranges, length(ranges)+1000000)
         end
-        seqs.tempnames[i] = id
-        seqs.ranges[i] = current_range
+        tempnames[i] = hash(StringView(view(record.data, record.identifier)))
+        ranges[i] = current_range
         data[current_range] .= s
         lasti = i
     end
-    resize!(seqs.seq, last(current_range))
     resize!(data, last(current_range))
-    seqs.seq[:] = LongDNA{4}(data)
-    resize!(seqs.tempnames, lasti)
-    resize!(seqs.ranges, lasti)
+    resize!(tempnames, lasti)
+    resize!(ranges, lasti)
+    seqs = Sequences(LongDNA{4}(data), tempnames, ranges)
     is_reverse_complement && reverse_complement!(seqs)
     sort_by_name && sortbyname!(seqs)
     return seqs
 end
 
-function Base.write(fname::String, seqs::Sequences{T}) where T
+function Base.write(fname::String, seqs::Sequences; tempnames=nothing)
+    isnothing(tempnames) || (length(seqs) == length(tempnames)) || throw(AssertionError("tempnames has to be of same length as seqs."))
     rec = FASTA.Record()
     FASTA.Writer(GzipCompressorStream(open(fname, "w"); level=2)) do writer
         for (i,s) in enumerate(seqs)
-            rec = FASTA.Record(T <: UInt ? string(seqs.tempnames[i]) : seqs.tempnames[i], s)
+            rec = FASTA.Record(isnothing(tempnames) ? string(i) : tempnames[i], s)
             write(writer, rec)
         end
     end

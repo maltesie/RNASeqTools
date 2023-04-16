@@ -14,7 +14,7 @@ export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles
 export PairedFastaFiles, PairedFastagzFiles, PaireFastqFiles, PairedFastqgzFiles
 export nucleotidedistribution, annotate!, featureseqs, ispositivestrand, hasannotation, nannotated, editdistance
 export ischimeric, ismulti, refinterval, readrange, refrange, annotation, hasannotation, ispositivestrand, sameread, nread
-export name, type, overlap, parts, refname, params, param, setparam!, hasparam, hastype, hasname, typein, namein, distanceonread
+export name, type, types, overlap, parts, refname, params, param, setparam!, hasparam, hastype, hasname, typein, namein, distanceonread
 export hasoverlap, firstoverlap, compute_coverage, merge!, merge, correlation, covratio, normalize!, readid, summarize
 export add5utrs!, add3utrs!, addutrs!, addigrs!, maxdiffpositions, consensusseq, consensusbits, ninterval, eachbamrecord, eachfastqrecord, eachfastarecord
 export eachpair, isfirstread, sync!

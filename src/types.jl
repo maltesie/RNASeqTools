@@ -10,9 +10,9 @@ abstract type FileCollection end
 
 abstract type CountContainer end
 
-struct Sequences{T<:Union{String, UInt}}
+struct Sequences
     seq::LongDNA{4}
-    tempnames::Vector{T}
+    tempnames::Vector{UInt}
     ranges::Vector{UnitRange{Int}}
 end
 
@@ -39,9 +39,9 @@ struct AlignmentAnnotation <: AnnotationStyle
     overlap::UInt8
 end
 
-struct AlignedReads{T<:Union{String,UInt}}
+struct AlignedReads
     chroms::Vector{Tuple{String,Int}}
-    tempnames::Vector{T}
+    tempnames::Vector{UInt}
     leftpos::Vector{Int}
     rightpos::Vector{Int}
     read_leftpos::Vector{Int}
@@ -60,9 +60,9 @@ struct AlignedReads{T<:Union{String,UInt}}
     ranges::Vector{UnitRange{Int}}
 end
 
-struct AlignedRead{T}
+struct AlignedRead
     range::UnitRange{Int}
-    alns::AlignedReads{T}
+    alns::AlignedReads
 end
 
 struct AlignedInterval

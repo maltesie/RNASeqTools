@@ -16,7 +16,7 @@ function bam_chromosome_names(reader::BAM.Reader)
     return chr_names
 end
 
-function samevalueintervals(d::Vector{T}, index::Vector{Int}) where T <: Union{UInt, String}
+function samevalueintervals(d::Vector{UInt}, index::Vector{Int})
     rindex::Int = 1
     lindex::Int = 1
     n_unique = length(Set(d))
@@ -181,9 +181,9 @@ AlignedReads(bam_file::String)
     Constructor for AlignedReads. Reads alignment records and stores alignment positions on reference and read and additional information
     such as reference name, strand and edit distance of the alignment sorted according to the read they originate from.
 """
-function AlignedReads(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false, hash_id=true)
+function AlignedReads(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false)
     record = BAM.Record()
-    ns = Vector{hash_id ? UInt : String}(undef, 1000000)
+    ns = Vector{UInt}(undef, 1000000)
     ls = Vector{Int}(undef, 1000000)
     rs = Vector{Int}(undef, 1000000)
     is = Vector{String}(undef, 1000000)
@@ -203,9 +203,8 @@ function AlignedReads(bam_file::String; include_secondary_alignments=true, inclu
             current_read::Symbol = (isread2(record) != is_reverse_complement) ? :read2 : :read1
             index += 1
             xas = has_alternatives ? StringView(xatag(record)) : nothing
-            ((index + (isnothing(xas) ? 0 : count(';', xas))) > length(ns)) && resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), length(ns)+1000000)
-            name_view = StringView(@view(record.data[1:(BAM.seqname_length(record) - 1)]))
-            n = hash_id ? hash(name_view) : String(name_view)
+            ((index + (has_alternatives ? count(';', xas) : 0)) > length(ns)) && resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), length(ns)+1000000)
+            n = hash(StringView(@view(record.data[1:(BAM.seqname_length(record) - 1)])))
             (l::Int, r::Int) = (BAM.leftposition(record), BAM.rightposition(record))
             (ref::String, s::Strand) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
             nm::UInt32 = nmtag(record)
@@ -245,20 +244,19 @@ end
     return state > length(alns.ranges) ? nothing : (alns[state], state+1)
 end
 
-function Base.filter!(alns::AlignedReads{T}, tempnames::Set{T}) where {T<:Union{String, UInt}}
+function Base.filter!(alns::AlignedReads, tempnames::Set{UInt})
     bitindex = [alns.tempnames[alns.pindex[first(r)]] in tempnames for r in alns.ranges]
     n_seqs = sum(bitindex)
     alns.ranges[1:n_seqs] = alns.ranges[bitindex]
     resize!(alns.ranges, n_seqs)
 end
 
-function sync!(seqs::Sequences{T}, alns::AlignedReads{T}) where {T<:Union{String, UInt}}
+function sync!(seqs::Sequences, alns::AlignedReads)
     filter!(seqs, Set(alns.tempnames))
     sortbyname!(seqs)
     filter!(alns, Set(seqs.tempnames))
 end
-sync!(alns::AlignedReads{T}, seqs::Sequences{T}) where {T<:Union{String, UInt}} =
-    sync!(seqs, alns)
+sync!(alns::AlignedReads, seqs::Sequences) = sync!(seqs, alns)
 
 function print_reads(alns::AlignedReads; n=-1, only_chimeric=false, filter_name=nothing, filter_type=nothing)
     c = 0
@@ -599,8 +597,7 @@ function ispositivestrand(alnread::AlignedRead)
     return s === STRAND_POS
 end
 
-summarize(alnread::AlignedRead) = (typeof(alnread.alns) == AlignedReads{String} ? "[$(alnread.alns.tempnames[alnread.alns.pindex[first(alnread.range)]])] " : "") *
-                                    (ischimeric(alnread) ? "Chimeric" : "Single") *
+summarize(alnread::AlignedRead) = (ischimeric(alnread) ? "Chimeric" : "Single") *
                                     " Alignment with $(length(alnread)) part(s):\n   " *
                                     join([summarize(part) for part in alnread], "\n   ") * "\n"
 

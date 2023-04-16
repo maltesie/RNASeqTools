@@ -237,16 +237,16 @@ function maxdiffpositions(coverage::Coverage; type="DIFF", samplename=nothing, r
         rindex, rmima = localmaxdiffindex(coverage_values[chr][2]; rev=rev, min_diff=min_diff, min_ratio=min_ratio,
                                                             compute_within=compute_within, circular=circular)
         for (ii, i) in enumerate(findex)
-            push!(features, Interval(chr, i, i, STRAND_POS,
-                isnothing(samplename) ?
-                Annotation(type, "forward_$ii") :
-                Annotation(type, "$(samplename)_forward_$ii"; from=samplename, height=fmima[ii, 2], diff=fmima[ii, 2]-fmima[ii, 1])))
+            n = isnothing(samplename) ? "forward_$ii" : "$(samplename)_forward_$ii"
+            from = isnothing(samplename) ? "NA" : samplename
+            ann = Annotation(type, n; from=from, height=fmima[ii, 2], diff=fmima[ii, 2]-fmima[ii, 1])
+            push!(features, Interval(chr, i, i, STRAND_POS, ann))
         end
         for (ii, i) in enumerate(rindex)
-            push!(features, Interval(chr, i, i, STRAND_NEG,
-                isnothing(samplename) ?
-                Annotation(type, "reverse_$ii") :
-                Annotation(type, "$(samplename)_reverse_$ii"; from=samplename, height=rmima[ii, 2], diff=rmima[ii, 2]-rmima[ii, 1])))
+            n = isnothing(samplename) ? "reverse_$ii" : "$(samplename)_reverse_$ii"
+            from = isnothing(samplename) ? "NA" : samplename
+            ann = Annotation(type, n; from=from, height=rmima[ii, 2], diff=rmima[ii, 2]-rmima[ii, 1])
+            push!(features, Interval(chr, i, i, STRAND_NEG, ann))           
         end
     end
     return Features(features)

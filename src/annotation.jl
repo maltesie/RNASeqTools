@@ -217,10 +217,8 @@ function Base.write(file::String, features::Features; zip=false, tabix=false, sk
     return b
 end
 
-typenamekey(feature::Interval{Annotation}) = type(feature) * ":" * name(feature)
-function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
+function featureseqs(features::Features, genome::Genome)
     seq = randdnaseq(sum(length(f)+1 for f in features))
-    names = Vector{String}(undef, length(features))
     ranges = Vector{UnitRange{Int}}(undef, length(features))
     offset = 1
     for (i,feature) in enumerate(features)
@@ -230,10 +228,9 @@ function featureseqs(features::Features, genome::Genome; key_gen=typenamekey)
         r = offset:(offset + (r - l))
         copyto!(view(seq, r), s)
         ranges[i] = r
-        names[i] = key_gen(feature)
         offset = last(r)+1
     end
-    return Sequences(seq, names, ranges)
+    return Sequences(seq, UInt.(1:length(ranges)), ranges)
 end
 
 function covratio(features::Features, coverage::Coverage; round_digits=2)
