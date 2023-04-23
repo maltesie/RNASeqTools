@@ -154,20 +154,20 @@ function Base.dirname(files::PairedSingleTypeFiles)
     return dirname(files.list[1][1])
 end
 
-function Base.show(files::SingleTypeFiles)
+function Base.show(io::IO, files::SingleTypeFiles)
     s = "SingleTypeFiles with file type $(files.type) and $(length(files)) entries:\n\n"
     for (i,file) in enumerate(files)
         s *= "$i:\t$file\n"
     end
-    print(s)
+    print(io, s)
 end
 
-function Base.show(files::PairedSingleTypeFiles)
+function Base.show(io::IO, files::PairedSingleTypeFiles)
     s = "PairedSingleTypeFiles with file type $(files.type) and $(length(files)) entries:\n\n"
     for (i,(file1, file2)) in enumerate(files)
         s *= "$(i):\t$file1\n\t$file2\n"
     end
-    print(s)
+    print(io, s)
 end
 
 CsvFiles(folder::String; prefix=nothing) = SingleTypeFiles(folder, ".csv"; prefix=prefix)
