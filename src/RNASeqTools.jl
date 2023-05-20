@@ -6,6 +6,8 @@ using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
 using IterTools, StringViews, Distributions, GLM, MultipleTesting
 import IntervalTrees
 
+using minimap2_jll, bwamem2_jll, fastp_jll, samtools_jll
+
 export align_mem, align_minimap, align_kraken2
 export preprocess_data, trim_fastp, split_libs, download_prefetch, transform, split_interleaved, split_each_read
 export Genome, Sequences, PairedSequences, AlignedReads, AlignedInterval, AlignedRead, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage
