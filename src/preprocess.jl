@@ -127,11 +127,11 @@ function split_libs(infile::String, libname_to_barcode::Dict{String,String}, out
 end
 
 function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
-    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=nothing,
+    fastp_bin=nothing, prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=nothing,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=nothing, filter_complexity=nothing,
     average_window_quality=nothing, deduplicate=false, skip_quality_filtering=false, overwrite_existing=false)
 
-    @assert trim_loc in [:read1, :read2]
+    @assert trim_loc in (:read1, :read2)
 
     params = []
     !isnothing(trim) && push!(params, trim_loc === :read1 ? "--trim_front1=$trim" : "--trim_front2=$trim")
@@ -155,15 +155,20 @@ function trim_fastp(input_files::Vector{Tuple{String, Union{String, Nothing}}};
         out_file1 = joinpath(dirname(in_file1), prefix * basename(in_file1))
         (isfile(out_file1) && !overwrite_existing) && continue
         out_file2 = !isnothing(in_file2) ? joinpath(dirname(in_file2), prefix * basename(in_file2)) : nothing
-        file_params = ["--in1=$in_file1", "--out1=$out_file1", "--html=$(html_file)", "--json=$(json_file)"]
+        file_params = ["--in1=$in_file1", "--out1=$out_file1", "--html=$html_file", "--json=$json_file"]
         !isnothing(in_file2) && append!(file_params, ["--in2=$in_file2", "--out2=$out_file2"])
-        cmd = `$fastp_bin $file_params $params`
-        run(cmd)
+
+        fastp() do fastp_jll
+            if isnothing(fastp_bin) 
+                fastp_bin = fastp_jll
+            end
+            run(`$fastp_bin $file_params $params`)
+        end
     end
 end
 
 function trim_fastp(input_files::SingleTypeFiles;
-    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=nothing, min_length=20,
+    fastp_bin=nothing, prefix="trimmed_", adapter=nothing, trim=nothing, min_length=20,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=20, deduplicate=false, skip_quality_filtering=false, overwrite_existing=false)
 
@@ -177,7 +182,7 @@ function trim_fastp(input_files::SingleTypeFiles;
 end
 
 function trim_fastp(input_files::PairedSingleTypeFiles;
-    fastp_bin="fastp", prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20,
+    fastp_bin=nothing, prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20,
     max_length=nothing, cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=20, deduplicate=false, skip_quality_filtering=false, overwrite_existing=false)
 
@@ -287,11 +292,11 @@ function transform(file::String; prefix="trafo_", to_dna=false, reverse=false, c
     writer = is_fastq ? FASTQ.Writer(out_f) : FASTA.Writer(out_f)
     out_record = is_fastq ? FASTQ.Record() : FASTA.Record()
 
-    in_seq = (to_dna || is_rna) ? LongRNASeq(0) : LongDNA{4}(0)
-    out_seq = (is_rna && !to_dna) ? LongRNASeq(0) : LongDNA{4}(0)
+    in_seq = (to_dna || is_rna) ? LongRNA{4}(0) : LongDNA{4}(0)
+    out_seq = (is_rna && !to_dna) ? LongRNA{4}(0) : LongDNA{4}(0)
     while !eof(reader)
         read!(reader, record)
-        in_seq = is_fastq ? FASTQ.sequence((to_dna || is_rna) ? LongRNASeq : LongDNA, record) : FASTA.sequence((to_dna || is_rna) ? LongRNASeq : LongDNA, record)
+        in_seq = is_fastq ? FASTQ.sequence((to_dna || is_rna) ? LongRNA{4} : LongDNA{4}, record) : FASTA.sequence((to_dna || is_rna) ? LongRNA{4} : LongDNA{4}, record)
         out_seq = to_dna ? LongDNA{4}(in_seq) : in_seq
         reverse && reverse!(out_seq)
         complement && complement!(out_seq)
@@ -311,35 +316,6 @@ function transform(input_files::SingleTypeFiles; prefix="trafo_", to_dna=false, 
         push!(transformed_files, transform(file; to_dna=to_dna, reverse=reverse, complement=complement, overwrite_existing=overwrite_existing, is_rna=is_rna))
     end
     return SingleTypeFiles(transformed_files, input_files.type)
-end
-
-"""
-    Wrapper function for kraken2 taxonomic sequence classifier that assigns taxonomic labels to DNA sequences.
-
-    # Output
-    *.results.txt is a five fields tab-delimited text file.
-    *.report.txt is in kraken2's modified report format (--report-minimizer-data).
-    Report file is used for KronaTools plot.
-"""
-function align_kraken2(sequence_file::String, db_path::String;
-    kraken_bin = "kraken2", threads = 6, report = true, results = false, quick = false, min_hit_groups = false, )
-
-    output_file = split(sequence_file, ".")[1] * ".kraken2_results.txt"
-    report_file = split(sequence_file, ".")[1] * ".report.txt"
-
-    params = ["--db", db_path,
-              "--threads", threads,
-              sequence_file,
-             ]
-
-    # append additional options
-    report && append!(params, ["--report", report_file, "--report-minimizer-data"])
-    quick && push!(params, "--quick")
-    min_hit_groups && push!(params, "--minimum-hit-groups")
-    # if results file is unwanted send stdout to /dev/null
-    !(results) && (output_file = devnull)
-
-    run(pipeline(`$kraken_bin $params`, stdout=output_file))
 end
 
 function fnamefromseqfile(seqfilename::String, newtype::String=".bam")
@@ -377,7 +353,7 @@ end
 """
 function align_minimap(in_file::String, genome_file::String, out_file::String=fnamefromseqfile(in_file);
     preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1, minimizer_len=15,
-    threads=6, all_secondary=false, skip_stats=false, sort_bam=true, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false)
+    threads=6, all_secondary=false, skip_stats=false, sort_bam=false, minimap_bin=nothing, samtools_bin=nothing, overwrite_existing=false)
 
     !overwrite_existing && isfile(out_file) && throw(AssertinError("File $out_file already exists!"))
     !isnothing(preset) && !(preset in (:mapont, :asm5, :asm10, :asm20, :sr)) &&
@@ -392,17 +368,27 @@ function align_minimap(in_file::String, genome_file::String, out_file::String=fn
     fileparams = [genome_file, in_file]
 
     stats_file = out_file * ".log"
-    run(pipeline(
-        `$minimap_bin $params $fileparams`,
-        stdout = pipeline(
-            `$sam_bin view -u`,
-            stdout = sort_bam ? pipeline(`$sam_bin sort -o $out_file`) : out_file)))
-    skip_stats ?
-    run(`$sam_bin index $out_file`) :
-    run(pipeline(
-        `$sam_bin index $out_file`,
-        `$sam_bin stats $out_file`,
-        stats_file))
+    minimap2() do mm_jll
+        samtools() do st_jll
+            if isnothing(minimap_bin)
+                minimap_bin = mm_jll
+            end
+            if isnothing(samtools_bin)
+                samtools_bin = st_jll
+            end
+            run(pipeline(
+                `$minimap_bin $params $fileparams`,
+                stdout = pipeline(
+                    `$samtools_bin view -u`,
+                    stdout = sort_bam ? pipeline(`$samtools_bin sort -o $out_file`) : out_file)))
+            skip_stats ?
+            run(`$samtools_bin index $out_file`) :
+            run(pipeline(
+                `$samtools_bin index $out_file`,
+                `$samtools_bin stats $out_file`,
+                stats_file))
+        end
+    end
 end
 
 """
@@ -411,7 +397,7 @@ end
 """
 function align_minimap(sequence_files::SingleTypeFiles, genome::Genome;
     preset=nothing, match=2, mismatch=4, gap_open1=4, gap_open2=24, gap_extend1=2, gap_extend2=1,
-    minimizer_len=15, threads=6, all_secondary=false, sort_bam=true, minimap_bin="minimap2", sam_bin="samtools", overwrite_existing=false)
+    minimizer_len=15, threads=6, all_secondary=false, sort_bam=false, minimap_bin=nothing, samtools_bin=nothing, overwrite_existing=false)
     sequence_files.type in Iterators.flatten((FASTA_TYPES, FASTQ_TYPES)) || throw(AssertionError("Unknown file type."))
     tmp_genome = tempname()
     write(tmp_genome, genome)
@@ -420,10 +406,9 @@ function align_minimap(sequence_files::SingleTypeFiles, genome::Genome;
         out_file = isempty(sequence_files.type) ? fnamefromseqfile(file) : file[1:end-length(sequence_files.type)] * ".bam"
         push!(outfiles, out_file)
         (isfile(out_file) && !overwrite_existing) && continue
-        align_minimap(file, out_file, tmp_genome;
-            preset=preset, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2,
+        align_minimap(file, tmp_genome, out_file; preset=preset, match=match, mismatch=mismatch, gap_open1=gap_open1, gap_open2=gap_open2,
             gap_extend1=gap_extend1, gap_extend2=gap_extend2, minimizer_len=minimizer_len, threads=threads, all_secondary=all_secondary,
-            sort_bam=sort_bam, minimap_bin=minimap_bin, sam_bin=sam_bin)
+            sort_bam=sort_bam, minimap_bin=minimap_bin, samtools_bin=samtools_bin)
     end
     rm(tmp_genome)
     return SingleTypeFiles(outfiles)
@@ -445,30 +430,39 @@ end
 """
 function align_mem(in_file1::String, in_file2::Union{String,Nothing}, genome_file::String, out_file::String=fnamefromseqfile(in_file1, in_file2);
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
-    min_seed_len=18, reseeding_factor=1.4, is_ont=false, is_interleaved_paired_end=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools")
+    min_seed_len=18, reseeding_factor=1.4, is_ont=false, is_interleaved_paired_end=false, threads=6, sort_bam=false, bwamem_bin=nothing, samtools_bin=nothing)
 
-    cmd = pipeline(`$bwa_bin index $genome_file`)
-    run(cmd)
-    params = ["-A", match, "-B", mismatch, "-O", gap_open, "-E", gap_extend, "-T", min_score, "-L", clipping_penalty, "-r", reseeding_factor, "-k", min_seed_len, "-t", threads]
-    (isnothing(in_file2) && !is_interleaved_paired_end) || append!(params, ["-U", unpair_penalty])
-    is_ont && append!(params, ["-x", "ont2d"])
-    unpair_rescue && push!(params, "-P")
-    is_interleaved_paired_end && push!(params, "-p")
-    fileparams = isnothing(in_file2) ? [genome_file, in_file1] : [genome_file, in_file1, in_file2]
-    stats_file = out_file * ".log"
-    run(pipeline(
-        `$bwa_bin mem -v 1 $params $fileparams`,
-        stdout = pipeline(
-            `$sam_bin view -u`,
-            stdout = sort_bam ? pipeline(`$sam_bin sort -o $out_file`) : out_file)))
-    run(sort_bam ? pipeline(`$sam_bin index $out_file`, `$sam_bin stats $out_file`, stats_file) : pipeline(`$sam_bin stats $out_file`, stats_file))
+    bwamem2() do bm_jll
+        samtools() do st_jll
+            if isnothing(bwamem_bin)
+                bwamem_bin = bm_jll
+            end
+            if isnothing(samtools_bin)
+                samtools_bin = st_jll
+            end
+            run(`$bwamem_bin index $genome_file`)
+            params = ["-A", match, "-B", mismatch, "-O", gap_open, "-E", gap_extend, "-T", min_score, "-L", clipping_penalty, "-r", reseeding_factor, "-k", min_seed_len, "-t", threads]
+            (isnothing(in_file2) && !is_interleaved_paired_end) || append!(params, ["-U", unpair_penalty])
+            is_ont && append!(params, ["-x", "ont2d"])
+            unpair_rescue && push!(params, "-P")
+            is_interleaved_paired_end && push!(params, "-p")
+            fileparams = isnothing(in_file2) ? [genome_file, in_file1] : [genome_file, in_file1, in_file2]
+            stats_file = out_file * ".log"
+            run(pipeline(
+                `$bwamem_bin mem -v 1 $params $fileparams`,
+                stdout = pipeline(
+                    `$samtools_bin view -u`,
+                    stdout = sort_bam ? pipeline(`$samtools_bin sort -o $out_file`) : out_file)))
+            run(sort_bam ? pipeline(`$samtools_bin index $out_file`, `$samtools_bin stats $out_file`, stats_file) : pipeline(`$samtools_bin stats $out_file`, stats_file))
+        end
+    end
 end
 align_mem(in_file::String, genome_file::String, out_file::String=fnamefromseqfile(in_file);
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, min_seed_len=18,
-    reseeding_factor=1.4, is_ont=false, is_interleaved_paired_end=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools") =
+    reseeding_factor=1.4, is_ont=false, is_interleaved_paired_end=false, threads=6, sort_bam=false, bwamem_bin=nothing, samtools_bin=nothing) =
     align_mem(in_file, nothing, genome_file, out_file;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, clipping_penalty=clipping_penalty, min_seed_len=min_seed_len,
-        reseeding_factor=reseeding_factor, is_ont=is_ont, is_interleaved_paired_end=is_interleaved_paired_end, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
+        reseeding_factor=reseeding_factor, is_ont=is_ont, is_interleaved_paired_end=is_interleaved_paired_end, threads=threads, sort_bam=sort_bam, bwamem_bin=bwamem_bin, samtools_bin=samtools_bin)
 
 """
     Helper dispatch of align_mem, which is a wrapper for bwa-mem2. Runs align_mem on `read_files::T`
@@ -477,7 +471,7 @@ align_mem(in_file::String, genome_file::String, out_file::String=fnamefromseqfil
 """
 function align_mem(read_files::T, genome::Genome; min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1,
     clipping_penalty=5, unpair_penalty=9, reseeding_factor=1.4, min_seed_len=18, unpair_rescue=false, is_ont=false,
-    is_interleaved_paired_end=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:FileCollection}
+    is_interleaved_paired_end=false, threads=6, sort_bam=false, bwamem_bin=nothing, samtools_bin=nothing, overwrite_existing=false) where {T<:FileCollection}
 
     tmp_genome = tempname()
     write(tmp_genome, genome)
@@ -491,12 +485,12 @@ function align_mem(read_files::T, genome::Genome; min_score=20, match=1, mismatc
         align_mem(file, tmp_genome, out_file;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open,
                 gap_extend=gap_extend, clipping_penalty=clipping_penalty,  min_seed_len=min_seed_len, is_interleaved_paired_end=is_interleaved_paired_end,
-                reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+                reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwamem_bin=bwamem_bin, samtools_bin=samtools_bin) :
         align_mem(first(file), last(file), tmp_genome, out_file;
                 min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
                 clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
                 min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
-                is_interleaved_paired_end=is_interleaved_paired_end, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
+                is_interleaved_paired_end=is_interleaved_paired_end, sort_bam=sort_bam, bwamem_bin=bwamem_bin, samtools_bin=samtools_bin)
     end
     rm(tmp_genome)
     for ending in [".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"]
@@ -510,9 +504,9 @@ end
     is a SequenceContainer and aligns it against `genomes::Vector{Genome}`. This enables easy handling
     of Sequences and their alignment against multiple genomes.
 """
-function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String="alignments.bam"; min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1,
+function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String="alignments_to_$(length(genomes))genomes.bam"; min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1,
     clipping_penalty=5, unpair_penalty=9, unpair_rescue=false, min_seed_len=18, reseeding_factor=1.4, is_ont=false, is_interleaved_paired_end=false, threads=6,
-    sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false)
+    sort_bam=false, bwamem_bin=nothing, samtools_bin=nothing, overwrite_existing=false)
 
     (isfile(out_file) && !overwrite_existing) && return
     tmp_reads = tempname()
@@ -533,12 +527,12 @@ function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String="
         align_mem(tmp_reads, tmp_genome, this_out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
-            is_ont=is_ont, is_interleaved_paired_end=is_interleaved_paired_end, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin) :
+            is_ont=is_ont, is_interleaved_paired_end=is_interleaved_paired_end, threads=threads, sort_bam=sort_bam, bwamem_bin=bwamem_bin, samtools_bin=samtools_bin) :
         align_mem(tmp_reads, tmp_reads2, tmp_genome, this_out_file;
             min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
             clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue,
             min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
-            is_interleaved_paired_end=is_interleaved_paired_end, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
+            is_interleaved_paired_end=is_interleaved_paired_end, sort_bam=sort_bam, bwamem_bin=bwamem_bin, samtools_bin=samtools_bin)
 
         rm(tmp_genome)
     end
@@ -553,28 +547,33 @@ function align_mem(reads::Sequences, genomes::Vector{Genome}, out_file::String="
             push!(bam_files, joinpath(dirname(out_file), "$(i)_" * basename(out_file)))
             push!(bai_files, joinpath(dirname(out_file), "$(i)_" * basename(out_file) * ".bai"))
         end
-        run(`$sam_bin merge -X $out_file $bam_files $bai_files`)
-        run(`$sam_bin index $out_file`)
+        samtools() do st_jll
+            if isnothing(samtools_bin)
+                samtools_bin = st_jll
+            end
+            run(`$samtools_bin merge -X $out_file $bam_files $bai_files`)
+            run(`$samtools_bin index $out_file`)
+        end
         for (bam_file, bai_file) in zip(bam_files, bai_files)
             rm(bam_file)
             rm(bai_file)
         end
     end
 end
-align_mem(reads::T, genome::Genome, out_file::String;
+align_mem(reads::Sequences, genome::Genome, out_file::String;
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, unpair_penalty=9, min_seed_len=18, reseeding_factor=1.4,
-    unpair_rescue=false, is_ont=false, is_interleaved_paired_end=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools", overwrite_existing=false) where {T<:Sequences} =
+    unpair_rescue=false, is_ont=false, is_interleaved_paired_end=false, threads=6, sort_bam=false, bwamem_bin=nothing, samtools_bin=nothing, overwrite_existing=false) =
     align_mem(reads, [genome], out_file;
         min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend, unpair_penalty=unpair_penalty,
         unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor, is_ont=is_ont, threads=threads,
-        is_interleaved_paired_end=is_interleaved_paired_end, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin, overwrite_existing=overwrite_existing)
+        is_interleaved_paired_end=is_interleaved_paired_end, sort_bam=sort_bam, bwamem_bin=bwamem_bin, samtools_bin=samtools_bin, overwrite_existing=overwrite_existing)
 
 function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, genome::Genome;
-    fastp_bin="fastp", trimmed_prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20, max_length=nothing,
+    fastp_bin=nothing, trimmed_prefix="trimmed_", adapter=nothing, trim=nothing, trim_loc=:read1, min_length=20, max_length=nothing,
     cut_front=true, cut_tail=true, trim_poly_g=nothing, trim_poly_x=10, filter_complexity=nothing,
     average_window_quality=20, deduplicate=false, skip_quality_filtering=false,
     min_score=20, match=1, mismatch=4, gap_open=6, gap_extend=1, clipping_penalty=5, unpair_penalty=9, unpair_rescue=false,
-    min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, sort_bam=true, bwa_bin="bwa-mem2", sam_bin="samtools",
+    min_seed_len=18, reseeding_factor=1.4, is_ont=false, threads=6, sort_bam=false, bwamem_bin=nothing, samtools_bin=nothing,
     norm=1000000, include_secondary_alignments=true, suffix_forward="_forward", suffix_reverse="_reverse",
     is_reverse_complement=false, overwrite_existing=false)
 
@@ -586,7 +585,7 @@ function preprocess_data(files::Union{SingleTypeFiles, PairedSingleTypeFiles}, g
     println("Aligning files...")
     bams = align_mem(trimmed, genome; overwrite_existing=overwrite_existing, min_score=min_score, match=match, mismatch=mismatch, gap_open=gap_open, gap_extend=gap_extend,
                         clipping_penalty=clipping_penalty, unpair_penalty=unpair_penalty, unpair_rescue=unpair_rescue, min_seed_len=min_seed_len, reseeding_factor=reseeding_factor,
-                        is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwa_bin=bwa_bin, sam_bin=sam_bin)
+                        is_ont=is_ont, threads=threads, sort_bam=sort_bam, bwamem_bin=bwamem_bin, samtools_bin=samtools_bin)
     println("Computing coverage...")
     compute_coverage(bams; overwrite_existing=overwrite_existing, norm=norm, is_reverse_complement=is_reverse_complement, include_secondary_alignments=include_secondary_alignments,
                         suffix_forward=suffix_forward, suffix_reverse=suffix_reverse);
