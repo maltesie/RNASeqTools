@@ -143,8 +143,8 @@ Base.iterate(coverage::Coverage, state) =iterate(coverage.list, state)
 
 function Base.write(filename_f::String, filename_r::String, coverage::Coverage)
     (endswith(filename_f, ".bw") && endswith(filename_f, ".bw")) || throw(Assertion("Both files have to end in .bw\n1: $filename_f\n2: $filename_r"))
-    writer_f = BigWig.Writer(open(filename_f, "w"), chromosome_list)
-    writer_r = BigWig.Writer(open(filename_r, "w"), chromosome_list)
+    writer_f = BigWig.Writer(open(filename_f, "w"), coverage.chroms)
+    writer_r = BigWig.Writer(open(filename_r, "w"), coverage.chroms)
     for interval in coverage
         strand(interval) == STRAND_POS ?
         write(writer_f, (interval.seqname, interval.first, interval.last, interval.metadata)) :
@@ -246,7 +246,7 @@ function maxdiffpositions(coverage::Coverage; type="DIFF", samplename=nothing, r
             n = isnothing(samplename) ? "reverse_$ii" : "$(samplename)_reverse_$ii"
             from = isnothing(samplename) ? "NA" : samplename
             ann = Annotation(type, n; from=from, height=rmima[ii, 2], diff=rmima[ii, 2]-rmima[ii, 1])
-            push!(features, Interval(chr, i, i, STRAND_NEG, ann))           
+            push!(features, Interval(chr, i, i, STRAND_NEG, ann))
         end
     end
     return Features(features)
