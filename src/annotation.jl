@@ -64,7 +64,7 @@ end
 
 function Features(gff_file::String, type::Vector{String}; name_keys=["Name"], same_name_rule=:all)
     same_name_rule in (:first, :all, :none) || throw(AssertionError("same_name_rule must be :first, :all, or :none"))
-    features = GFF3.Reader(open(gff_file), skip_directives=false)
+    features = GFF3.Reader(endswith(gff_file, ".gz") ? GzipDecompressorStream(open(gff_file)) : open(gff_file), skip_directives=false)
     intervals = Vector{Interval{Annotation}}()
     names = Dict{Tuple{String,String},Int}()
     chroms = Dict{String, Int}()
@@ -277,7 +277,7 @@ function summarize(features::Features)
         nb_pos += strand(f) === STRAND_POS
         nb_neg += strand(f) === STRAND_NEG
     end
-    return "$(typeof(features)) with $(nb_pos+nb_neg) (+:$nb_pos, -:$nb_neg) features of types $(ts) for $(length(chrs)) reference sequences."
+    return "$(typeof(features)) with $(nb_pos+nb_neg) (+:$nb_pos, -:$nb_neg) features of types $(ts) for $(length(chrs)) reference sequences $chrs."
 end
 
 function Base.show(io::IO, features::Features)

@@ -57,10 +57,8 @@ end
 
 function read_genomic_fasta(fasta_file::String)
     genome::Dict{String, LongDNA{4}} = Dict()
-    open(FASTA.Reader, fasta_file) do reader
-        for record in reader
-            genome[FASTA.identifier(record)] = FASTA.sequence(LongDNA{4}, record)
-        end
+    for record in eachfastarecord(fasta_file)
+        genome[FASTA.identifier(record)] = FASTA.sequence(LongDNA{4}, record)
     end
     return genome
 end
@@ -73,7 +71,7 @@ function write_genomic_fasta(genome::Dict{String, T}, fasta_file::String) where 
     end
 end
 
-summarize(genome::Genome) = "$(typeof(genome)) with $(length(genome)) nucleotides on $(length(genome.chroms)) sequences."
+summarize(genome::Genome) = "$(typeof(genome)) with $(length(genome)) nucleotides on $(length(genome.chroms)) sequences $(collect(keys(genome.chroms)))."
 Base.show(io::IO, genome::Genome) = print(io, summarize(genome))
 
 function Sequences()

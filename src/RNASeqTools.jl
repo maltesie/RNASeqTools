@@ -1,15 +1,16 @@
 module RNASeqTools
 
 import XAM: BAM
-using FASTX, CodecZlib, GFF3, BigWig
-using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
+using FASTX, CodecZlib, GFF3, BigWig, EzXML
+using BioAlignments, BioSequences, GenomicFeatures, BioGenerics, BioServices
 using IterTools, StringViews, Distributions, GLM, MultipleTesting
 import IntervalTrees
+import Downloads
 
 using minimap2_jll, bwamem2_jll, fastp_jll, samtools_jll
 
 export align_mem, align_minimap, align_kraken2
-export preprocess_data, trim_fastp, split_libs, download_prefetch, transform, split_interleaved, split_each_read
+export preprocess_data, trim_fastp, split_libs, download_prefetch, download_refseq, transform, split_interleaved, split_each_read
 export Genome, Sequences, PairedSequences, AlignedReads, AlignedInterval, AlignedRead, SingleTypeFiles, PairedSingleTypeFiles, Features, Coverage
 export Annotation, AlignmentAnnotation, Logo, FeatureCounts
 export FastaFiles, FastagzFiles, FastqFiles, FastqgzFiles, BamFiles, GenomeFiles, GffFiles, CoverageFiles, CsvFiles

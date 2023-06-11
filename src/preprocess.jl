@@ -30,6 +30,25 @@ function download_prefetch(sra_runids::Vector{String}, output_path::String; fast
         keep_sra || rm(sra_file)
     end
 end
+download_prefetch(sra_accession::String, output_path::String; fastqdump_bin="fastq-dump", prefetch_bin="prefetch",
+    keep_sra=false, split_files=true, split_spot=false, overwrite_existing=false) =
+    download_prefetch([sra_accession], output_path; fastqdump_bin=fastqdump_bin, prefetch_bin=prefetch_bin, keep_sra=keep_sra,
+        split_files=split_files, split_spot=split_spot, overwrite_existing=overwrite_existing)
+
+
+function download_refseq(refseq_accession::String, output_path::String; download_sequence=true, download_annotation=true)
+    context=Dict()
+    BioServices.EUtils.esearch(context, db="assembly", term=refseq_accession, usehistory="y")
+    f = BioServices.EUtils.efetch(context, db="assembly", rettype="docsum")
+    xml = parsexml(f.body)
+    assembly_accession = nodecontent(findfirst("//AssemblyAccession", root(xml)))
+    assembly_name = nodecontent(findfirst("//AssemblyName", root(xml)))
+    ftp_path =  nodecontent(findfirst("//FtpPath_RefSeq", root(xml)))
+    fname_genome = "$(assembly_accession)_$(assembly_name)_genomic.fna.gz"
+    fname_annotation = "$(assembly_accession)_$(assembly_name)_genomic.gff.gz"
+    download_sequence && Downloads.download(joinpath(ftp_path, fname_genome), joinpath(output_path, fname_genome))
+    download_annotation && Downloads.download(joinpath(ftp_path, fname_annotation), joinpath(output_path, fname_annotation))
+end
 
 function demultiplex(testseq::LongDNA{4}, barcode_queries::Vector{ApproximateSearchQuery{typeof(isequal), LongDNA{4}}}; k=1)
     for i in 1:length(barcode_queries)
