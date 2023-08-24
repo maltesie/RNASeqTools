@@ -91,32 +91,18 @@ end
 
 function Coverage(values_f::Dict{String, Vector{Float64}}, values_r::Dict{String, Vector{Float64}}, chroms::Vector{Tuple{String, Int}})
     new_intervals = Vector{Interval{Float64}}()
-    for vals in (values_f, values_r)
-        current_pos = 1
-        current_end = 1
-        current_refid = 1
-        current_ref = first(chroms[current_refid])
-        current_len = last(chroms[current_refid])
-        while true
-            if current_end >= current_len
-                current_refid += 1
-                if current_refid > length(chroms)
-                    break
-                end
-                current_ref = first(chroms[current_refid])
-                current_len = last(chroms[current_refid])
-                current_pos = 1
-                current_end = 1
+    for (vals, current_strand) in zip((values_f, values_r), (STRAND_POS, STRAND_NEG))
+        for (current_ref, v) in vals
+            current_start = 1
+            current_end = 1
+            for i in findall(diff(v) .!= 0.0)
+                current_end = i
+                push!(new_intervals, Interval(current_ref, current_start, current_end,
+                    current_strand, v[current_start]))
+                current_start = i+1
             end
-            current_value = vals[current_ref][current_pos]
-            while vals[current_ref][current_end+1] == current_value
-                current_end += 1
-                current_end == current_len && break
-            end
-            (current_pos == 1 && current_end == current_len) || push!(new_intervals, Interval(current_ref, current_pos, current_end,
-                                                                    vals===values_f ? STRAND_POS : STRAND_NEG, current_value))
-            current_pos = current_end + 1
-            current_end = current_pos
+            push!(new_intervals, Interval(current_ref, current_start, length(v),
+                    current_strand, v[current_start]))
         end
     end
     return Coverage(IntervalCollection(new_intervals, true), chroms)
