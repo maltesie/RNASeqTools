@@ -440,7 +440,8 @@ function align_mem(in_file1::String, in_file2::Union{String,Nothing}, genome_fil
             if isnothing(samtools_bin)
                 samtools_bin = st_jll
             end
-            run(`$bwamem_bin index $genome_file`)
+            (!isfile("$genome_file.0123") | !isfile("$genome_file.amb") | !isfile("$genome_file.ann") |
+                !isfile("$genome_file.bwt.2bit.64") | !isfile("$genome_file.pac")) && run(`$bwamem_bin index $genome_file`)
             params = ["-A", match, "-B", mismatch, "-O", gap_open, "-E", gap_extend, "-T", min_score, "-L", clipping_penalty, "-r", reseeding_factor, "-k", min_seed_len, "-t", threads]
             (isnothing(in_file2) && !is_interleaved_paired_end) || append!(params, ["-U", unpair_penalty])
             is_ont && append!(params, ["-x", "ont2d"])

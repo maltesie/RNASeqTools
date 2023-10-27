@@ -192,8 +192,8 @@ MatchIterator(test_sequence::LongDNA{4}, seq::LongDNA{4}; k=0) =
     MatchIterator(k>0 ? ApproximateSearchQuery(test_sequence) : ExactSearchQuery(test_sequence), seq, k)
 MatchIterator(logo::Logo, seq::LongDNA{4}; min_bits=sum(maximum(logo.weights; dims=1))) = MatchIterator(PWMSearchQuery(PWM{DNA}(logo.weights), min_bits), seq, 0)
 function Base.iterate(m::MatchIterator{T}, state=1) where {T <: Union{ExactSearchQuery,ApproximateSearchQuery,PWMSearchQuery}}
-    current_match = if m.max_dist > 0 
-        findnext(m.sq, m.max_dist, m.seq, state) 
+    current_match = if m.max_dist > 0
+        findnext(m.sq, m.max_dist, m.seq, state)
     elseif T <: ExactSearchQuery
         findnext(m.sq, m.seq, state)
     elseif T <: PWMSearchQuery
@@ -217,8 +217,8 @@ GenomeMatchIterator(test_sequence::LongDNA{4}, genome::Genome; k=0) =
 
 GenomeMatchIterator(logo::Logo, genome::Genome; min_bits=sum(maximum(logo.weights; dims=1))) =
     GenomeMatchIterator(
-        MatchIterator(logo, genome.seq; min_bits=min_bits), 
-        MatchIterator(Logo(logo.nseqs, reverse(logo.weights), logo.alphabet), genome.seq; min_bits=min_bits), 
+        MatchIterator(logo, genome.seq; min_bits=min_bits),
+        MatchIterator(Logo(logo.nseqs, reverse(logo.weights), logo.alphabet), genome.seq; min_bits=min_bits),
         genome.chroms
     )
 
@@ -227,9 +227,7 @@ function Base.iterate(gmi::GenomeMatchIterator{T}, (state,rev)=(1,false)) where 
     isnothing(i) && return rev ? nothing : iterate(gmi, (1,true))
     for (chr, r) in gmi.chroms
         (first(r) <= first(first(i)) <= last(r)) || continue
-        match_score::Float64 = T <: PWMSearchQuery ? 
-            scoreat(gmi.mi_f.seq, rev ? gmi.mi_r.sq.pwm : gmi.mi_f.sq.pwm, first(first(i))) :
-            sum((rev ? gmi.mi_r.sq.seq : gmi.mi_f.sq.seq) .== view(gmi.mi_f.seq, i))
+        match_score::Float64 = T <: PWMSearchQuery ? scoreat(gmi.mi_f.seq, rev ? gmi.mi_r.sq.pwm : gmi.mi_f.sq.pwm, first(first(i))) : -1.0
         return Interval(chr, first(i) .- (first(r)-1), rev ? STRAND_NEG : STRAND_POS, match_score), (last(i), rev)
     end
 end
