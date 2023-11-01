@@ -218,7 +218,7 @@ function Base.write(file::String, features::Features; zip=false, tabix=false, sk
 end
 
 function featureseqs(features::Features, genome::Genome)
-    seq = randdnaseq(sum(length(f)+1 for f in features))
+    seq = randdnaseq(sum(length(f) for f in features))
     ranges = Vector{UnitRange{Int}}(undef, length(features))
     offset = 1
     for (i,feature) in enumerate(features)
