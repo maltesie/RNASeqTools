@@ -242,15 +242,9 @@ function covratio(features::Features, coverage::Coverage; round_digits=2)
     ratios = Pair{String, Float64}[]
     for t in types(features)
         s = 0.0
-        check_index = Dict(chr=>(zeros(Bool, length(v1)), zeros(Bool, length(v2))) for (chr, (v1,v2)) in vals)
         for feature in features
             type(feature) == t || continue
-            is_negative_strand = strand(feature) === STRAND_NEG
-            check_index[refname(feature)][is_negative_strand ? 2 : 1][leftposition(feature):rightposition(feature)] .= true
-        end
-        for (chr, (v1, v2)) in vals
-            s += sum(v1[check_index[chr][1]])
-            s -= sum(v2[check_index[chr][2]])
+            s += abs(sum(@view vals[refname(feature)][strand(feature) == STRAND_NEG ? 2 : 1][leftposition(feature):rightposition(feature)]))
         end
         push!(ratios, t=>round(s/total; digits=round_digits))
     end
