@@ -181,7 +181,8 @@ AlignedReads(bam_file::String)
     Constructor for AlignedReads. Reads alignment records and stores alignment positions on reference and read and additional information
     such as reference name, strand and edit distance of the alignment sorted according to the read they originate from.
 """
-function AlignedReads(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false, is_reverse_complement=false)
+function AlignedReads(bam_file::String; include_secondary_alignments=true, include_alternative_alignments=false,
+        is_reverse_complement=false, min_mapping_quality=0)
     record = BAM.Record()
     ns = Vector{UInt}(undef, 1000000)
     ls = Vector{Int}(undef, 1000000)
@@ -192,12 +193,14 @@ function AlignedReads(bam_file::String; include_secondary_alignments=true, inclu
     rls = Vector{Int}(undef, 1000000)
     rrs = Vector{Int}(undef, 1000000)
     rds = Vector{Symbol}(undef, 1000000)
+    mmq = UInt8(min_mapping_quality)
     chromosome_list = Vector{Tuple{String,Int}}()
     BAM.Reader(open(bam_file)) do reader
         append!(chromosome_list, [n for n in zip(bam_chromosome_names(reader), bam_chromosome_lengths(reader))])
         index::Int = 0
         while !eof(reader)
             read!(reader, record)
+            BAM.mappingquality(record) >= mmq || continue
             has_alternatives = hasxatag(record)
             (!BAM.ismapped(record) || (!isprimary(record) && !include_secondary_alignments) || (has_alternatives && !include_alternative_alignments)) && continue
             current_read::Symbol = (isread2(record) != is_reverse_complement) ? :read2 : :read1
@@ -305,7 +308,7 @@ Base.getindex(alns::AlignedReads, r::UnitRange{Int}) = AlignedReads(alns.chroms,
 """
 AlignedInterval(xapart::StringView)
 
-    Constructor for the AlignedInterval struct. Builds AlignedInterval from a XA string containing alternative mappings. 
+    Constructor for the AlignedInterval struct. Builds AlignedInterval from a XA string containing alternative mappings.
     Inverts strand, if `check_invert::Bool` is true.
 """
 function AlignedInterval(xapart::StringView; read=:read1)
