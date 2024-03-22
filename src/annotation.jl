@@ -222,7 +222,7 @@ function featureseqs(features::Features, genome::Genome)
     ranges = Vector{UnitRange{Int}}(undef, length(features))
     offset = 1
     for (i,feature) in enumerate(features)
-        (l, r) = leftposition(feature), rightposition(feature)
+        (l, r) = leftposition(feature), min(rightposition(feature), last(genome.chroms[refname(feature)])-1)
         s = copy(genome[refname(feature)][l:r])
         strand(feature) == STRAND_NEG && reverse_complement!(s)
         r = offset:(offset + (r - l))
@@ -312,18 +312,16 @@ end
 utrright(f::Interval{Annotation}, features::Features, len::Int, utr_type::String, cds_type::String) =
     Interval(refname(f), rightposition(f)+1,
         hasoverlap(Interval(refname(f), rightposition(f)+1, rightposition(f)+2*len, strand(f)), features) ?
-            minimum(type(i) == cds_type ? floor(Int, (leftposition(i) + rightposition(f))/2) : min(rightposition(f)+len, leftposition(i)-1)
+            minimum(min(rightposition(f)+len, leftposition(i)-1)
                 for i in eachoverlap(Interval(refname(f), rightposition(f)+1, rightposition(f)+2*len, strand(f)), features)) :
-            rightposition(f)+len,
-        strand(f), Annotation(utr_type, name(f)))
+            rightposition(f)+len, strand(f), Annotation(utr_type, name(f), params(f)))
 
 utrleft(f::Interval{Annotation}, features::Features, len::Int, utr_type::String, cds_type::String) =
     Interval(refname(f),
         hasoverlap(Interval(refname(f), leftposition(f)-2*len, leftposition(f)-1, strand(f)), features) ?
-            maximum(type(i) == cds_type ? floor(Int, (leftposition(f) + rightposition(i))/2)+1 : max(leftposition(f)-len, rightposition(i)+1)
+            maximum(max(leftposition(f)-len, rightposition(i)+1)
                 for i in eachoverlap(Interval(refname(f), leftposition(f)-2*len, leftposition(f)-1, strand(f)), features)) :
-            leftposition(f)-len,
-        leftposition(f)-1, strand(f), Annotation(utr_type, name(f)))
+            leftposition(f)-len, leftposition(f)-1, strand(f), Annotation(utr_type, name(f), params(f)))
 
 function add5utrs!(features::Features; cds_type="CDS", utr_type="5UTR", utr_length=200, min_utr_length=20)
     new_features = Vector{Interval{Annotation}}()

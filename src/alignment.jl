@@ -207,7 +207,7 @@ function AlignedReads(bam_file::String; include_secondary_alignments=true, inclu
             index += 1
             xas = has_alternatives ? StringView(xatag(record)) : nothing
             ((index + (has_alternatives ? count(';', xas) : 0)) > length(ns)) && resize!.((ns, ls, rs, is, ss, rls, rrs, rds, nms), length(ns)+1000000)
-            n = hash(StringView(@view(record.data[1:(BAM.seqname_length(record) - 1)])))
+            n = hash(@view record.data[1:Int(BAM.seqname_length(record))-1])
             (l::Int, r::Int) = (BAM.leftposition(record), BAM.rightposition(record))
             (ref::String, s::Strand) = (BAM.refname(record), BAM.ispositivestrand(record) != (current_read === :read2) ? STRAND_POS : STRAND_NEG)
             nm::UInt32 = nmtag(record)

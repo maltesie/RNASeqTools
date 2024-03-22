@@ -98,8 +98,8 @@ function Sequences(seqs::Vector{LongDNA{4}}, seqnames::Vector{UInt}; sort_by_nam
 end
 Sequences(seqs::Vector{LongDNA{4}}) = Sequences(seqs, Vector{UInt}(1:length(seqs)))
 
-function Sequences(file::String; is_reverse_complement=false, hash_id=true, sort_by_name=false)
-    read_reads(file; is_reverse_complement=is_reverse_complement, hash_id=hash_id, sort_by_name=sort_by_name)
+function Sequences(file::String; is_reverse_complement=false, sort_by_name=false)
+    read_reads(file; is_reverse_complement=is_reverse_complement, sort_by_name=sort_by_name)
 end
 
 Sequences(genomes::Vector{Genome}) =
@@ -143,7 +143,7 @@ function Base.filter!(seqs::Sequences, tempnames::Set{UInt})
     resize!(seqs.tempnames, n_seqs)
 end
 
-function read_reads(file::String; is_reverse_complement=false, hash_id=true, sort_by_name=false)
+function read_reads(file::String; is_reverse_complement=false, sort_by_name=false)
     is_fastq = any([endswith(file, ending) for ending in FASTQ_TYPES])
     data = Vector{UInt8}(undef, 500000000)
     tempnames = Vector{UInt64}(undef, 5000000)
@@ -151,14 +151,14 @@ function read_reads(file::String; is_reverse_complement=false, hash_id=true, sor
     current_range::UnitRange{Int} = 1:0
     lasti::Int = 0
     for (i::Int, record) in enumerate(is_fastq ? eachfastqrecord(file) : eachfastarecord(file))
-        s = @view(record.data[record.sequence])
-        current_range = last(current_range)+1:last(current_range)+length(record.sequence)
+        s = @view(record.data[Int(record.description_len)+1:Int(record.description_len)+FASTX.seqsize(record)])
+        current_range = last(current_range)+1:last(current_range)+length(s)
         length(data) < last(current_range) && resize!(data, length(data)+max(100000000, last(current_range)-length(data)))
         if length(tempnames) < i
             resize!(tempnames, length(tempnames)+1000000)
             resize!(ranges, length(ranges)+1000000)
         end
-        tempnames[i] = hash(StringView(view(record.data, record.identifier)))
+        tempnames[i] = hash(@view record.data[1:Int(record.identifier_len)])
         ranges[i] = current_range
         data[current_range] .= s
         lasti = i
