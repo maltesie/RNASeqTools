@@ -94,7 +94,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
         isnothing(infile2) || read!(reader2, record2)
         isnothing(prefixfile) || read!(readerp, recordp)
         c += 1
-        checkseq = isnothing(prefixfile) ? view(sequence(record1), check_range) : sequence(recordp)
+        checkseq = isnothing(prefixfile) ? view(BioSequences.sequence(record1), check_range) : BioSequences.sequence(recordp)
         library_id = demultiplex(checkseq, barcode_queries; k=allowed_barcode_distance)
         library_id == -1 && (library_id = nb_stats)
         stats[library_id] += 1
