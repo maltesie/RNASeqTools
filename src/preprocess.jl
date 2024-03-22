@@ -40,16 +40,16 @@ end
 function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2::Union{String,Nothing}, libname_to_barcode::Dict{String,String}, output_path::String=dirname(infile1);
                         bc_len=length(first(values(libname_to_barcode))), check_range=1:bc_len, allowed_barcode_distance=1, overwrite_existing=false)
 
-    lib_to_barcode = Dict(k=>LongDNA{4}(v) for (k,v) in libname_to_barcode)
-    barcodes = collect(values(lib_to_barcode))
+
+    barcodes = collect(values(libname_to_barcode))
     for (i, bc) in enumerate(barcodes), bc2 in barcodes[(i+1):end]
         StringHammingDistance(bc, bc2) > 2 * allowed_barcode_distance ||
             throw(AssertionError("Barcodes $bc and $bc2 are too close for the allowed barcode distance!"))
     end
 
     output_files = isnothing(infile2) ?
-    [joinpath(output_path, "$(name).fastq.gz") for name in keys(lib_to_barcode)] :
-    [(joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")) for name in keys(lib_to_barcode)]
+    [joinpath(output_path, "$(name).fastq.gz") for name in keys(libname_to_barcode)] :
+    [(joinpath(output_path, "$(name)_1.fastq.gz"), joinpath(output_path, "$(name)_2.fastq.gz")) for name in keys(libname_to_barcode)]
     for file in output_files
         if isnothing(infile2)
             if isfile(file)
@@ -67,7 +67,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
             end
         end
     end
-    nb_stats = length(lib_to_barcode)+1
+    nb_stats = length(libname_to_barcode)+1
     stats::Vector{Int} = zeros(Int, nb_stats)
     record1::FASTQ.Record = FASTQ.Record()
     isnothing(infile2) || (record2::FASTQ.Record = FASTQ.Record())
@@ -109,7 +109,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
         close(w) :
         (close(w[1]);close(w[2]))
     end
-    libnames = String.(keys(lib_to_barcode))
+    libnames = String.(keys(libname_to_barcode))
     sorted_index = sortperm(libnames)
     count_string = join(["$(name) - $(stat)\n" for (name, stat) in zip(libnames[sorted_index], stats[sorted_index])])
     count_string *= "\nnot identifyable - $(stats[end])\n"
