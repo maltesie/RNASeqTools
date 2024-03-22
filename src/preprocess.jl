@@ -31,7 +31,7 @@ function download_prefetch(sra_runids::Vector{String}, output_path::String; fast
     end
 end
 
-function demultiplex(testseq::LongDNA{4}, barcode_queries::Vector{ApproximateSearchQuery{typeof(isequal), LongDNA{4}}}; k=1)
+function demultiplex(testseq::StringView, barcode_queries::Vector{ApproximateSearchQuery{typeof(isequal), StringView}}; k=1)
     for i in 1:length(barcode_queries)
         isnothing(findfirst(barcode_queries[i], k, testseq)) || (return i)
     end
