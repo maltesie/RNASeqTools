@@ -3,7 +3,7 @@ module RNASeqTools
 import XAM: BAM
 using FASTX, CodecZlib, GFF3, BigWig
 using BioAlignments, BioSequences, GenomicFeatures, BioGenerics
-using IterTools, StringViews, SimilaritySearch, Distributions, GLM, MultipleTesting
+using IterTools, StringViews, SimilaritySearch, Distances, Distributions, GLM, MultipleTesting
 import IntervalTrees
 
 using minimap2_jll, bwamem2_jll, fastp_jll, samtools_jll

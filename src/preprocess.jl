@@ -33,7 +33,7 @@ end
 
 function demultiplex(testseq::StringView, barcode_queries::Vector{String}; k=1)
     for i in 1:length(barcode_queries)
-        StringHammingDistance(testseq, barcode_queries[i]) > k || (return i)
+        evaluate(::StringHammingDistance, testseq, barcode_queries[i]) > k || (return i)
     end
     return -1
 end
@@ -43,7 +43,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
 
     barcodes = collect(values(libname_to_barcode))
     for (i, bc) in enumerate(barcodes), bc2 in barcodes[(i+1):end]
-        StringHammingDistance(bc, bc2) > 2 * allowed_barcode_distance ||
+        evaluate(::StringHammingDistance, bc, bc2) > 2 * allowed_barcode_distance ||
             throw(AssertionError("Barcodes $bc and $bc2 are too close for the allowed barcode distance!"))
     end
 
