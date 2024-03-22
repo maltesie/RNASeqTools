@@ -31,9 +31,9 @@ function download_prefetch(sra_runids::Vector{String}, output_path::String; fast
     end
 end
 
-function demultiplex(testseq::StringView, barcode_queries::Vector{String}; k=1)
+function demultiplex(testseq::AbstractString, barcode_queries::Vector{String}; k=1)
     for i in 1:length(barcode_queries)
-        evaluate(::StringHammingDistance, testseq, barcode_queries[i]) > k || (return i)
+        evaluate(StringHammingDistance(), testseq, barcode_queries[i]) > k || (return i)
     end
     return -1
 end
@@ -43,7 +43,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
 
     barcodes = collect(values(libname_to_barcode))
     for (i, bc) in enumerate(barcodes), bc2 in barcodes[(i+1):end]
-        evaluate(::StringHammingDistance, bc, bc2) > 2 * allowed_barcode_distance ||
+        evaluate(StringHammingDistance(), bc, bc2) > 2 * allowed_barcode_distance ||
             throw(AssertionError("Barcodes $bc and $bc2 are too close for the allowed barcode distance!"))
     end
 
@@ -95,7 +95,7 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
         isnothing(prefixfile) || read!(readerp, recordp)
         c += 1
         checkseq = isnothing(prefixfile) ? view(FASTX.sequence(record1), check_range) : FASTX.sequence(recordp)
-        library_id = demultiplex(checkseq, barcode_queries; k=allowed_barcode_distance)
+        library_id = demultiplex(checkseq, barcodes; k=allowed_barcode_distance)
         library_id == -1 && (library_id = nb_stats)
         stats[library_id] += 1
         isnothing(infile2) ?
