@@ -31,9 +31,9 @@ function download_prefetch(sra_runids::Vector{String}, output_path::String; fast
     end
 end
 
-function demultiplex(testseq::StringView, barcode_queries::Vector{ApproximateSearchQuery{typeof(isequal), StringView}}; k=1)
+function demultiplex(testseq::StringView, barcode_queries::Vector{String}; k=1)
     for i in 1:length(barcode_queries)
-        isnothing(findfirst(barcode_queries[i], k, testseq)) || (return i)
+        StringHammingDistance(testseq, barcode_queries[i]) > k || (return i)
     end
     return -1
 end
@@ -41,10 +41,10 @@ function split_libs(infile1::String, prefixfile::Union{String,Nothing}, infile2:
                         bc_len=length(first(values(libname_to_barcode))), check_range=1:bc_len, allowed_barcode_distance=1, overwrite_existing=false)
 
     lib_to_barcode = Dict(k=>LongDNA{4}(v) for (k,v) in libname_to_barcode)
-    barcode_queries = [ApproximateSearchQuery(v) for v in values(lib_to_barcode)]
-    for bc in values(lib_to_barcode)
-        sum(!isnothing(findfirst(barcode_queries[i], 2*allowed_barcode_distance, bc)) for i in 1:length(lib_to_barcode)) > length(lib_to_barcode) &&
-            throw(AssertionError("The supplied barcodes do not support the allowed_barcode_distance!"))
+    barcodes = collect(values(lib_to_barcode))
+    for (i, bc) in enumerate(barcodes), bc2 in barcodes[(i+1):end]
+        StringHammingDistance(bc, bc2) > 2 * allowed_barcode_distance ||
+            throw(AssertionError("Barcodes $bc and $bc2 are too close for the allowed barcode distance!"))
     end
 
     output_files = isnothing(infile2) ?
